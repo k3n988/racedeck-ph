@@ -1,0 +1,9 @@
+# env (catch plain .env too, not just .env*.local)
+.env
+
+# supabase CLI local state
+supabase/.branches
+supabase/.temp
+node_modules/
+.env.local
+.next/
