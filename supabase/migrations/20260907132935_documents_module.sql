@@ -1,0 +1,1 @@
+-- Intentionally empty migration retained to match remote migration history.
