@@ -1,1 +1,1 @@
--- Intentionally empty migration retained to match remote migration history.
+-- Intentionally empty migration retained to match remote Supabase migration history.
