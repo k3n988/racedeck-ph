@@ -290,6 +290,13 @@ No historical migration was modified as part of the application work documented 
 - Verified `create_refund_request(uuid, numeric, text, text, uuid)` and `apply_refund_gateway_result(uuid, text, refund_status, text, text)` exist with `service_role` execution only; `authenticated` execution is denied.
 - Post-reset validation passed: `npm test` (20 passed, 1 skipped), `npx tsc --noEmit`, `npm run lint`, and `npm run build`. Lint/build retain only the previously noted non-blocking React/image warnings.
 
+### Final backend refund integration validation (2026-09-09)
+
+- Added `tests/refund.integration.test.ts` against the local Docker Supabase database.
+- Verified repeated refund idempotency keys return the original reservation, concurrent requests cannot reserve more than the paid balance, and duplicate gateway settlement does not double-count `payments.amount_refunded` or create a second refund transaction.
+- Full validation passed: `npm test` (23 passed, 1 skipped), `npx tsc --noEmit`, `npm run lint`, and `npm run build`.
+- Backend payment/refund validation is complete for the implemented scope; remaining work is provider sandbox/live verification and UI implementation.
+
 ## Important development rules
 
 - Update this `PROJECT_PROGRESS.md` file after every new feature or code implementation, including its current status, validation result, and remaining follow-up work.
