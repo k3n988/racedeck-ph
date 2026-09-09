@@ -1,4 +1,11 @@
-"use client";
-import { useCallback, useEffect, useState } from 'react';
-type Application = { organization_id:string; status:string; organizations:{name:string;contact_email:string|null}|null };
-export default function OrganizerApplicationsPage(){const [items,setItems]=useState<Application[]>([]);const [status,setStatus]=useState('pending_review');const [message,setMessage]=useState('Loading applications…');const load=useCallback(async(s:string)=>{const r=await fetch(`/api/admin/organizers?status=${s}`);if(!r.ok){setMessage('Applications could not be loaded.');return;}setItems(await r.json());setMessage('');},[]);useEffect(()=>{void load(status)},[load,status]);return <main className="mx-auto max-w-5xl space-y-6 p-6"><h1 className="text-2xl font-semibold">Organizer applications</h1><select value={status} onChange={e=>setStatus(e.target.value)} className="rounded border p-2"><option value="pending_review">Pending review</option><option value="needs_changes">Needs changes</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="draft">Draft</option></select>{message&&<p role="status" className="text-sm">{message}</p>}<div className="space-y-3">{items.length===0&&!message&&<p className="text-sm">No applications found.</p>}{items.map(item=><a key={item.organization_id} href={`/admin/organizers/${item.organization_id}`} className="block rounded border p-4 hover:bg-gray-50"><strong>{item.organizations?.name}</strong><span className="ml-3 text-sm text-gray-600">{item.status}</span><p className="text-sm">{item.organizations?.contact_email??'No contact email'}</p></a>)}</div></main>}
+import { requireInternalAccess } from '@/lib/auth/rbac';
+import { createAdminClient } from '@/lib/supabase/admin';
+import OrganizerListClient, { type OrganizerApplication } from './organizer-list-client';
+
+export default async function OrganizerApplicationsPage() {
+  await requireInternalAccess();
+  const admin = createAdminClient();
+  const { data } = await admin.from('organizer_verifications').select('organization_id,status,submitted_at,organizations!inner(name,account_status,verification_status)').eq('status', 'pending_review').order('submitted_at', { ascending: false });
+  const applications = (data ?? []).map((item): OrganizerApplication => ({ organizationId: item.organization_id, status: item.status, submittedAt: item.submitted_at, organization: { name: item.organizations.name, accountStatus: item.organizations.account_status, verificationStatus: item.organizations.verification_status } }));
+  return <OrganizerListClient initialApplications={applications}/>;
+}
