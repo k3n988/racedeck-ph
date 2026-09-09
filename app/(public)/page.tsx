@@ -1,0 +1,10 @@
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/server';
+
+export default async function PublicHomePage() {
+  const supabase = await createClient();
+  const { data: featuredEvent } = await supabase.from('events').select('id,name,event_date,venue').eq('is_featured', true).eq('lifecycle_status', 'published').eq('review_status', 'approved').order('event_date').limit(1).maybeSingle();
+  return <main className="mx-auto max-w-6xl space-y-12 p-6"><section className="rounded-lg border p-8"><p className="text-sm text-gray-600">RaceDeck PH</p><h1 className="mt-2 text-3xl font-semibold">Run better events. Find your next race.</h1><p className="mt-3 max-w-2xl text-gray-600">Registration, verified payments, race operations, and results in one platform.</p><Link href="/events" className="mt-5 inline-block rounded bg-black px-4 py-2 text-sm text-white">Browse races</Link></section><section><h2 className="text-xl font-semibold">Featured Race</h2>{featuredEvent ? <Link href={`/events/${featuredEvent.id}`} className="mt-3 block rounded border p-4"><p className="font-medium">{featuredEvent.name}</p><p className="text-sm text-gray-600">{featuredEvent.event_date} · {featuredEvent.venue ?? 'Venue to be announced'}</p></Link> : <p className="mt-3 rounded border p-4 text-sm text-gray-600">Featured race placeholder — no featured published event is available yet.</p>}</section><Placeholder title="Upcoming Races" text="Upcoming race discovery will appear here."/><Placeholder title="How RaceDeck Works" text="Discover a race, register securely, pay through a verified gateway, then receive your digital race ticket."/><Placeholder title="Services" text="Organizer tools and participant services placeholder."/><Placeholder title="For Organizers" text="Create and operate your event through RaceDeck."/></main>;
+}
+
+function Placeholder({ title, text }: { title: string; text: string }) { return <section><h2 className="text-xl font-semibold">{title}</h2><p className="mt-2 rounded border p-4 text-sm text-gray-600">{text}</p></section>; }

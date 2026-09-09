@@ -1,3 +1,5 @@
-export default function RaceDeckPlaceholderPage() {
-  return null;
-}
+/* eslint-disable @typescript-eslint/no-explicit-any */
+'use client';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+export default function MyRacesPage() { const [registrations, setRegistrations] = useState<any[]>([]); const [message, setMessage] = useState('Loading races…'); useEffect(() => { void fetch('/api/participant/my-races').then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error); setRegistrations(body.registrations); setMessage(''); }).catch(error => setMessage(error.message)); }, []); return <main className="mx-auto max-w-4xl space-y-6 p-6"><h1 className="text-2xl font-semibold">My Races</h1>{message && <p role="status">{message}</p>}{registrations.map(row => <Link key={row.id} href={`/my-races/${row.id}`} className="block rounded border p-4"><h2 className="font-semibold">{row.events?.name}</h2><p className="text-sm">{row.events?.event_date} · {row.race_categories?.name}</p><p className="text-sm">{row.registration_number} · {row.status}</p></Link>)}{!message && registrations.length === 0 && <p className="rounded border p-4 text-sm">No race registrations found.</p>}</main>; }

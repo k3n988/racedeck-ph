@@ -1,0 +1,2 @@
+type SlotClient = { rpc(name: string, args: Record<string, unknown>): Promise<{ data: string | null; error: { message: string } | null }> };
+export async function reserveRegistrationSlot(client: unknown, eventId: string, categoryId: string, userId: string, expiresAt: string) { return (client as SlotClient).rpc('reserve_registration_slot', { p_event_id: eventId, p_category_id: categoryId, p_user_id: userId, p_session_id: null, p_expires_at: expiresAt }); }

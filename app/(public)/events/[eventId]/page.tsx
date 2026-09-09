@@ -1,3 +1,5 @@
-export default function RaceDeckPlaceholderPage() {
-  return null;
-}
+'use client';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+type EventInfo = { event: { name: string; event_date: string; venue: string | null; address: string | null }; categories: Array<{ id: string; name: string; registration_fee: number }> };
+export default function EventDetailsPage({ params }: { params: { eventId: string } }) { const [data, setData] = useState<EventInfo | null>(null); const [error, setError] = useState('Loading event…'); useEffect(() => { void fetch(`/api/events/${params.eventId}/registration-info`).then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error); setData(body); setError(''); }).catch(cause => setError(cause instanceof Error ? cause.message : 'Event could not be loaded')); }, [params.eventId]); if (!data) return <main className="mx-auto max-w-3xl p-6"><p role="status">{error}</p></main>; return <main className="mx-auto max-w-3xl space-y-6 p-6"><header><h1 className="text-3xl font-semibold">{data.event.name}</h1><p className="text-gray-600">{data.event.event_date} · {data.event.venue ?? data.event.address ?? 'Venue to be announced'}</p></header><section className="rounded border p-4"><h2 className="font-semibold">Race Categories</h2><div className="mt-3 space-y-2">{data.categories.map(category => <div key={category.id} className="flex justify-between border-b py-2"><span>{category.name}</span><span>PHP {category.registration_fee}</span></div>)}</div></section><Link href={`/events/${params.eventId}/register`} className="inline-block rounded bg-black px-4 py-2 text-white">Register for this event</Link></main>; }
