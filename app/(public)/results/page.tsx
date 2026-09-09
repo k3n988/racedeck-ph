@@ -1,3 +1,2 @@
-export default function RaceDeckPlaceholderPage() {
-  return null;
-}
+import ResultsTable from './results-table';
+export default function PublicResultsPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) { const initial = Object.fromEntries(Object.entries(searchParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] ?? '' : value ?? ''])); return <main className="mx-auto max-w-7xl space-y-6 p-6"><header><h1 className="text-3xl font-semibold">Race Results</h1><p className="text-gray-600">Search results from published race batches.</p></header><ResultsTable initial={initial} /></main>; }

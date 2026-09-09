@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server';
+import { getPublicEvents } from '@/lib/public/events';
+export async function GET(request: Request) { try { const p = new URL(request.url).searchParams; const page = Number(p.get('page') ?? '1'); return NextResponse.json(await getPublicEvents({ search: p.get('search') ?? undefined, location: p.get('location') ?? undefined, distance: p.get('distance') ?? undefined, status: p.get('status') ?? undefined, sort: p.get('sort') ?? undefined, page: Number.isFinite(page) ? page : 1 })); } catch { return NextResponse.json({ error: 'Events could not be loaded' }, { status: 500 }); } }
