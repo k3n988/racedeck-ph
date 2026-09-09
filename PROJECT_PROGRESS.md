@@ -65,6 +65,21 @@ No historical migration was modified as part of the application work documented 
 - Participant `/payments` with authenticated payment history and receipt/invoice references.
 - Participant `/notifications` with authenticated notification listing and mark-as-read support.
 - Password reset and email-change foundations through Supabase Auth.
+- Secure participant payment receipt and issued-invoice PDF download endpoints, each scoped through the authenticated user's registration ownership.
+- Added shared React-PDF branding and receipt, sales-invoice, and certificate templates.
+- Added private `payment-documents` Storage bucket migration with PDF-only MIME restriction and a 10 MB limit.
+- Payment document downloads now reuse an existing `storage_reference`, otherwise render once, upload to `payment-documents`, persist the path, and return a 10-minute signed URL.
+
+### Organizer results operations
+
+- Results import page at `/organizer/events/[eventId]/results`.
+- CSV upload and server-side validation against active bibs assigned to confirmed registrations.
+- Preview response with matched and unmatched rows; publishing is blocked while unmatched rows remain.
+- Separate `upload_results` and `publish_results` permission gates.
+- Publication reuses the existing idempotent results-published notification and email queue path.
+- Existing Promo Codes, Bib Management, Race Kit Claiming, and Announcements workflows were reviewed and confirmed as already wired; they were not duplicated.
+- Results CSV parsing now handles quoted fields, embedded commas/quotes, BOMs, and CRLF/LF line endings.
+- Pre-publication unmatched-row correction/exclusion controls and a server-side correction endpoint were added.
 
 ## Security rules currently enforced
 
@@ -81,6 +96,7 @@ No historical migration was modified as part of the application work documented 
 - `npx tsc --noEmit` — passed.
 - `npm run lint` — passed with existing warnings in organizer/public files (hook dependency and image optimization warnings).
 - `npm run build` — passed; Next.js compiled, type-checked, generated static pages, and finalized page optimization successfully.
+- Results and document routes were included in the successful production build.
 - No `supabase db push` was run during the participant application implementation.
 
 ## Remaining work
@@ -90,7 +106,11 @@ No historical migration was modified as part of the application work documented 
 - Complete and integration-test the full flow:
   `Event → Registration → Waiver → Slot Hold → Checkout → Verified Webhook → Confirmed Registration → QR → Receipt/Invoice → Confirmation Email`.
 - Add or finish secure QR/digital-ticket generation and duplicate protection where the existing schema/service does not yet provide it.
-- Complete receipt/invoice document generation and secure download/view endpoints. The existing invoice service is currently only a placeholder, so the participant payments page displays issued references but does not provide document downloads.
+- Certificate storage caching remains pending because no existing certificate delivery route/service currently generates documents.
+- Add richer validation for all optional result columns (times, ranks, participant identifiers, and category snapshots) before broad organizer rollout.
+- Vitest is configured for local tests, with a passing PDF template smoke test. Supabase integration tests remain pending because no dedicated local test database harness is configured.
+- Added additive `result_batches.is_superseded` and `superseded_by_batch_id` tracking with a trigger that only supersedes unpublished draft batches; published batches are never touched.
+- Add a dedicated persisted staging model if fully revisitable corrections beyond the existing `results` staging rows are required.
 - Complete gateway integration testing with real signature verification, idempotency, failed/expired/refunded states, and concurrent checkout/hold scenarios.
 - Complete queued confirmation email orchestration and delivery assertions.
 
@@ -111,8 +131,168 @@ No historical migration was modified as part of the application work documented 
 - Perform a security review of all server routes, grants, RLS policies, rate limits, and audit logging.
 - Execute end-to-end acceptance tests with representative participant, organizer, restricted staff, and internal admin accounts.
 
+## Latest validation update
+
+- `supabase db reset` completed successfully against the local Docker instance and replayed all migrations through the payment-document storage and result-batch supersede migrations.
+- `.env.test` is ignored and contains only local Supabase URL/keys; Vitest loads it through `vitest.config.ts`.
+- `tests/helpers/supabase.ts` provides reusable local Auth/organization/event/category fixture seed and cleanup helpers.
+- The PDF template smoke test passes. Full API/RLS/webhook integration cases remain pending because route-session fixtures and end-to-end assertions have not yet been implemented.
+- Added the seven integration-test contract cases and authenticated-client helper; the first run exposed a malformed local service-role JWT before test bodies executed, which was diagnosed and corrected below.
+- `supabase db reset` remains clean; Docker/local database is available and the integration harness now seeds and cleans up local Auth fixtures successfully.
+
+### Local Auth fixture validation (2026-09-09)
+
+- Diagnosed the fixture setup failure as a malformed `SUPABASE_SERVICE_ROLE_KEY` in `.env.test`: local Auth returned HTTP 403 `bad_jwt` because the JWT had two segments instead of three.
+- Replaced it with the complete local service-role key from `supabase status`; the key remains local-test-only and is not committed.
+- Made fixture teardown safe when setup fails and removed temporary diagnostic logging after confirming the cause.
+- The seven integration contract tests now execute and pass in two consecutive runs; the full `npm test` suite passes with 8 tests.
+- The initial participant/public-event assertion was corrected to test an actual cross-organization mutation denial, since published event visibility is intentionally public.
+- These are local database/RLS contract tests; full route-level webhook, payment, PDF-cache, and concurrent-capacity integration coverage remains outstanding.
+- Final validation after the fixture cleanup adjustment: `npm test` passed (8/8), `npx tsc --noEmit` passed, `npm run lint` passed with existing warnings, and `npm run build` passed.
+
+### Email delivery worker and reminders (2026-09-09)
+
+- Added the server-only email queue worker in `lib/email/email.service.ts` using the existing `email_messages` lifecycle and Resend configuration.
+- Queue claims use a conditional status update so concurrent workers cannot deliver the same message; retries are bounded and exhausted failures become `suppressed`.
+- Added idempotent confirmed-participant reminder dispatch in `lib/email/reminder.service.ts` for in-app notifications and queued email.
+- Added CRON_SECRET-protected endpoints at `/api/cron/email-delivery` and `/api/cron/race-reminders`.
+- Reminder dispatch skips registrations without an authenticated owner or email address and never targets non-confirmed registrations.
+- TypeScript and production build pass after the implementation; existing lint warnings remain unchanged.
+
+### Resend delivery webhook (2026-09-09)
+
+- Added `/api/webhooks/resend` with Svix signature and five-minute timestamp verification.
+- Delivery events are deduplicated by the existing unique `email_delivery_logs.provider_event_id` constraint.
+- Provider events update `email_messages` to `delivered`, `failed`, `bounced`, or `suppressed` while preserving delivery history and preventing a delivered message from being downgraded.
+
+### Project documentation (2026-09-09)
+
+- Replaced the default Next.js README with a RaceDeck product, routing, authorization, payment, email, local-development, and operational reference.
+
+### Participant payment-flow hardening (2026-09-09)
+
+- Protected checkout idempotency reuse so a payment key cannot return another participant's registration or checkout URL.
+- Checkout now cancels/releases the created registration and hold when payment initialization or persisted pricing fails.
+- PayMongo webhooks now reject a payment whose registration belongs to a different event.
+- Confirmation email queue records now retain the registration's authenticated `user_id` and skip invalid null email addresses.
+- Validation passed: `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` with existing warnings, and `npm run build`.
+
+### Public events flow (2026-09-09)
+
+- Updated `/events` with public event cards sourced from the existing public-event service, including banner, event date, location, category distances, registration status, closing date, and starting fee.
+- The complete card, Featured card, `View Details`, and list-level `Register Now` affordance all route to `/events/[eventId]` for the selected event.
+- The event details page remains the only public point that links to `/events/[eventId]/register`, preserving the required list → details → registration flow.
+- Final validation passed: `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` with existing warnings, and `npm run build`.
+
+### Public event details UI (2026-09-09)
+
+- Rebuilt `/events/[eventId]` around the existing public event-detail service with responsive event hero, sidebar summary, event logo/banner fallback, category badges, registration status, deadline, countdown, and mobile registration CTA.
+- Added data-backed tabs for Event Details, Race Mechanics, Announcements, and Results; optional tabs appear only when the corresponding public data exists.
+- Added real category pricing/availability, schedules, route links, race-kit items, partner display, and published-results navigation.
+- The only registration links remain `/events/[eventId]/register`; no client code can alter payment or registration state.
+- Validation passed: `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` with existing warnings, and `npm run build`.
+
+### Participant registration and payment state UI (2026-09-09)
+
+- Rebuilt `/events/[eventId]/register` with data-backed category cards, configured event fields, waiver review/acceptance, promo entry, checkout lifecycle explanation, and responsive public styling.
+- Checkout retries now retain one client idempotency key for the active form session; payment and registration status remain server/webhook controlled.
+- Updated `/my-races/[registrationId]` with a pending-payment state, expiry countdown, safe gateway continuation link, webhook-status refresh/polling, confirmed QR view, receipt/invoice links, and operational registration details.
+- Participant registration-detail API now returns a QR only for a confirmed registration.
+- Validation passed: `npm test` (8/8), `npx tsc --noEmit`, `npm run lint` with existing warnings, and `npm run build`.
+
+### Payment-flow integration contracts (2026-09-09)
+
+- Added repeatable local Supabase coverage for concurrent capacity-safe slot holds, durable PayMongo webhook-event idempotency, signed webhook status parsing, and participant registration RLS isolation.
+- Added a reusable local participant factory to create a second authenticated user for tenant/ownership assertions without changing production data or migrations.
+- The new tests deliberately avoid inserting disposable financial-history rows: payment, transaction, receipt, and invoice records are append-only by design and cannot safely be cleaned by the harness.
+- Targeted validation passed: `npx vitest run tests/payment-flow.integration.test.ts` (4/4). Full route-level checkout/webhook artifact assertions remain a follow-up requiring a resettable financial fixture strategy or gateway mocks.
+
+### PayMongo webhook production hardening (2026-09-09)
+
+- Hardened the PayMongo gateway parser for the current Hosted Checkout webhook envelope while retaining compatibility with the legacy `/v1` envelope.
+- RaceDeck now resolves the stored Checkout Session ID (`cs_…`) for the payment aggregate, stores the resulting payment ID (`pay_…`) as the transaction reference, and converts verified centavo amounts to PHP before comparing them with the pending payment total.
+- Added route-level webhook tests for exactly-once successful confirmation/artifact orchestration, processed duplicate no-ops, failed-payment isolation, amount mismatch rejection, and out-of-order failure events that must not downgrade a succeeded/refunded payment.
+- Validation passed: targeted payment tests (10/10). Full local-suite/build validation follows this entry.
+
+### Participant payment UI integration (2026-09-09)
+
+- Completed the participant Payments list integration with pending/processing checkout continuation using the server-provided checkout URL and expiry timestamp.
+- Payment totals now safely normalize numeric values returned by Supabase before formatting; receipt and invoice links are shown only for successful payments with corresponding document records.
+- Registration and My Races continue to use the existing server-side checkout, webhook polling, confirmed QR, and secure document endpoints; the browser still cannot mark payment or registration status.
+
+### Registration-to-payment vertical slice test (2026-09-09)
+
+- Added a local route-level test harness with a mocked PayMongo gateway covering pending registration creation, server-side checkout creation, hold conversion, verified webhook confirmation, and duplicate webhook no-op behavior.
+- The test asserts that confirmation and post-payment artifact orchestration happen once and that the browser-facing registration response remains pending until the webhook completes.
+- No real gateway calls or disposable financial-history rows are used; the test remains safe to repeat against the local Supabase instance.
+
+### PayMongo sandbox integration harness (2026-09-09)
+
+- Added an opt-in real-gateway test at `tests/paymongo.sandbox.integration.test.ts`.
+- It requires a separately supplied `PAYMONGO_SANDBOX_SECRET_KEY` beginning with `sk_test_`, creates a minimal PHP 1 sandbox Checkout Session, and verifies the returned `cs_…` reference and hosted checkout URL.
+- The default local test suite skips this test because no sandbox secret is stored in the repository. It never reads or reuses `.env.local` credentials.
+- Completing a real paid callback still requires a PayMongo dashboard webhook pointed at a reachable deployment/tunnel and a manual sandbox payment; the existing signed webhook and local route tests cover that processing path.
+
+### Durable payment webhook recovery (2026-09-09)
+
+- Extracted verified PayMongo payment processing into a reusable server-only service so the public webhook endpoint and recovery worker follow the same payment, confirmation, transaction, and artifact path.
+- Webhook processing failures are now persisted as retryable `failed` events with exponential backoff in the existing `payment_webhook_events.next_retry_at` field.
+- Invalid amount/ownership payloads are permanently marked `ignored` and return HTTP 400 rather than being retried.
+- Added a CRON_SECRET-protected endpoint at `/api/cron/payment-webhook-recovery`; it atomically claims due `received`/`failed` events and stale `processing` events using the existing status and `updated_at` fields.
+- Unknown gateway payments and missing registrations are recorded as `ignored`; successful recovery continues to rely on the existing transaction, receipt, invoice, confirmation-email, and registration-confirmation idempotency safeguards.
+
+### Internal payment operations (2026-09-09)
+
+- Added the admin-only `/admin/payment-operations` page for filtering and reviewing PayMongo webhook status, attempts, payment/registration references, retry time, and failure details.
+- Added protected admin APIs for listing webhook events and retrying recoverable events; terminal `processed` and `ignored` events cannot be retried.
+- Manual retry now targets the selected webhook event directly and reuses the same durable recovery worker, preserving the shared verified processing path and idempotency protections.
+- Access follows the existing `requireInternalAccess()` boundary, so only RaceDeck Admin/Super Admin roles can use this operational surface; Finance and Support are not granted document/payment webhook review access by this feature.
+
+### Scheduled jobs and cron health (2026-09-09)
+
+- Extracted hold/payment expiration into the shared server-only `expireRegistrationHolds()` service so direct and scheduled execution use the same logic and error handling.
+- Added `/api/cron/run`, a CRON_SECRET-protected dispatcher for hold expiry, PayMongo webhook recovery, email delivery, and race reminders; jobs run independently and report per-job failures.
+- Added `/api/cron/health`, a protected readiness endpoint checking database connectivity and required server-side scheduler/provider configuration without returning secrets.
+- Added `vercel.json` to invoke the dispatcher every minute. Deployment must define `CRON_SECRET`, Supabase service-role configuration, and email provider configuration before the scheduler reports ready.
+
+### Organizer financial operations (2026-09-09)
+
+- Replaced the generic organizer Payments page with a scoped financial operations view for verified payments, refunds, RaceDeck fees, gross paid, and net revenue.
+- Added event/status filters and a PII-minimized CSV export sourced from the existing persisted payment/refund/fee amounts.
+- Corrected the payments API to filter event IDs through the membership's `restricted_event_ids` before loading financial records; out-of-scope event filters return `403`.
+- Restricted organization-wide payout visibility for restricted-event memberships because the existing payout schema has no event scope suitable for safe partial disclosure.
+- Validation passed: `npm test` (20 passed, 1 skipped), `npx tsc --noEmit`, `npm run lint`, and `npm run build`.
+
+### Organizer payout history (2026-09-09)
+
+- Replaced the generic Payouts table with a finance-focused payout history page showing payout periods, status, gross registration sales, all persisted deductions, net payout, paid date, external reference, and recorded failure reason.
+- Added payout summary cards for paid-out total, pending/processing total, and record count.
+- The server API remains protected by `view_financials` and rejects restricted-event memberships because payout records are organization-level and cannot be safely partitioned by event using the existing schema.
+
+### Internal refund operations (2026-09-09)
+
+- Added Admin/Super Admin-only `/admin/finance/refunds` and `/api/admin/refunds` for reviewing cross-organization refund history, status, payment/registration/event references, gateway references, amounts, timestamps, reasons, and recorded failure diagnostics.
+- Added server-side status filtering and bounded client-side reference search; the API intentionally returns no participant PII.
+- The original review surface was read-only; verified gateway refund submission is now implemented separately below using the forward-only refund hardening migration.
+
+### Verified PayMongo refund processing (2026-09-09)
+
+- Added forward-only migration `20260909133849_refund_processing_hardening.sql` with service-role-only, row-locking refund reservation and gateway-settlement functions. They reserve pending/processing/succeeded refund amounts before gateway submission, preventing concurrent over-refunds.
+- Added server-only PayMongo refund creation using the official `/v1/refunds` API with the same idempotency key stored in RaceDeck and sent to PayMongo.
+- Added Admin/Super Admin refund submission from the internal Refund Operations page. The server validates the payment, gateway transaction reference, amount, reason, refund balance, and idempotency key; the browser never controls refund status or financial ownership.
+- Successful gateway results atomically update refund/payment status and refunded amount, create an immutable refund transaction, release a fully refunded confirmed registration slot, record registration activity, queue participant refund email/in-app notifications, and write an audit log.
+- Added handling for PayMongo `payment.refunded` and `payment.refund.updated` webhooks. Gateway transport uncertainty remains `pending` for safe retry with the same idempotency key rather than being incorrectly marked failed.
+- Application validation passed: `npm test` (20 passed, 1 skipped), `npx tsc --noEmit`, `npm run lint`, and `npm run build`. The new migration has not been replayed with local `supabase db reset` in this task, to preserve current local development data; perform that clean replay before `supabase db push`.
+
+### Local refund migration replay (2026-09-09)
+
+- Clean `supabase db reset` replayed every migration through `20260909133849_refund_processing_hardening.sql` successfully on the local Docker Supabase instance.
+- Verified `create_refund_request(uuid, numeric, text, text, uuid)` and `apply_refund_gateway_result(uuid, text, refund_status, text, text)` exist with `service_role` execution only; `authenticated` execution is denied.
+- Post-reset validation passed: `npm test` (20 passed, 1 skipped), `npx tsc --noEmit`, `npm run lint`, and `npm run build`. Lint/build retain only the previously noted non-blocking React/image warnings.
+
 ## Important development rules
 
+- Update this `PROJECT_PROGRESS.md` file after every new feature or code implementation, including its current status, validation result, and remaining follow-up work.
 - Do not edit previously applied migrations.
 - Do not create a migration unless a genuine schema gap is confirmed.
 - Keep service-role keys and other privileged credentials server-only.

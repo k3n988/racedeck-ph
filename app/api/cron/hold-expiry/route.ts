@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-type ServerRpcClient = { rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }> };
-export async function POST(request: Request) { const expected = process.env.CRON_SECRET; if (!expected || request.headers.get('authorization') !== `Bearer ${expected}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); const admin = createAdminClient(); const { data: holdsExpired, error: holdError } = await admin.rpc('expire_stale_holds'); if (holdError) return NextResponse.json({ error: 'Expiration job could not run' }, { status: 500 }); const { data: payments, error: paymentError } = await admin.from('payments').update({ status: 'expired' }).in('status', ['pending', 'processing']).lt('expires_at', new Date().toISOString()).select('id,registration_id'); if (paymentError) return NextResponse.json({ error: 'Payment expiration could not be completed' }, { status: 500 }); const rpc = admin as unknown as ServerRpcClient; await Promise.all((payments ?? []).map((payment) => rpc.rpc('reverse_promo_redemption', { p_payment_id: payment.id, p_registration_id: payment.registration_id }))); const registrationIds = (payments ?? []).map(payment => payment.registration_id); if (registrationIds.length) await admin.from('registrations').update({ status: 'expired' }).in('id', registrationIds).eq('status', 'pending_payment'); return NextResponse.json({ holds_expired: holdsExpired ?? 0, payments_expired: payments?.length ?? 0 }); }
+import { expireRegistrationHolds } from '@/lib/cron/hold-expiry.service';
+
+export async function POST(request: Request) {
+  const expected = process.env.CRON_SECRET;
+  if (!expected || request.headers.get('authorization') !== `Bearer ${expected}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try { return NextResponse.json(await expireRegistrationHolds()); }
+  catch (error) { console.error('Expiration job failed', error); return NextResponse.json({ error: 'Expiration job could not run' }, { status: 500 }); }
+}
