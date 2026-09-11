@@ -1,75 +1,41 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type EventCard = {
-  id: string;
-  name: string;
-  event_date: string;
-  venue: string | null;
-  lifecycle_status: string;
-  review_status: string;
-  registration_availability: string;
-  registrations_count: number;
-  confirmed_count: number;
-  gross_sales: number;
-  capacity: number | null;
-};
+type EventRow = { id: string; name: string; event_date: string; venue: string | null; lifecycle_status: string; review_status: string; registration_availability: string; registrations_count: number; confirmed_count: number; gross_sales: number; capacity: number | null };
+type Registration = { id: string; user_id: string | null; event_id: string; registration_number: string; status: string; first_name: string; last_name: string; email: string; created_at: string; events?: { name: string } | null; race_categories?: { name: string } | null };
+type Payment = { id: string; registration_id: string; status: string; amount_paid: number; amount_refunded: number; currency: string; gateway: string; created_at: string; registrations?: { first_name: string; last_name: string; registration_number: string } | null; events?: { name: string } | null };
+type Payout = { id: string; status: string; net_payout_amount: number; currency: string; initiated_at: string; paid_at: string | null };
+type PaymentSummary = { gross_paid: number; refunds: number; platform_fees: number; net_revenue: number };
+type SectionErrorProps = { message: string; retry: () => void };
+
+const money = (value: number, currency = 'PHP') => new Intl.NumberFormat('en-PH', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value) || 0);
+const label = (value: string) => value.replaceAll('_', ' ');
+
+function Skeleton({ className = '' }: { className?: string }) { return <div className={`animate-pulse rounded-lg bg-slate-200 ${className}`} />; }
+function Badge({ value }: { value: string }) { const tone = ['confirmed', 'succeeded', 'paid', 'published', 'active', 'delivered'].includes(value) ? 'bg-emerald-100 text-emerald-800' : ['failed', 'cancelled', 'rejected'].includes(value) ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'; return <span className={`rounded-full px-2.5 py-1 text-xs font-bold capitalize ${tone}`}>{label(value)}</span>; }
+function ErrorState({ message, retry }: SectionErrorProps) { return <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{message}</span><button onClick={retry} className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold hover:bg-red-100">Retry</button></div>; }
+function SectionTitle({ title, action }: { title: string; action?: React.ReactNode }) { return <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-lg font-black tracking-tight text-[#071b41]">{title}</h2>{action}</div>; }
+function Kpi({ title, value, detail, tone = 'white' }: { title: string; value: string | number; detail: string; tone?: 'white' | 'navy' | 'orange' }) { const style = tone === 'navy' ? 'bg-[#071b41] text-white' : tone === 'orange' ? 'bg-orange-600 text-white' : 'border border-slate-200 bg-white text-[#071b41]'; return <div className={`rounded-2xl p-5 shadow-sm ${style}`}><p className={`text-xs font-bold uppercase tracking-wide ${tone === 'white' ? 'text-slate-500' : 'text-white/65'}`}>{title}</p><p className="mt-3 text-3xl font-black tracking-tight">{typeof value === 'number' ? value.toLocaleString() : value}</p><p className={`mt-1 text-xs ${tone === 'white' ? 'text-slate-500' : 'text-white/65'}`}>{detail}</p></div>; }
 
 export default function OrganizerDashboardPage() {
-  const [events, setEvents] = useState<EventCard[]>([]);
-  const [search, setSearch] = useState('');
-  const [message, setMessage] = useState('Loading your events…');
-  const [busy, setBusy] = useState(false);
+  const [events, setEvents] = useState<EventRow[]>([]); const [registrations, setRegistrations] = useState<Registration[]>([]); const [payments, setPayments] = useState<Payment[]>([]); const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [paymentSummary, setPaymentSummary] = useState<PaymentSummary | null>(null); const [loading, setLoading] = useState({ events: true, registrations: true, payments: true, payouts: true }); const [errors, setErrors] = useState<Record<string, string>>({});
+  const loadSection = useCallback(async (key: keyof typeof loading, endpoint: string, setter: (body: Record<string, unknown>) => void) => { setLoading((current) => ({ ...current, [key]: true })); setErrors((current) => { const next = { ...current }; delete next[key]; return next; }); try { const response = await fetch(endpoint, { cache: 'no-store' }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Request could not be completed.'); setter(body); } catch (error) { setErrors((current) => ({ ...current, [key]: error instanceof Error ? error.message : 'Unable to load this section.' })); } finally { setLoading((current) => ({ ...current, [key]: false })); } }, []);
+  const loadEvents = useCallback(() => loadSection('events', '/api/organizer/events', (body) => setEvents(Array.isArray(body.events) ? body.events as EventRow[] : [])), [loadSection]);
+  const loadRegistrations = useCallback(() => loadSection('registrations', '/api/organizer/registrations', (body) => setRegistrations(Array.isArray(body.registrations) ? body.registrations as Registration[] : [])), [loadSection]);
+  const loadPayments = useCallback(() => loadSection('payments', '/api/organizer/payments', (body) => { setPayments(Array.isArray(body.payments) ? body.payments as Payment[] : []); setPaymentSummary(body.summary as PaymentSummary); }), [loadSection]);
+  const loadPayouts = useCallback(() => loadSection('payouts', '/api/organizer/payouts', (body) => setPayouts(Array.isArray(body.payouts) ? body.payouts as Payout[] : [])), [loadSection]);
+  useEffect(() => { void loadEvents(); void loadRegistrations(); void loadPayments(); void loadPayouts(); }, [loadEvents, loadRegistrations, loadPayments, loadPayouts]);
 
-  const load = useCallback(async () => {
-    setMessage('Loading your events…');
-    const response = await fetch(`/api/organizer/events?search=${encodeURIComponent(search)}`);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setMessage(body.error ?? 'Events could not be loaded.');
-      return;
-    }
-    setEvents(body.events ?? []);
-    setMessage('');
-  }, [search]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  async function createEvent() {
-    const name = window.prompt('Event name');
-    if (!name?.trim()) return;
-    const eventDate = window.prompt('Event date (YYYY-MM-DD)');
-    if (!eventDate?.trim()) return;
-    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    setBusy(true);
-    const response = await fetch('/api/organizer/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), slug, event_date: eventDate.trim() }),
-    });
-    const body = await response.json().catch(() => ({}));
-    setBusy(false);
-    if (!response.ok) {
-      setMessage(body.error ?? 'Event could not be created.');
-      return;
-    }
-    await load();
-  }
-
-  const totalConfirmed = events.reduce((sum, event) => sum + event.confirmed_count, 0);
-  const totalSales = events.reduce((sum, event) => sum + Number(event.gross_sales ?? 0), 0);
-
-  return <main className="mx-auto max-w-7xl space-y-6 p-6">
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <div><p className="text-sm text-gray-500">Organizer workspace</p><h1 className="text-3xl font-semibold">Dashboard</h1><p className="mt-1 text-sm text-gray-600">Monitor your events, registrations, and verified sales.</p></div>
-      <button disabled={busy} onClick={() => void createEvent()} className="rounded bg-black px-4 py-2 text-sm text-white">{busy ? 'Creating…' : 'Create Event'}</button>
-    </header>
-    <section className="grid gap-4 sm:grid-cols-3"><div className="rounded border p-4"><p className="text-sm text-gray-500">Events</p><p className="mt-1 text-2xl font-semibold">{events.length}</p></div><div className="rounded border p-4"><p className="text-sm text-gray-500">Confirmed registrations</p><p className="mt-1 text-2xl font-semibold">{totalConfirmed}</p></div><div className="rounded border p-4"><p className="text-sm text-gray-500">Verified gross sales</p><p className="mt-1 text-2xl font-semibold">PHP {totalSales.toFixed(2)}</p></div></section>
-    <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="flex gap-2"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your events" className="w-full max-w-md rounded border p-2"/><button className="rounded border px-4 py-2 text-sm">Search</button></form>
-    {message && <p role="status" className="text-sm text-gray-600">{message}</p>}
-    {!message && events.length === 0 && <p className="rounded border p-6 text-sm text-gray-600">No events yet. Create your first event to start setting it up.</p>}
-    {!message && events.length > 0 && <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{events.map((event) => <Link key={event.id} href={`/organizer/events/${event.id}`} className="rounded border p-5 transition hover:border-black"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold">{event.name}</h2><span className="rounded-full bg-gray-100 px-2 py-1 text-xs">{event.lifecycle_status}</span></div><p className="mt-2 text-sm text-gray-600">{event.event_date} · {event.venue ?? 'Venue to be announced'}</p><p className="mt-4 text-sm">{event.confirmed_count} confirmed / {event.registrations_count} registrations</p><p className="text-sm text-gray-600">Capacity: {event.capacity ?? 'Unlimited'}</p><div className="mt-4 flex justify-between border-t pt-3 text-xs text-gray-600"><span>{event.registration_availability}</span><span>{event.review_status}</span></div></Link>)}</section>}
-  </main>;
+  const paidIds = useMemo(() => new Set(payments.filter((payment) => ['succeeded', 'partially_refunded', 'refunded'].includes(payment.status)).map((payment) => payment.registration_id)), [payments]);
+  const totalParticipants = new Set(registrations.filter((registration) => registration.status === 'confirmed' && paidIds.has(registration.id)).map((registration) => registration.user_id ?? registration.email)).size;
+  const gross = paymentSummary?.gross_paid ?? 0; const netRevenue = paymentSummary?.net_revenue ?? 0; const paidOut = payouts.filter((payout) => payout.status === 'paid').reduce((sum, payout) => sum + Number(payout.net_payout_amount ?? 0), 0); const pendingBalance = payouts.filter((payout) => ['pending', 'processing'].includes(payout.status)).reduce((sum, payout) => sum + Number(payout.net_payout_amount ?? 0), 0); const availableBalance = Math.max(0, netRevenue - paidOut - pendingBalance);
+  const upcoming = events.filter((event) => new Date(event.event_date) >= new Date()).slice(0, 5); const empty = !loading.events && !errors.events && events.length === 0;
+  return <main className="mx-auto max-w-7xl space-y-7 bg-[#f5f7fa] p-5 sm:p-7"><header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-orange-600">Organizer workspace</p><h1 className="mt-1 text-3xl font-black tracking-tight text-[#071b41]">Dashboard</h1><p className="mt-1 text-sm text-slate-500">Monitor your race events, registrations, payments, and payouts.</p></div><Link href="/organizer/events" className="rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-orange-700">+ Create event</Link></header>
+    {empty ? <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-orange-50 text-2xl">🏁</div><h2 className="mt-4 text-xl font-black text-[#071b41]">Create your first race event</h2><p className="mx-auto mt-2 max-w-md text-sm text-slate-500">Set up your race details, categories, registration form, and payment settings in one event workspace.</p><Link href="/organizer/events" className="mt-5 inline-flex rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white">Create your first event</Link></section> : <><section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">{loading.events ? <>{[1, 2].map((item) => <Skeleton key={item} className="h-32" />)}</> : <><Kpi title="Total events" value={events.length} detail="All organization events" /><Kpi title="Active events" value={events.filter((event) => ['published', 'ongoing'].includes(event.lifecycle_status)).length} detail="Published or ongoing" tone="navy" /></>}{loading.registrations ? <>{[1, 2].map((item) => <Skeleton key={`r-${item}`} className="h-32" />)}</> : <><Kpi title="Total registrations" value={registrations.length} detail="All registration records" /><Kpi title="Total participants" value={totalParticipants} detail="Unique confirmed + paid" tone="orange" /></>}{loading.payments ? <Skeleton className="h-32" /> : <Kpi title="Gross sales" value={money(gross)} detail="Successful payment records" />}{loading.payments ? <Skeleton className="h-32" /> : <Kpi title="Net organizer revenue" value={money(netRevenue)} detail="Gross − fees − refunds" tone="navy" />}</section>
+      {errors.events && <ErrorState message={errors.events} retry={() => void loadEvents()} />}
+      <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><SectionTitle title="Upcoming events" action={<Link href="/organizer/events" className="text-sm font-bold text-orange-600">View all →</Link>} />{loading.events ? <div className="space-y-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-16" />)}</div> : errors.events ? <ErrorState message="Upcoming events could not be loaded." retry={() => void loadEvents()} /> : upcoming.length ? <div className="space-y-2">{upcoming.map((event) => { const fill = event.capacity ? Math.min(100, Math.round((event.confirmed_count / event.capacity) * 100)) : 0; return <Link key={event.id} href={`/organizer/events/${event.id}`} className="flex items-center gap-4 rounded-xl border border-slate-100 p-3 transition hover:border-orange-300 hover:bg-orange-50/30"><div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-orange-50 text-center text-[10px] font-black uppercase text-orange-600">{new Date(event.event_date).toLocaleDateString('en-PH', { month: 'short' })}<span className="text-lg leading-none text-[#071b41]">{new Date(event.event_date).getDate()}</span></div><div className="min-w-0 flex-1"><p className="truncate font-bold text-[#071b41]">{event.name}</p><p className="truncate text-xs text-slate-500">{event.venue ?? 'Venue to be announced'} · {event.confirmed_count.toLocaleString()} confirmed</p><div className="mt-2 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-orange-500" style={{ width: `${fill}%` }} /></div></div><span className="text-xs font-bold text-slate-500">{event.capacity ? `${fill}%` : 'Open'}</span></Link>; })}</div> : <p className="py-8 text-center text-sm text-slate-500">No upcoming events yet.</p>}</div><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><SectionTitle title="Payout summary" action={<Link href="/organizer/payouts" className="text-sm font-bold text-orange-600">View payouts →</Link>} />{loading.payouts ? <div className="space-y-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-14" />)}</div> : errors.payouts ? <ErrorState message="Payout summary could not be loaded." retry={() => void loadPayouts()} /> : <div className="space-y-2"><div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs font-bold uppercase text-emerald-700">Available balance</p><p className="mt-1 text-2xl font-black text-emerald-950">{money(availableBalance)}</p></div><div className="flex justify-between border-b py-3 text-sm"><span className="text-slate-500">Pending balance</span><strong>{money(pendingBalance)}</strong></div><div className="flex justify-between py-3 text-sm"><span className="text-slate-500">Total paid out</span><strong>{money(paidOut)}</strong></div></div>}</div></section>
+      <section className="grid gap-6 xl:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><SectionTitle title="Recent registrations" action={<Link href="/organizer/registrations" className="text-sm font-bold text-orange-600">View all →</Link>} />{loading.registrations ? <div className="space-y-3">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-12" />)}</div> : errors.registrations ? <ErrorState message="Recent registrations could not be loaded." retry={() => void loadRegistrations()} /> : registrations.length ? <div className="divide-y divide-slate-100">{registrations.slice(0, 8).map((registration) => <div key={registration.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-[#071b41]">{registration.first_name} {registration.last_name}</p><p className="truncate text-xs text-slate-500">{registration.events?.name ?? 'Race event'} · {registration.race_categories?.name ?? 'Category unavailable'}</p></div><Badge value={registration.status} /></div>)}</div> : <p className="py-8 text-center text-sm text-slate-500">No registrations yet.</p>}</div><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><SectionTitle title="Recent payments" action={<Link href="/organizer/payments" className="text-sm font-bold text-orange-600">View all →</Link>} />{loading.payments ? <div className="space-y-3">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-12" />)}</div> : errors.payments ? <ErrorState message="Recent payments could not be loaded." retry={() => void loadPayments()} /> : payments.length ? <div className="divide-y divide-slate-100">{payments.slice(0, 8).map((payment) => <div key={payment.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-[#071b41]">{payment.registrations?.first_name ?? 'Participant'} {payment.registrations?.last_name ?? ''}</p><p className="truncate text-xs text-slate-500">{payment.events?.name ?? 'Race event'} · {payment.gateway}</p></div><div className="text-right"><p className={`text-sm font-black ${payment.amount_refunded > 0 ? 'text-red-700' : 'text-slate-800'}`}>{payment.amount_refunded > 0 ? `-${money(payment.amount_refunded, payment.currency)}` : money(payment.amount_paid, payment.currency)}</p><Badge value={payment.status} /></div></div>)}</div> : <p className="py-8 text-center text-sm text-slate-500">No payments yet.</p>}</div></section></>}</main>;
 }

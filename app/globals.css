@@ -31,3 +31,24 @@ body {
 div[class~="min-h-screen"][class~="bg-[#f7f8fb]"] .max-w-7xl {
   max-width: 1536px;
 }
+
+/* Consistent account action in the Admin and Organizer shells. */
+a[href="/auth/logout"] {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgb(255 255 255 / 0.75);
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+a[href="/auth/logout"]:hover {
+  border-color: #f97316;
+  background: #f97316;
+  color: #fff;
+}
