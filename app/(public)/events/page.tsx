@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { getPublicEvents, type PublicEventCard } from '@/lib/public/events';
 
+export const dynamic = 'force-dynamic';
+
 const statusLabel = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
-const formatDate = (value: string) => new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value.includes('T') ? value : `${value}T00:00:00`));
+const formatDate = (value: string) => { const date = new Date(value.includes('T') ? value : `${value}T00:00:00`); return Number.isNaN(date.getTime()) ? 'Date to be announced' : new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(date); };
 const eventHref = (event: PublicEventCard) => `/events/${event.slug}`;
 
 function StatusPill({ status }: { status: string }) {

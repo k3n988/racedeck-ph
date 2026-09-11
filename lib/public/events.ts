@@ -1,4 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { unstable_noStore as noStore } from 'next/cache';
 
 const VISIBLE_LIFECYCLE = ['published', 'ongoing', 'completed'] as const;
 const PAGE_SIZE = 12;
@@ -16,6 +18,7 @@ export type PublicEventDetails = PublicEventCard & {
   categories: Array<{ id: string; name: string; distance_km: number | null; registration_fee: number; max_slots: number | null; confirmed_count: number; available_slots: number | null; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null }>;
   schedules: Array<{ id: string; label: string; scheduled_at: string; notes: string | null }>;
   routes: Array<{ id: string; category_label: string | null; route_map_url: string | null; starting_point: string | null; finish_point: string | null; description: string | null }>;
+  content_images: Array<{ id: string; image_url: string; display_order: number }>;
   kits: Array<{ id: string; category_id: string | null; name: string; description: string | null; items: Array<{ id: string; item_name: string; quantity: number; details: unknown }> }>;
   partners: Array<{ id: string; name: string; logo_url: string | null; partner_type: string | null }>;
   organizer_details: { name: string; slug: string; logo_url: string | null; description: string | null; website: string | null; social_links: unknown } | null;
@@ -47,6 +50,7 @@ function card(event: EventRow, categories: CategoryRow[], organizer: Awaited<Ret
   return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: event.registration_availability, registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
 }
 export async function getPublicEvents(input: { search?: string; location?: string; distance?: string; status?: string; sort?: string; page?: number }) {
+  noStore();
   const admin = createAdminClient();
   let distanceEventIds: string[] | null = null;
   const distance = input.distance?.trim();
@@ -85,8 +89,9 @@ export async function getPublicEvents(input: { search?: string; location?: strin
   return { events: cards, featured: cards.find((_item, index) => rows[index].is_featured) ?? cards[0] ?? null, page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / PAGE_SIZE) };
 }
 export async function getPublicEventDetails(identifier: string): Promise<PublicEventDetails | null> {
-  const event = await getVisibleEvent(identifier); if (!event) return null; const admin = createAdminClient();
-  const [categories, organizer, schedules, routes, partners, kits, announcements, resultBatches] = await Promise.all([
+  noStore();
+  const event = await getVisibleEvent(identifier); if (!event) return null; const admin = createAdminClient(); const db = admin as unknown as SupabaseClient;
+  const [categories, organizer, schedules, routes, partners, kits, announcements, resultBatches, contentImages] = await Promise.all([
     categoriesForEvent(event.id), organizerForEvent(event.organization_id),
     admin.from('event_schedules').select('id,label,scheduled_at,notes').eq('event_id', event.id).order('scheduled_at'),
     admin.from('event_routes').select('id,category_label,route_map_url,starting_point,finish_point,description').eq('event_id', event.id).order('id'),
@@ -94,9 +99,10 @@ export async function getPublicEventDetails(identifier: string): Promise<PublicE
     admin.from('race_kit_configs').select('id,category_id,name,description,race_kit_items(id,item_name,quantity,details)').eq('event_id', event.id).eq('status', 'active').order('name'),
     admin.from('announcements').select('id,title,message,published_at').eq('event_id', event.id).in('status', ['published', 'sent']).order('published_at', { ascending: false }),
     admin.from('result_batches').select('id').eq('event_id', event.id).eq('publication_status', 'published').limit(1),
+    db.from('event_content_images').select('id,image_url,display_order').eq('event_id', event.id).order('display_order').order('created_at'),
   ]);
   const categoryViews = categories.map((category) => ({ ...category, registration_fee: Number(category.registration_fee), available_slots: category.max_slots === null ? null : Math.max(0, category.max_slots - category.confirmed_count) }));
-  return { ...card(event, categories, organizer), description: event.description, logo_url: event.logo_url, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: partners.data ?? [], organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
+  return { ...card(event, categories, organizer), description: event.description, logo_url: event.logo_url, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: partners.data ?? [], organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
 }
 export async function getPublicResults(input: { event?: string; participant?: string; bib?: string; category?: string; page?: number }) {
   const admin = createAdminClient(); const page = Math.max(1, input.page ?? 1);

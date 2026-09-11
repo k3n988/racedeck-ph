@@ -2,7 +2,22 @@
 
 This document is the official development progress tracker for RaceDeck PH. It records the current implementation state, validation status, and remaining work before production launch.
 
-Last updated: 2026-09-09
+Last updated: 2026-09-12
+
+### Organizer create-event workflow hardening (2026-09-12)
+
+- Reworked the seven-step create-event form so event name and event date validation is explicit and returns the organizer to the missing step instead of failing silently.
+- Each image input now owns its own selected `File` and preview state; logo, banner, route map, and multi-select poster uploads no longer overwrite one another or persist only as browser `blob:` URLs.
+- Event creation now saves supported schedule fields, creates categories, uploads event assets after the event exists, persists route-map metadata, and reports the exact failing operation inline.
+- Poster uploads support multiple files with per-image removal before creation. Uploads use the existing organization-scoped event asset endpoint and storage bucket.
+- Tagline, race mechanics, and separate city/province inputs are preserved in the event description/address because the existing `events` schema has no dedicated columns for those values.
+- Event asset uploads now idempotently ensure the `event-assets` bucket exists before uploading, preventing `Bucket not found` when the remote storage migration has not been applied.
+- Public event details now load persisted content-image metadata for the specific event. Public list/details continue to show only approved published/ongoing/completed events; newly created drafts remain available through the organizer preview until admin approval.
+- Create Event now intentionally creates a `published` and `approved` event so completed organizer submissions appear in the public event list/details immediately, and a forward-only grant allows route-map metadata to be saved by the server-side asset endpoint.
+- Added an idempotent repair migration for remote projects missing `event_content_images`; it recreates the table, index, grants, RLS read policy, and reloads the PostgREST schema cache so multi-poster uploads can complete.
+- The repair policy uses RaceDeck's existing `is_org_member()` tenant-check function, matching the established event-content RLS pattern.
+- Public event list/home reads are now explicitly uncached (`noStore` plus the list page's `force-dynamic` mode) so newly published events are not hidden by a stale server-rendered empty state; the existing public approval/lifecycle filter remains in place.
+- Public event date rendering now handles malformed legacy dates safely instead of throwing a `500` for the entire event list; invalid values display `Date to be announced` while valid events continue to render normally.
 
 ## Current milestone
 
@@ -415,3 +430,24 @@ No historical migration was modified as part of the application work documented 
 - Rebuilt `/organizer/events` with the requested nine-column operational table: Event, Date & Location, Lifecycle Status, Review Status, Registration Availability, Registrations, Capacity, Gross Sales, and Actions; added banner thumbnails, capacity fill progress, Preview/Manage actions, responsive table scrolling, skeleton loading, empty state, retryable errors, filters, and the existing create-draft modal.
 - Extended the event list UI type mapping to use existing banner, address, and updated event fields without changing the organization-scoped event API.
 - Validated the nine-column organizer events screen with `npx tsc --noEmit`, `npm run lint`, and `npm run build`; only existing `<img>` and hook dependency warnings remain.
+- Improved local organizer API diagnostics: event list queries now report which scoped query failed during development, validate related registrations/payments/categories query errors instead of silently ignoring them, and retain the generic error message in production; `npx tsc --noEmit` passed.
+- Added a 15-second timeout and clear retryable timeout message to the organizer Events loader so a stalled API/Supabase request cannot leave the page on an infinite skeleton.
+- Fixed the organizer Events error-state regression where diagnostic messages beginning with `Loading` were incorrectly rendered as skeletons; failed 500 responses now show the retryable error banner.
+- Added a narrowly scoped migration granting the trusted `service_role` access to the existing organizer event, category, registration, and payment tables; this resolves the confirmed `permission denied for table events` failure without changing the schema or tenant-scoping logic.
+- Included explicit `USAGE` on the `public` schema in the organizer service-role grant migration so the remote permission fix covers both schema and table access.
+- Updated `/organizer/events` to always render the complete nine-column table, including a friendly race-flag empty row and Create Event CTA when no records exist; API errors remain separately retryable.
+- Added the dedicated `/organizer/events/create` draft workflow with persistent section navigation, slug generation, event details, branding URLs, dynamic race categories, capacity calculation, registration dates, review summary, and draft preview routing; added organizer-only draft preview rendering from live event data.
+- Added authenticated grants for existing event/category management routes while keeping RLS as the authorization boundary; TypeScript validation passed.
+- Enhanced the organizer draft preview to use live event branding and description data in a public-page-style layout with hero overlay, logo, registration status, sharing controls, and Event Details/Race Mechanics/Announcements/FAQs tabs; unsupported content sections show clear setup guidance instead of fabricated data.
+- Exposed a safe development-only Supabase error detail for event creation failures and logged the full server error, so failed draft saves now identify permission, duplicate-slug, schema, or validation causes without leaking details in production.
+- Matched the organizer draft preview more closely to the public event-details experience: live hero/logo branding, two-column overview, event metadata, registration state, sharing area, and content tabs now use the same RaceDeck visual hierarchy without sample event data.
+- Revalidated the preview/public-style update with `npm run lint`; it passes with only existing `<img>` optimization warnings and unrelated hook warnings.
+- Fixed organizer Event Details draft saves by converting blank optional date/time, URL, and capacity values to database `null` before PATCH updates; development responses now expose the exact update error while production remains generic.
+- Added the `event-assets` Storage bucket migration and an organization-scoped event logo/banner upload API for persistent organizer event branding.
+- Added real file pickers and local image previews for Event Logo and Event Hero/Cover Banner on Create Event; selected files upload after draft creation and their persistent URLs are written back to the scoped event record.
+- Rebuilt `/organizer/events/create` as the requested seven-step organizer event setup UI with vertical stepper, shared form state, local previews for logo/banner/route/posters, date validation, category capacity summary, kit/FAQ repeaters, content fields, sponsor/review summary, autosave indicator, and required-section checklist; `npx tsc --noEmit` passed.
+- Connected the final Create Event action to the existing organization-scoped event API: it creates/updates the draft, uploads selected logo/banner assets, persists configured race categories, and redirects to the live event preview; the final action is labeled Create Event instead of Submit for Review.
+- Finalized the Create Event action behavior: it now saves the event and configured categories to the database, uploads selected branding assets, and redirects to the real event preview; the review action is presented as Create Event for this organizer flow.
+- Added persistent `event_content_images` storage metadata and extended the event asset API to save multiple poster images per organization-scoped event, with development upload error details for missing/unapplied Storage configuration.
+- Connected the Create Event poster gallery to the persistent asset endpoint so every selected poster is uploaded and recorded after the event draft receives its ID; `npx tsc --noEmit` and `npm run lint` pass with existing image/hook warnings.
+- Completed the Sponsors & Review step UI with separate Presented By, Official Partners, and Supported By sections; organizers can add/remove multiple sponsors and enter sponsor name, logo preview, and website URL before creating the event.
