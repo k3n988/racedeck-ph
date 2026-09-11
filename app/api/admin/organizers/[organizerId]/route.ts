@@ -34,23 +34,33 @@ export async function PATCH(request: Request, { params }: { params: { organizerI
   const admin = createAdminClient();
   const { data: existing } = await admin.from('organizer_verifications').select('id,organization_id,status,reviewer_notes,submitted_by,organizations!inner(name,contact_email,account_status,verification_status)').eq('organization_id', params.organizerId).maybeSingle();
   if (!existing) return NextResponse.json({ error: 'Application not found' }, { status: 404 });
+  if (existing.status !== 'pending_review') return NextResponse.json({ error: `Application is already ${existing.status.replaceAll('_', ' ')}` }, { status: 409 });
   const now = new Date().toISOString();
-  const { data: reviewed, error } = await admin.from('organizer_verifications').update({ status: parsed.data.status, reviewer_notes: parsed.data.reviewer_notes ?? null, reviewed_by: context.user.id, reviewed_at: now }).eq('id', existing.id).select('id,status,reviewer_notes,organization_id,submitted_by').single();
-  if (error || !reviewed) return NextResponse.json({ error: 'Review could not be saved' }, { status: 500 });
+  const { data: reviewed, error } = await admin.from('organizer_verifications').update({ status: parsed.data.status, reviewer_notes: parsed.data.reviewer_notes ?? null, reviewed_by: context.user.id, reviewed_at: now }).eq('id', existing.id).eq('status', 'pending_review').select('id,status,reviewer_notes,organization_id,submitted_by').maybeSingle();
+  if (error || !reviewed) return NextResponse.json({ error: error ? `Review could not be saved: ${error.message}` : 'Application was already reviewed' }, { status: error ? 500 : 409 });
   const organizationUpdate = parsed.data.status === 'approved' ? { verification_status: 'approved' as const, account_status: 'active' as const } : { verification_status: parsed.data.status };
   const { error: organizationError } = await admin.from('organizations').update(organizationUpdate).eq('id', existing.organization_id);
-  if (organizationError) return NextResponse.json({ error: 'Organization status could not be synchronized' }, { status: 500 });
+  if (organizationError) {
+    await admin.from('organizer_verifications').update({ status: 'pending_review', reviewed_by: null, reviewed_at: null }).eq('id', existing.id);
+    return NextResponse.json({ error: `Organization status could not be synchronized: ${organizationError.message}` }, { status: 500 });
+  }
   const { error: auditError } = await admin.from('audit_logs').insert({ actor_user_id: context.user.id, organization_id: existing.organization_id, action: 'organizer_verification_reviewed', resource_type: 'organization', resource_id: existing.organization_id, previous_values: { verification_status: existing.status, reviewer_notes: existing.reviewer_notes, account_status: existing.organizations.account_status }, new_values: { verification_status: reviewed.status, reviewer_notes: reviewed.reviewer_notes, account_status: organizationUpdate.account_status ?? existing.organizations.account_status } });
-  if (auditError) return NextResponse.json({ error: 'Review was saved but could not be audited' }, { status: 500 });
+  if (auditError) {
+    await admin.from('organizations').update({ verification_status: existing.organizations.verification_status, account_status: existing.organizations.account_status }).eq('id', existing.organization_id);
+    await admin.from('organizer_verifications').update({ status: 'pending_review', reviewer_notes: existing.reviewer_notes, reviewed_by: null, reviewed_at: null }).eq('id', existing.id);
+    return NextResponse.json({ error: `Review could not be audited: ${auditError.message}` }, { status: 500 });
+  }
+  const warnings: string[] = [];
   if (reviewed.submitted_by) {
     const title = parsed.data.status === 'approved' ? 'Organizer verification approved' : parsed.data.status === 'needs_changes' ? 'Organizer verification needs changes' : 'Organizer verification rejected';
     const body = parsed.data.status === 'approved' ? 'Your organizer verification has been approved. Your organization is now active.' : reviewed.reviewer_notes ?? 'Please review your organizer verification.';
     const key = `organizer-verification:${reviewed.id}:${reviewed.status}`;
     const { data: notification, error: notificationError } = await admin.from('notifications').upsert({ recipient_user_id: reviewed.submitted_by, organization_id: reviewed.organization_id, notification_type: 'organizer_verification_result', title, body, metadata: { verification_id: reviewed.id, status: reviewed.status }, idempotency_key: key }, { onConflict: 'idempotency_key' }).select('id,recipient_user_id').single();
-    if (notificationError) return NextResponse.json({ error: 'Review was saved but notification could not be queued' }, { status: 500 });
+    if (notificationError) { console.error('Organizer review notification could not be queued', notificationError); warnings.push('in-app notification could not be queued'); }
+    if (!notification) return NextResponse.json({ ok: true, status: reviewed.status, warnings: [...warnings, 'in-app notification could not be queued'] });
     const { error: deliveryError } = await admin.from('notification_deliveries').upsert({ notification_id: notification.id, recipient_user_id: notification.recipient_user_id, channel: 'in_app', status: 'queued', idempotency_key: `${key}:in_app` }, { onConflict: 'idempotency_key' });
-    if (deliveryError) return NextResponse.json({ error: 'Review was saved but notification delivery could not be queued' }, { status: 500 });
-    if (existing.organizations.contact_email) await admin.from('email_messages').upsert({ recipient_email: existing.organizations.contact_email, recipient_user_id: reviewed.submitted_by, organization_id: reviewed.organization_id, email_type: 'organizer_verification', template_version: 1, template_snapshot: { type: 'organizer_verification', verification_id: reviewed.id, status: reviewed.status }, subject: title, status: 'queued', idempotency_key: `${key}:email` }, { onConflict: 'idempotency_key' });
+    if (deliveryError) { console.error('Organizer review notification delivery could not be queued', deliveryError); warnings.push('in-app notification delivery could not be queued'); }
+    if (existing.organizations.contact_email) { const { error: emailError } = await admin.from('email_messages').upsert({ recipient_email: existing.organizations.contact_email, recipient_user_id: reviewed.submitted_by, organization_id: reviewed.organization_id, email_type: 'organizer_verification', template_version: 1, template_snapshot: { type: 'organizer_verification', verification_id: reviewed.id, status: reviewed.status }, subject: title, status: 'queued', idempotency_key: `${key}:email` }, { onConflict: 'idempotency_key' }); if (emailError) { console.error('Organizer review email could not be queued', emailError); warnings.push('email notification could not be queued'); } }
   }
-  return NextResponse.json({ ok: true, status: reviewed.status });
+  return NextResponse.json({ ok: true, status: reviewed.status, warnings });
 }

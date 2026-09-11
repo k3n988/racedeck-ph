@@ -26,7 +26,7 @@ export async function PUT(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'Invalid organization details' }, { status: 400 });
   const supabase = await createClient();
   const { data, error } = await supabase.from('organizations').update(parsed.data).eq('id', membership.organization_id).select('id,name,logo_url,description,contact_person,contact_email,contact_phone,address,website,social_links,account_status,verification_status').single();
-  if (error) return NextResponse.json({ error: 'Organization could not be saved' }, { status: 500 });
+  if (error) { console.error('Organization profile save failed', error); return NextResponse.json({ error: process.env.NODE_ENV === 'development' ? `Organization could not be saved: ${error.message}` : 'Organization could not be saved' }, { status: 500 }); }
   void context;
   return NextResponse.json(data);
 }

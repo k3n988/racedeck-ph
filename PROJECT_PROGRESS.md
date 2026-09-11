@@ -297,6 +297,48 @@ No historical migration was modified as part of the application work documented 
 - Full validation passed: `npm test` (23 passed, 1 skipped), `npx tsc --noEmit`, `npm run lint`, and `npm run build`.
 - Backend payment/refund validation is complete for the implemented scope; remaining work is provider sandbox/live verification and UI implementation.
 
+### Organizer and public UI foundation (2026-09-09)
+
+- Implemented the functional organizer dashboard at `/organizer/dashboard` using the existing scoped events API, including event search, event creation, registration/sales summary cards, event status, capacity, and links into each event workspace.
+- Implemented event settings at `/organizer/events/[eventId]/settings` using the existing event authorization and PATCH API for availability, capacity, registration window, slug, and featured visibility.
+- Replaced the empty public `/services` module with a minimal product overview page; no new business behavior or API was introduced.
+- TypeScript and production build passed. Lint passed with existing hook/image warnings plus the new dashboard/settings dependency warnings; these are follow-up cleanup items and do not disable security or validation.
+- Next UI slice: finalize the public Events list/details/registration presentation and then continue remaining organizer/admin placeholder pages.
+
+### Organizer event workspace navigation (2026-09-09)
+
+- Expanded `/organizer/events/[eventId]` into a complete workspace hub with links to event setup, categories and pricing, registration form, waiver, race kit, registrations, bib management, kit claiming, announcements, results, reports, and settings.
+- Added active-section navigation, back-to-events navigation, event lifecycle/review context, review feedback visibility, and quick links for setup sections.
+- Preserved the existing server-side event authorization/API boundary; this change only improves navigation and workspace presentation.
+- TypeScript and production build passed. Lint passed with existing warnings in older event/details and image/result components.
+
+### Public registration UI guard (2026-09-09)
+
+- Updated `/events/[eventId]/register` to load the browser Supabase session before allowing checkout submission.
+- Unauthenticated visitors can still review the public registration form, but are redirected to `/login` with a return URL before the server registration API is called.
+- Preserved server-side category, profile, waiver, promo, slot-hold, pricing, and payment validation; the browser still cannot confirm payment or registration.
+- TypeScript and production build passed. Lint passed with existing warnings only.
+
+### Public home visual redesign (2026-09-09)
+
+- Rebuilt `/` to match the RaceDeck public visual direction: branded navigation, orange/navy hero treatment, featured race banner, upcoming-race cards, and participant journey section.
+- The home page uses the existing public published-event query. It now renders dynamically and falls back safely to a polished empty state when no published event data is available.
+- Added a public header login/registration CTA and footer legal links without changing public event, authentication, registration, or payment authorization behavior.
+- TypeScript, lint, and production build passed. Existing image/hook lint warnings remain for later cleanup.
+
+### Public home empty-state refinement (2026-09-10)
+
+- Refined the public landing experience when no organizer event is yet published: an intentional RaceDeck hero, race-discovery benefits, organizer-hosting CTA, clearer upcoming-races empty state, and improved visual hierarchy.
+- Refined the public header and footer with a sticky branded navigation, legal links, and responsive spacing.
+- Real published events still replace the empty hero/cards automatically; no mock event data or authorization changes were introduced.
+- TypeScript, lint, and production build passed. Existing image/hook lint warnings remain for later cleanup.
+
+### Public home reference-alignment revision (2026-09-10)
+
+- Reworked the public home after visual review to follow the supplied RaceDeck event-list reference: compact discovery panel, short wide featured-event banner, All Events heading/grid, and restrained event-first layout.
+- Removed the oversized generic marketing-hero composition. The no-event fallback now retains the same event-discovery layout until organizers publish approved events.
+- TypeScript and production build passed. Existing lint warnings remain unchanged outside the public home image notices.
+
 ## Important development rules
 
 - Update this `PROJECT_PROGRESS.md` file after every new feature or code implementation, including its current status, validation result, and remaining follow-up work.
@@ -307,3 +349,60 @@ No historical migration was modified as part of the application work documented 
 - Do not trust client-provided organization, event ownership, payment status, registration status, or claim state.
 - Preserve financial, legal, certificate, payment, reconciliation, and audit history.
 - Do not commit or push changes without explicit instruction.
+# Auth portal labels (2026-09-10)
+
+- Added explicit Participant Portal and Organizer Portal labels to registration and shared login forms.
+- Added cross-links so users can select the correct account type before authentication.
+# Auth portal hydration fix (2026-09-10)
+
+- Made the shared login portal label hydration-safe by resolving the query-string portal after mount.
+- Organizer login now defaults to the organizer verification flow instead of the participant dashboard.
+
+# Organizer signup feedback (2026-09-10)
+
+- Organizer signup now verifies successful Supabase-backed provisioning before continuing.
+- Successful signup shows feedback and redirects to organizer sign-in with email verification guidance.
+- Organizer signup now detects missing Supabase users and duplicate email responses instead of showing a false success message.
+- Organizer sign-in now completes idempotent profile/organization provisioning after email confirmation when the signup callback was not available.
+- Organizer route redirects now preserve the organizer portal and requested destination instead of falling back to the participant dashboard.
+- Participant and organizer signup/sign-in flows now validate Supabase user creation, detect duplicate emails, verify profile provisioning, and keep portal-specific redirects.
+- Added duplicate-submit guards so signup cannot issue repeated Supabase email requests from double-clicks or rapid retries.
+- Added a visible Organizer Portal link to the public header and footer.
+- Registration pages remain accessible when an existing session is present, preventing organizer signup from incorrectly redirecting to the participant dashboard.
+- Shared login remains accessible with an existing session, preventing organizer sign-in from being redirected into a failing protected page.
+- Added forward-only auth context table grants migration to restore authenticated SELECT access while preserving existing RLS row isolation.
+- Added server-only diagnostics for profile, organization, and membership provisioning failures without exposing database details to clients.
+- Development login now surfaces the safe provisioning stage error returned by the server; production remains generic.
+- Development provisioning diagnostics now include the Supabase error code/message for the failing stage without exposing credentials.
+- Added a forward-only service-role grant migration for server-side profile, organization, and membership provisioning.
+- Fixed organizer verification feedback ordering and added a saved-document count/readiness check before submission.
+- Added the organization profile-first onboarding target and a public organization-logo storage bucket/server upload endpoint; verification documents remain private.
+- Organizer login now defaults to the Organization Profile step before verification.
+- Normalized nullable organization profile values to prevent client-side `.trim()` errors during onboarding.
+- Fixed the organization logo upload handler to retain the input reference across async requests and avoid the React null `currentTarget` crash.
+- Fixed organization profile upload/save feedback and ensured successful logo URLs remain visible after the async refresh.
+- Added the authenticated organization-profile update grant required by the owner-protected profile save route, with development-safe error details.
+- Confirmed a clean local Supabase replay through the organization profile update grant; organization profile saves now have the required authenticated UPDATE privilege while the owner-only RLS policy remains enforced.
+- Merged organizer onboarding into one Organization Setup & Verification form with required government ID, optional business/registration fields, status-based locking, admin feedback, and approved-state event CTA.
+- Added coordinated onboarding submission with server-side validation and compensating rollback if verification or organization status synchronization fails; tagged uploaded documents by type for government-ID enforcement.
+- Pre-approval visits to the post-approval organization profile now return to the combined onboarding flow.
+- Revalidated the full local Vitest suite after onboarding consolidation: 23 tests passed and 1 PayMongo sandbox test skipped by design.
+- Updated the combined onboarding form to use a two-column desktop layout with two inputs per row; description, logo, social URLs, and document controls remain appropriately full-width.
+- Added the pending-review read-only verification card using live organization and organizer verification data, including submission date, contact summary, optional-field fallbacks, and uploaded document names.
+- Completed the Admin Organizer Verification workflow with a pending-review count, per-application Review and Approve actions, confirmation prompt, success/error feedback, and a server-side pending-status guard before approval.
+- Added shared role-priority landing resolution: `racedeck_internal_user_roles` Admin/Super Admin accounts land in `/admin/dashboard`, active organizers land in `/organizer/dashboard` or `/organizer/verification`, and other authenticated users land in `/dashboard`; password login and auth callback use the same resolver.
+- Finalized shared login redirects through `lib/auth/resolve-landing-route.ts` and `/api/auth/landing-route`; internal staff priority is enforced before organizer membership, with no separate Admin login route.
+- Replaced the empty Admin Dashboard placeholder with a functional internal overview: role display, platform counts, pending organizer queue, review links, and navigation to existing Admin modules.
+- Added direct pending-organizer approval actions to the Admin Dashboard with confirmation, loading, success/error states, and reuse of the protected audited approval API.
+- Hardened organizer approval to claim only still-pending records atomically, roll back status synchronization/audit failures, and keep a successful approval from being reported as failed when notification or email queueing has a recoverable warning.
+- Expanded the public RaceDeck desktop containers to a wide responsive layout while keeping organizer and admin portal container sizing unchanged.
+- Redesigned `/admin/dashboard` as a production-oriented Super Admin platform control center based on the README: dark admin navigation, responsive operational header, organizer/event/registration/revenue/payable KPIs, attention queue for organizer reviews/event approvals/reconciliation/email issues, platform pulse indicators, recent payment transactions, upcoming races, and the existing live organizer approval queue.
+- Wired the redesigned dashboard to authoritative existing records (`organizations`, `events`, `registrations`, `payments`, `platform_fees`, `finance_reconciliation_records`, `email_messages`, and `organizer_verifications`) with empty-state handling and no hardcoded business metrics; admin access remains protected by `requireInternalAccess()`.
+- Validated the Super Admin dashboard redesign with `npx tsc --noEmit` successfully.
+- Refined the Super Admin sidebar to match the approved navigation structure: separate Transactions, Refunds, Payouts, Platform Fees, and Reconciliation links plus Platform Content, Email Delivery, Support / Issues, Roles & Permissions, Audit Logs, and Platform Settings; added responsive scrolling and operational badges.
+- Started the complete Super Admin interface implementation from the README: added shared `components/admin/admin-ui.tsx` primitives for page headers, stat cards, status badges, toolbars, tables, empty states, action links, and money formatting.
+- Replaced placeholder Admin screens with real Supabase-backed operational pages for Events, Participants, Transactions, Payouts, Platform Fees, Reconciliation, Content Management, Email Delivery, Support / Issues, Audit Logs, Roles & Permissions, and Platform Settings.
+- Added read-only detail views for admin event, participant, transaction, and payout records with linked RaceDeck records, state badges, financial summaries, and privacy-safe operational messaging.
+- Expanded Organizer Management to load all organizer verification records with an all-organizers filter while retaining protected approval actions.
+- Added shared `AdminShell` for non-dashboard Super Admin routes with responsive desktop sidebar, mobile slide-over drawer/backdrop, active route state, breadcrumb header, global search affordance, profile identity, and sign-out navigation; dashboard is excluded from the wrapper to preserve its existing full dashboard shell.
+- Revalidated the expanded Super Admin implementation: `npx tsc --noEmit` passed, `npm run lint` passed with existing organizer/public hook and image warnings, and `npm run build` passed with all added Admin routes compiled.

@@ -1,3 +1,3 @@
-export default function RaceDeckPlaceholderPage() {
-  return null;
+export default function ServicesPage() {
+  return <main className="mx-auto max-w-6xl space-y-8 p-6"><header className="max-w-2xl"><p className="text-sm text-gray-500">RaceDeck PH</p><h1 className="mt-2 text-3xl font-semibold">Everything needed to run a better race</h1><p className="mt-3 text-gray-600">RaceDeck connects event discovery, secure registration, verified payments, race-day operations, and published results in one place.</p></header><section className="grid gap-4 md:grid-cols-3">{[['Event registration', 'Discover public races and complete a secure participant registration.'], ['Organizer operations', 'Manage event setup, participants, race kits, announcements, and results.'], ['Verified race records', 'Keep payment confirmation, digital documents, results, and certificates connected.']].map(([title, text]) => <article key={title} className="rounded border p-5"><h2 className="font-semibold">{title}</h2><p className="mt-2 text-sm text-gray-600">{text}</p></article>)}</section></main>;
 }

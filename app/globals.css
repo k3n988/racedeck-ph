@@ -25,3 +25,9 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Keep the public discovery pages wide on desktop while preserving the
+   existing max-width utility on the organizer and internal portals. */
+div[class~="min-h-screen"][class~="bg-[#f7f8fb]"] .max-w-7xl {
+  max-width: 1536px;
+}

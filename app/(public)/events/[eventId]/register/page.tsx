@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 type Option = { id: string; label: string; value: string; display_order: number };
 type Field = { id: string; label: string; field_type: 'short_text' | 'long_text' | 'dropdown' | 'radio' | 'checkbox' | 'yes_no'; is_required: boolean; event_registration_field_options: Option[] };
@@ -27,13 +28,16 @@ export default function RegisterPage({ params }: { params: { eventId: string } }
   const [acceptWaiver, setAcceptWaiver] = useState(false);
   const [message, setMessage] = useState('Loading registration details...');
   const [busy, setBusy] = useState(false);
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const idempotencyKey = useRef<string>('');
 
-  useEffect(() => { idempotencyKey.current = crypto.randomUUID(); void fetch(`/api/events/${params.eventId}/registration-info`).then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? 'Registration details could not be loaded'); setData(body as RegistrationInfo); setCategoryId(body.categories[0]?.id ?? ''); setMessage(''); }).catch(error => setMessage(error instanceof Error ? error.message : 'Registration details could not be loaded')); }, [params.eventId]);
+  useEffect(() => { idempotencyKey.current = crypto.randomUUID(); const supabase = createClient(); void Promise.all([supabase.auth.getUser().then(({ data }) => setAuthenticated(Boolean(data.user))), fetch(`/api/events/${params.eventId}/registration-info`).then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error ?? 'Registration details could not be loaded'); setData(body as RegistrationInfo); setCategoryId(body.categories[0]?.id ?? ''); })]).then(() => setMessage('')).catch(error => setMessage(error instanceof Error ? error.message : 'Registration details could not be loaded')); }, [params.eventId]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data || !categoryId || busy) return;
+    if (authenticated === false) { window.location.assign(`/login?next=${encodeURIComponent(`/events/${params.eventId}/register`)}`); return; }
+    if (authenticated === null) return;
     setBusy(true); setMessage('Reserving your slot and preparing secure checkout...');
     const response = await fetch(`/api/events/${params.eventId}/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category_id: categoryId, answers, promo_code: promoCode.trim() || undefined, accept_waiver: acceptWaiver, idempotency_key: idempotencyKey.current }) });
     const body = await response.json().catch(() => ({}));

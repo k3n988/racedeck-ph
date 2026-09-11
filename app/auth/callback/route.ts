@@ -1,11 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { provisionUser } from '@/lib/auth/provisioning';
+import { resolveLandingRoute } from '@/lib/auth/resolve-landing-route';
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
-  const next = request.nextUrl.searchParams.get('next');
-  const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
   if (!code) return NextResponse.redirect(new URL('/login?error=missing_code', request.url));
 
   const supabase = await createClient();
@@ -20,8 +19,6 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.redirect(new URL('/login?error=profile_setup_failed', request.url));
   }
-  const destination = metadata.account_type === 'organizer' && safeNext === '/dashboard'
-    ? '/organizer/verification'
-    : safeNext;
+  const destination = await resolveLandingRoute();
   return NextResponse.redirect(new URL(destination, request.url));
 }

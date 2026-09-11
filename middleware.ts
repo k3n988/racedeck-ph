@@ -29,10 +29,18 @@ export async function middleware(request: NextRequest) {
 
   if (isProtected && !user) {
     const loginUrl = new URL('/login', request.url);
+    if (pathname === '/organizer' || pathname.startsWith('/organizer/')) loginUrl.searchParams.set('portal', 'organizer');
     loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
-  if (isAuthPage && user) return NextResponse.redirect(new URL('/dashboard', request.url));
+  const isRegistrationPage = pathname === '/register' || pathname === '/organizer-register';
+  const isLoginPage = pathname === '/login';
+  if (isAuthPage && user && !isRegistrationPage && !isLoginPage) {
+    const requestedNext = request.nextUrl.searchParams.get('next');
+    const safeNext = requestedNext?.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : null;
+    const portal = request.nextUrl.searchParams.get('portal');
+    return NextResponse.redirect(new URL(safeNext ?? (portal === 'organizer' ? '/organizer/verification' : '/dashboard'), request.url));
+  }
   return response;
 }
 
