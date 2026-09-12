@@ -8,6 +8,7 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     const search = params.get('search')?.trim();
+    const lifecycleStatus = params.get('lifecycle_status')?.trim();
     let query = auth.admin
       .from('events')
       .select(EVENT_FIELDS, { count: 'exact' })
@@ -15,6 +16,7 @@ export async function GET(request: Request) {
       .order('event_date', { ascending: true });
 
     if (search) query = query.ilike('name', `%${search.replace(/[%_]/g, '\\$&')}%`);
+    if (lifecycleStatus && ['draft', 'published', 'ongoing', 'completed', 'cancelled', 'archived'].includes(lifecycleStatus)) query = query.eq('lifecycle_status', lifecycleStatus as 'draft' | 'published' | 'ongoing' | 'completed' | 'cancelled' | 'archived');
 
     const { data: events, count, error } = await query;
     if (error) return errorResponse(error, 'Organizer events query');

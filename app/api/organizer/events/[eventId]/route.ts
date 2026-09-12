@@ -40,3 +40,27 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     return errorResponse(error, 'Updating organizer event');
   }
 }
+
+export async function DELETE(_request: Request, { params }: { params: { eventId: string } }) {
+  const auth = await requireOrganizerPermission('edit_events', params.eventId);
+  if ('response' in auth) return auth.response;
+
+  try {
+    const [{ count: registrationCount, error: registrationError }, { count: paymentCount, error: paymentError }] = await Promise.all([
+      auth.admin.from('registrations').select('id', { count: 'exact', head: true }).eq('event_id', params.eventId),
+      auth.admin.from('payments').select('id', { count: 'exact', head: true }).eq('event_id', params.eventId),
+    ]);
+
+    if (registrationError) return errorResponse(registrationError, 'Checking event registrations');
+    if (paymentError) return errorResponse(paymentError, 'Checking event payments');
+    if ((registrationCount ?? 0) > 0 || (paymentCount ?? 0) > 0) {
+      return NextResponse.json({ error: 'This event has registrations or payments and cannot be deleted. Cancel or archive it instead.' }, { status: 409 });
+    }
+
+    const { error } = await auth.admin.from('events').delete().eq('id', params.eventId).eq('organization_id', auth.membership.organization_id);
+    if (error) return errorResponse(error, 'Deleting organizer event');
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    return errorResponse(error, 'Deleting organizer event');
+  }
+}

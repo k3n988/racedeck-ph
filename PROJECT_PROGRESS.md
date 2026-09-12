@@ -18,6 +18,11 @@ Last updated: 2026-09-12
 - The repair policy uses RaceDeck's existing `is_org_member()` tenant-check function, matching the established event-content RLS pattern.
 - Public event list/home reads are now explicitly uncached (`noStore` plus the list page's `force-dynamic` mode) so newly published events are not hidden by a stale server-rendered empty state; the existing public approval/lifecycle filter remains in place.
 - Public event date rendering now handles malformed legacy dates safely instead of throwing a `500` for the entire event list; invalid values display `Date to be announced` while valid events continue to render normally.
+- Organizer Create Event now has one canonical Event description field under Content & Media; duplicate short/long description inputs were removed, and poster upload remains multi-file with independent previews and saves.
+- Public Event Details now always shows the four requested tabs: Event Details, Race Mechanics, Announcements, and FAQs; empty optional modules render an informative empty state instead of hiding their tabs.
+- Removed the Event Information panel from the public Event Details tab as requested; event description and compact schedule details remain.
+- Event Details now presents the event description first and renders the organizer's persisted poster/content images directly below it, without an extra section heading.
+- Removed the remaining schedule/details panel from the Event Details tab so its content is limited to the description followed by the poster gallery, matching the supplied reference.
 
 ## Current milestone
 
@@ -451,3 +456,37 @@ No historical migration was modified as part of the application work documented 
 - Added persistent `event_content_images` storage metadata and extended the event asset API to save multiple poster images per organization-scoped event, with development upload error details for missing/unapplied Storage configuration.
 - Connected the Create Event poster gallery to the persistent asset endpoint so every selected poster is uploaded and recorded after the event draft receives its ID; `npx tsc --noEmit` and `npm run lint` pass with existing image/hook warnings.
 - Completed the Sponsors & Review step UI with separate Presented By, Official Partners, and Supported By sections; organizers can add/remove multiple sponsors and enter sponsor name, logo preview, and website URL before creating the event.
+- Added a Delete button to the Organizer Events actions with confirmation, organization/permission enforcement, and a server-side guard that prevents deleting events with registrations or payments.
+- Simplified the shared Organizer app bar to a plain route-derived page title and removed its search, settings shortcut, and profile avatar while retaining account actions in the sidebar.
+- Moved the Organizer Events create action into the shared top app bar, removed the duplicate large Events heading, and expanded the Events table container to the full available layout width.
+- Enlarged the shared Organizer app-bar title and moved the Events search plus lifecycle filter into that header; removed the page filter bar, review-status filter, and Search button while preserving URL-driven filtering.
+- Wired the new header Events filters to the organization-scoped API, including validated lifecycle-status query filtering.
+- Separated the stored Race Mechanics section from Event Details in public rendering; Event Details now shows only the event description and poster gallery.
+- Updated organizer Event Preview tabs so description/posters, race mechanics, announcements, and FAQs render in their respective tab panels instead of sharing Event Details content.
+- Enlarged public Events list cards with taller imagery, larger content spacing, and a two-column desktop layout.
+- Removed the public homepage “Discover / Register / Race Day” feature strip from the event listing experience.
+- Enlarged public homepage event cards with taller banners, larger typography and spacing, and a two-column desktop layout.
+- Tuned the public homepage event cards to a compact three-column desktop layout so three cards fit in one row.
+- Removed the filter/search panel from the public Events listing screen while retaining server-side query support.
+- Widened the public homepage content container to 1400px so the global layout has more horizontal space.
+- Increased the public homepage content container again to 1480px for a slightly wider desktop layout.
+- Expanded the public homepage content container to 1600px for additional desktop width.
+- Added VS Code project task configuration so Ctrl+Alt+D runs the “Run Dev Server” task (`npm run dev`) in a dedicated terminal.
+- Configured the dev server task as the workspace default build task so VS Code's Ctrl+Shift+B shortcut starts the project.
+- Added an All Events / Upcoming Events / Past Events dropdown to the public event listing with database-backed date filtering.
+- Removed duplicate rendering of the event description on the public Event Details tab; the saved description now appears once above the posters.
+- Fixed public registration status to derive dynamically from opening and closing dates, so events inside their registration window show Open and enable registration.
+- Reduced the public Event Details page top spacing so the sidebar and main event container sit closer to the header.
+- Tightened the Event Details header-to-content spacing further to a minimal top gap.
+- Widened the public Event Details left profile container and reduced the desktop gap to the main content section.
+- Expanded the Event Details left profile panel to 360px and tightened the desktop separation again.
+- Added derived event tagline data from the organizer's saved description for display in the public event profile.
+- Replaced sponsor URL fields with sponsor name and logo file upload inputs, including persistence to event partners.
+- Consolidated the Create Event Location step into Dates & Location with venue, city, province, complete address, and route map inputs.
+- Simplified Create Event location entry to one Event location / Complete address textarea and removed the separate venue, city, and province inputs.
+- Removed the Route map image upload from the Create Event flow and stopped submitting route map assets during event creation.
+- Repaired Create Event source encoding, restored proper UTF-8 Back/Next labels, and removed the completed-step check icon.
+- Removed the duplicate Create Event breadcrumb, page title, description, and local action buttons so the shared organizer header is the single page header.
+- Merged Categories & Pricing and Race Kit Configuration into a five-step Categories, Pricing & Race Kit workflow with category-specific/shared kit support and validation.
+- Fixed mojibake in the public Event Details left profile section by replacing corrupted emoji labels with clean UTF-8-safe text/icons.
+- Reworked Create Event Content & Media into independent Event Details, Race Mechanics, FAQs, and custom tab editors with visibility controls and tab-local form state.

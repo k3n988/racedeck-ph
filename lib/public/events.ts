@@ -12,7 +12,7 @@ export type PublicEventCard = {
   starting_registration_fee: number | null;
 };
 export type PublicEventDetails = PublicEventCard & {
-  description: string | null; logo_url: string | null; start_time: string | null;
+  description: string | null; tagline: string | null; logo_url: string | null; start_time: string | null;
   registration_opens_at: string | null; assembly_time: string | null; gun_start_time: string | null;
   cutoff_time: string | null; overall_capacity: number | null;
   categories: Array<{ id: string; name: string; distance_km: number | null; registration_fee: number; max_slots: number | null; confirmed_count: number; available_slots: number | null; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null }>;
@@ -47,9 +47,20 @@ async function organizerForEvent(organizationId: string) {
 }
 function card(event: EventRow, categories: CategoryRow[], organizer: Awaited<ReturnType<typeof organizerForEvent>>): PublicEventCard {
   const fees = categories.map((category) => Number(category.registration_fee)).filter(Number.isFinite);
-  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: event.registration_availability, registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
+  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: effectiveAvailability(event), registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
 }
-export async function getPublicEvents(input: { search?: string; location?: string; distance?: string; status?: string; sort?: string; page?: number }) {
+function effectiveAvailability(event: Pick<EventRow, 'registration_availability' | 'registration_opens_at' | 'registration_closes_at'>) {
+  if (event.registration_availability === 'sold_out') return 'sold_out';
+  const now = Date.now();
+  const opens = event.registration_opens_at ? new Date(event.registration_opens_at).getTime() : null;
+  const closes = event.registration_closes_at ? new Date(event.registration_closes_at).getTime() : null;
+  if (opens !== null && Number.isFinite(opens) && now < opens) return 'not_yet_open';
+  if (closes !== null && Number.isFinite(closes) && now >= closes) return 'closed';
+  if ((opens !== null && Number.isFinite(opens)) || (closes !== null && Number.isFinite(closes))) return 'open';
+  return event.registration_availability;
+}
+function extractTagline(description: string | null) { return description?.split(/\n\s*\n/)[0]?.trim() || null; }
+export async function getPublicEvents(input: { search?: string; location?: string; distance?: string; status?: string; sort?: string; period?: string; page?: number }) {
   noStore();
   const admin = createAdminClient();
   let distanceEventIds: string[] | null = null;
@@ -63,6 +74,9 @@ export async function getPublicEvents(input: { search?: string; location?: strin
     }
   }
   let query = admin.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,registration_availability,registration_closes_at,is_featured', { count: 'exact' }).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved');
+  const today = new Date().toISOString().slice(0, 10);
+  if (input.period === 'upcoming') query = query.gte('event_date', today);
+  if (input.period === 'past') query = query.lt('event_date', today);
   if (distanceEventIds) {
     if (!distanceEventIds.length) return { events: [], featured: null, page: Math.max(1, input.page ?? 1), pageSize: PAGE_SIZE, total: 0, totalPages: 0 };
     query = query.in('id', distanceEventIds);
@@ -101,8 +115,9 @@ export async function getPublicEventDetails(identifier: string): Promise<PublicE
     admin.from('result_batches').select('id').eq('event_id', event.id).eq('publication_status', 'published').limit(1),
     db.from('event_content_images').select('id,image_url,display_order').eq('event_id', event.id).order('display_order').order('created_at'),
   ]);
-  const categoryViews = categories.map((category) => ({ ...category, registration_fee: Number(category.registration_fee), available_slots: category.max_slots === null ? null : Math.max(0, category.max_slots - category.confirmed_count) }));
-  return { ...card(event, categories, organizer), description: event.description, logo_url: event.logo_url, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: partners.data ?? [], organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
+  const availability = effectiveAvailability(event);
+  const categoryViews = categories.map((category) => ({ ...category, registration_availability: category.registration_availability === 'sold_out' ? 'sold_out' : availability, registration_fee: Number(category.registration_fee), available_slots: category.max_slots === null ? null : Math.max(0, category.max_slots - category.confirmed_count) }));
+  return { ...card(event, categories, organizer), description: event.description, tagline: extractTagline(event.description), logo_url: event.logo_url, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: partners.data ?? [], organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
 }
 export async function getPublicResults(input: { event?: string; participant?: string; bib?: string; category?: string; page?: number }) {
   const admin = createAdminClient(); const page = Math.max(1, input.page ?? 1);

@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     const form = await request.formData();
     const kind = form.get('kind');
     const file = form.get('file');
-    if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
+    if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map' && kind !== 'sponsor_logo') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
     // The migration creates this bucket in a fresh project. Creating it here as
     // an idempotent fallback also makes an already-running project recover when
     // the storage migration was not yet applied.
@@ -28,6 +28,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       if (error) return errorResponse(error, 'Saving event poster');
       return NextResponse.json({ url: publicUrl.publicUrl, kind });
     }
+    if (kind === 'sponsor_logo') return NextResponse.json({ url: publicUrl.publicUrl, kind });
     if (kind === 'route_map') {
       const db = auth.admin as unknown as SupabaseClient;
       const { error } = await db.from('event_routes').insert({ event_id: params.eventId, route_map_url: publicUrl.publicUrl });
