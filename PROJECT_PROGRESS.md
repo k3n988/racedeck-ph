@@ -490,3 +490,19 @@ No historical migration was modified as part of the application work documented 
 - Merged Categories & Pricing and Race Kit Configuration into a five-step Categories, Pricing & Race Kit workflow with category-specific/shared kit support and validation.
 - Fixed mojibake in the public Event Details left profile section by replacing corrupted emoji labels with clean UTF-8-safe text/icons.
 - Reworked Create Event Content & Media into independent Event Details, Race Mechanics, FAQs, and custom tab editors with visibility controls and tab-local form state.
+- Replaced the Content & Media textarea with a reusable Tiptap rich-text editor for all event page tabs, including formatting, colors, links, images, tables, dividers, and independent tab content state.
+- Restyled the Content & Media Tiptap toolbar into a compact grouped document-editor toolbar matching the reference layout.
+- Removed the redundant Page Content label above the Content & Media editor toolbar.
+- Upgraded the shared Content & Media editor with a custom font-size mark, active formatting states, placeholder text, and contextual table row/column controls.
+- Replaced corrupted wizard arrow labels with UTF-8-safe HTML entities for Back and Next.
+- Rebuilt the Content & Media toolbar with Lucide icons and functional Google Docs-style typography, formatting, image, link, list, spacing, checklist, indent, and table controls.
+- Removed dead Create Event declarations that were preventing the project lint check from completing.
+- Added TipTap FontFamily support and cursor-synchronized style, alignment, line-spacing, color, and comment-hook state to the rich text editor.
+- Replaced native editor color inputs with functional text/highlight color palette popovers, including preset swatches, custom colors, active indicators, and clear actions.
+- Restyled the font-size control into a compact minus / numeric value / plus stepper with immediate selection updates.
+- Replaced the quote-style line-spacing toolbar icon with the correct line/paragraph spacing icon.
+- Restored the original global page layout by removing the custom public-page width, spacing, and event-details grid overrides.
+- Restored the Event Details page's local desktop sidebar/content layout and prevented full event descriptions from being treated as left-card taglines.
+- Matched the Event Details page container, desktop sidebar width, grid gap, and responsive padding to the public Event List layout.
+- Widened the Event Details sidebar to 330px, reduced the column gap, and tightened its top spacing to sit close to the public header.
+- Tightened Event Details tab padding and outer content spacing so the tabs and bordered content cards sit closer together.

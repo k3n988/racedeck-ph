@@ -59,7 +59,13 @@ function effectiveAvailability(event: Pick<EventRow, 'registration_availability'
   if ((opens !== null && Number.isFinite(opens)) || (closes !== null && Number.isFinite(closes))) return 'open';
   return event.registration_availability;
 }
-function extractTagline(description: string | null) { return description?.split(/\n\s*\n/)[0]?.trim() || null; }
+function extractTagline(description: string | null) {
+  const firstBlock = description?.trim().split(/\n\s*\n/)[0] ?? '';
+  const tagline = firstBlock.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  // A tagline is deliberately short. This prevents a full Event Details paragraph
+  // from being duplicated in the left event profile card.
+  return tagline && tagline.length <= 160 && tagline.split(/[.!?]/).filter(Boolean).length <= 1 ? tagline : null;
+}
 export async function getPublicEvents(input: { search?: string; location?: string; distance?: string; status?: string; sort?: string; period?: string; page?: number }) {
   noStore();
   const admin = createAdminClient();
