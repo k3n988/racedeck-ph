@@ -79,3 +79,9 @@ a[href="/auth/logout"]:hover {
 .content-editor .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
 .content-editor .ProseMirror ul[data-type="taskList"] li { display: flex; gap: 0.5rem; }
 .content-editor .ProseMirror ul[data-type="taskList"] li > label { margin-top: 0.35rem; }
+
+/* Keep the public homepage's featured event row close to the shared header. */
+main.min-h-screen.bg-\[\#f6f7fa\] > section:first-child {
+  gap: 0 !important;
+  padding-top: 0 !important;
+}

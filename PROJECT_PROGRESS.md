@@ -506,3 +506,10 @@ No historical migration was modified as part of the application work documented 
 - Matched the Event Details page container, desktop sidebar width, grid gap, and responsive padding to the public Event List layout.
 - Widened the Event Details sidebar to 330px, reduced the column gap, and tightened its top spacing to sit close to the public header.
 - Tightened Event Details tab padding and outer content spacing so the tabs and bordered content cards sit closer together.
+- Updated Event Details posters to use a full-width single-column gallery with one image per row.
+- Tightened public Event List top spacing and reduced the Upcoming Events/featured banner gap for a closer header layout.
+- Further reduced public Event List top spacing and the Upcoming Events/featured banner gap.
+- Forced the public Event List to sit visibly closer to the shared header with negative top margin and zero desktop column gap.
+- Added a scoped homepage layout override so the featured Upcoming Events/banner row visibly sits flush with the shared public header.
+- Added month/day date badges to public event cards.
+- Removed the public homepage “View all events” link from the All Events heading.
