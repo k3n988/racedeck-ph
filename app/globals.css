@@ -48,6 +48,7 @@ a[href="/auth/logout"]:hover {
 }
 .content-editor .ProseMirror {
   min-height: 420px;
+  padding: 1rem;
   outline: none;
   color: #334155;
   line-height: 1.75;
@@ -79,9 +80,41 @@ a[href="/auth/logout"]:hover {
 .content-editor .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
 .content-editor .ProseMirror ul[data-type="taskList"] li { display: flex; gap: 0.5rem; }
 .content-editor .ProseMirror ul[data-type="taskList"] li > label { margin-top: 0.35rem; }
+.content-editor .ProseMirror ul[data-bullet-style] { list-style-type: none; }
+.content-editor .ProseMirror ul[data-bullet-style="disc"] > li::marker { content: "●  "; }
+.content-editor .ProseMirror ul[data-bullet-style="circle"] > li::marker { content: "○  "; }
+.content-editor .ProseMirror ul[data-bullet-style="square"] > li::marker { content: "▪  "; }
+.content-editor .ProseMirror ul[data-bullet-style="diamond"] > li::marker { content: "◆  "; }
+.content-editor .ProseMirror ul[data-bullet-style="arrow"] > li::marker { content: "➢  "; }
+.content-editor .ProseMirror ul[data-bullet-style="star"] > li::marker { content: "★  "; }
+.content-editor .ProseMirror ol[data-number-style="decimal"] { list-style-type: decimal; }
+.content-editor .ProseMirror ol[data-number-style="decimal-leading-zero"] { list-style-type: decimal-leading-zero; }
+.content-editor .ProseMirror ol[data-number-style="lower-alpha"] { list-style-type: lower-alpha; }
+.content-editor .ProseMirror ol[data-number-style="upper-alpha"] { list-style-type: upper-alpha; }
+.content-editor .ProseMirror ol[data-number-style="lower-roman"] { list-style-type: lower-roman; }
+.content-editor .ProseMirror ol[data-number-style="upper-roman"] { list-style-type: upper-roman; }
 
 /* Keep the public homepage's featured event row close to the shared header. */
 main.min-h-screen.bg-\[\#f6f7fa\] > section:first-child {
   gap: 0 !important;
   padding-top: 0 !important;
+}
+
+/* Keep the organizer dashboard title in the shared shell header. */
+main.mx-auto.max-w-7xl.space-y-7.bg-\[\#f5f7fa\] > header {
+  position: relative;
+  height: 0;
+  margin: 0;
+  overflow: visible;
+}
+
+main.mx-auto.max-w-7xl.space-y-7.bg-\[\#f5f7fa\] > header > div {
+  display: none;
+}
+
+main.mx-auto.max-w-7xl.space-y-7.bg-\[\#f5f7fa\] > header > a {
+  position: fixed;
+  top: 0.875rem;
+  right: 1.5rem;
+  z-index: 40;
 }

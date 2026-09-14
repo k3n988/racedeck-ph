@@ -84,6 +84,10 @@ export async function POST(request: Request) {
       venue: typeof body.venue === 'string' ? body.venue.trim() || null : null,
       address: typeof body.address === 'string' ? body.address.trim() || null : null,
       description: typeof body.description === 'string' ? body.description.trim() || null : null,
+      social_links: {
+        facebook: typeof body.social_links?.facebook === 'string' ? body.social_links.facebook.trim() : '',
+        instagram: typeof body.social_links?.instagram === 'string' ? body.social_links.instagram.trim() : '',
+      } as never,
       registration_opens_at: typeof body.registration_opens_at === 'string' ? body.registration_opens_at : null,
       registration_closes_at: typeof body.registration_closes_at === 'string' ? body.registration_closes_at : null,
       assembly_time: typeof body.assembly_time === 'string' ? body.assembly_time || null : null,

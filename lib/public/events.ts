@@ -8,6 +8,7 @@ const PAGE_SIZE = 12;
 export type PublicEventCard = {
   id: string; slug: string; name: string; banner_url: string | null; event_date: string;
   venue: string | null; address: string | null; organizer: { name: string; logo_url: string | null } | null;
+  social_links: { facebook?: string; instagram?: string } | null;
   distances: number[]; registration_availability: string; registration_closes_at: string | null;
   starting_registration_fee: number | null;
 };
@@ -25,17 +26,17 @@ export type PublicEventDetails = PublicEventCard & {
   announcements: Array<{ id: string; title: string; message: string; published_at: string | null }>;
   results_available: boolean;
 };
-type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean };
+type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: { facebook?: string; instagram?: string } | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean };
 type CategoryRow = { id: string; event_id: string; name: string; distance_km: number | null; registration_fee: number; max_slots: number | null; confirmed_count: number; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null };
 
 async function getVisibleEvent(identifier: string) {
   const admin = createAdminClient();
-  const fields = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity';
+  const fields = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity';
   const byId = await admin.from('events').select(fields).eq('id', identifier).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved').maybeSingle();
-  if (byId.data) return byId.data as EventRow;
+  if (byId.data) return byId.data as unknown as EventRow;
   if (byId.error && byId.error.code !== '22P02') return null;
   const bySlug = await admin.from('events').select(fields).eq('slug', identifier).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved').maybeSingle();
-  return (bySlug.data as EventRow | null) ?? null;
+  return (bySlug.data as unknown as EventRow | null) ?? null;
 }
 async function categoriesForEvent(eventId: string) {
   const { data } = await createAdminClient().from('race_categories').select('id,event_id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').eq('event_id', eventId).order('distance_km', { ascending: true, nullsFirst: false }).order('name');
@@ -47,7 +48,7 @@ async function organizerForEvent(organizationId: string) {
 }
 function card(event: EventRow, categories: CategoryRow[], organizer: Awaited<ReturnType<typeof organizerForEvent>>): PublicEventCard {
   const fees = categories.map((category) => Number(category.registration_fee)).filter(Number.isFinite);
-  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: effectiveAvailability(event), registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
+  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, social_links: event.social_links, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: effectiveAvailability(event), registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
 }
 function effectiveAvailability(event: Pick<EventRow, 'registration_availability' | 'registration_opens_at' | 'registration_closes_at'>) {
   if (event.registration_availability === 'sold_out') return 'sold_out';
@@ -79,7 +80,7 @@ export async function getPublicEvents(input: { search?: string; location?: strin
       distanceEventIds = Array.from(new Set((matchingCategories ?? []).map((category) => category.event_id)));
     }
   }
-  let query = admin.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,registration_availability,registration_closes_at,is_featured', { count: 'exact' }).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved');
+  let query = admin.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_closes_at,is_featured', { count: 'exact' }).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved');
   const today = new Date().toISOString().slice(0, 10);
   if (input.period === 'upcoming') query = query.gte('event_date', today);
   if (input.period === 'past') query = query.lt('event_date', today);

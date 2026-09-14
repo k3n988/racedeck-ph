@@ -513,3 +513,37 @@ No historical migration was modified as part of the application work documented 
 - Added a scoped homepage layout override so the featured Upcoming Events/banner row visibly sits flush with the shared public header.
 - Added month/day date badges to public event cards.
 - Removed the public homepage “View all events” link from the All Events heading.
+- Added Facebook and Instagram link fields to Event Profile and persisted them in event social links.
+- Kept the event API compatible with the current generated Supabase types while the social-links migration is applied.
+- Made the Facebook link required in the Event Profile form and create validation.
+- Connected event social links to public Event Details and added conditional Facebook/Instagram icon buttons in the left panel.
+- Fixed generated Supabase type compatibility for the new event social-links field.
+- Removed the duplicate dashboard workspace intro and repositioned Create Event into the top header area.
+- Removed the duplicate organization-scoped heading from the shared Registrations data page.
+- Redesigned the public Event Details countdown with months, days, hours, minutes, seconds, and event artwork styling.
+- Made the Event Details countdown use the event start time and changed the event header to a plain white container.
+- Removed registration status and open/close date text from the public Event Details left panel while retaining the registration action.
+- Combined the event profile and countdown into one left-side container while keeping sponsors in a separate card.
+- Restored the event banner image in the right-side Event Details header; kept the countdown panel plain.
+- Removed the redundant “Race Starts In” label above the public Event Details countdown.
+- Added the dedicated registration screen layout with the event banner above the progress stepper and registration form.
+- Fixed Register Now navigation to use the event ID required by the registration data and checkout APIs.
+- Restored separate registration screen navigation from the Event Details Register Now action.
+- Matched registration controls to the requested age range, company/school/club, and finisher shirt fields.
+- Updated the Content & Media toolbar with reference-style icon/dropdown controls and dynamic alignment icons.
+- Refined the spacing and checklist controls with closer reference-matching Lucide icons.
+- Replaced the spacing icon with a custom lines-and-up/down-arrows SVG matching the reference.
+- Added a functional checklist dropdown with checklist style previews and TipTap toggle actions.
+- Added a functional Google Docs-style bulleted-list dropdown with six bullet presets persisted on bullet-list nodes.
+- Added styling rules so each selected bullet preset renders correctly in the editor and saved HTML.
+- Added a functional Google Docs-style numbered-list dropdown with six numbering presets persisted on ordered-list nodes.
+- Added numbered-list CSS mapping so each selected numbering preset renders correctly in the editor and saved HTML.
+- Fixed the numbered-list toolbar highlight so it only appears while the focused cursor is inside a numbered list.
+- Expanded the Event Details editor container to full width and repositioned the image dropdown to prevent horizontal overflow.
+- Widened the Create Event workspace and Event Details column to use more available horizontal space.
+- Added inner padding to the TipTap writing surface so typed content stays comfortably inside the editor border.
+- Added reactive check icons to completed Create Event setup steps.
+- Marked each Create Event step complete when the organizer advances with Next.
+- Widened the Event Setup sidebar to 280px for clearer step labels.
+- Preserved the right Create Event section width by expanding the overall workspace allowance.
+- Added the participant registration progress steps and registrant selector to the public registration flow.

@@ -20,8 +20,10 @@ import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import {
   AlignLeft,
+  AlignCenter,
+  AlignJustify,
+  AlignRight,
   Bold,
-  BetweenVerticalStart,
   CheckSquare,
   ChevronDown,
   Eraser,
@@ -31,6 +33,7 @@ import {
   Italic,
   Link2,
   List,
+  ListChecks,
   ListOrdered,
   ListTodo,
   MessageSquarePlus,
@@ -71,6 +74,24 @@ const TextFormatting = Extension.create({
           renderHTML: (attributes: { indent?: number }) => attributes.indent ? { style: `margin-left: ${attributes.indent * 2}rem`, 'data-indent': String(attributes.indent) } : {},
         },
       },
+    }, {
+      types: ['bulletList'],
+      attributes: {
+        bulletStyle: {
+          default: 'disc',
+          parseHTML: (element: HTMLElement) => element.dataset.bulletStyle || 'disc',
+          renderHTML: (attributes: { bulletStyle?: string }) => ({ 'data-bullet-style': attributes.bulletStyle || 'disc' }),
+        },
+      },
+    }, {
+      types: ['orderedList'],
+      attributes: {
+        numberStyle: {
+          default: 'decimal',
+          parseHTML: (element: HTMLElement) => element.dataset.numberStyle || 'decimal',
+          renderHTML: (attributes: { numberStyle?: string }) => ({ 'data-number-style': attributes.numberStyle || 'decimal' }),
+        },
+      },
     }];
   },
 });
@@ -95,6 +116,20 @@ function IconButton({ label, title, active = false, disabled = false, onClick, c
 
 function Divider() {
   return <span className="mx-1 h-5 w-px shrink-0 bg-slate-200" aria-hidden="true" />;
+}
+
+function LineSpacingIcon() {
+  return <svg viewBox="0 0 20 20" aria-hidden="true" className="h-[17px] w-[17px] fill-none stroke-current" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 4.5h8M2.5 9.5h8M2.5 14.5h8M15 3v13M12.5 5.5 15 3l2.5 2.5M12.5 13.5 15 16l2.5-2.5" /></svg>;
+}
+
+function BulletPreview({ style }: { style: string }) {
+  const marker = style === 'circle' ? '○' : style === 'square' ? '▪' : style === 'diamond' ? '◆' : style === 'arrow' ? '➢' : style === 'star' ? '★' : '●';
+  return <span className="grid gap-1.5">{[0, 1, 2].map((item) => <span key={item} className="flex items-center gap-2"><span className="w-3 text-center text-[10px] text-slate-800">{marker}</span><span className="h-1.5 flex-1 rounded-sm bg-slate-300" /></span>)}</span>;
+}
+
+function NumberPreview({ style }: { style: string }) {
+  const values: Record<string, string[]> = { decimal: ['1.', '2.', '3.'], 'decimal-leading-zero': ['01.', '02.', '03.'], 'lower-alpha': ['a.', 'b.', 'c.'], 'upper-alpha': ['A.', 'B.', 'C.'], 'lower-roman': ['i.', 'ii.', 'iii.'], 'upper-roman': ['I.', 'II.', 'III.'] };
+  return <span className="grid gap-1.5">{(values[style] ?? values.decimal).map((marker) => <span key={marker} className="flex items-center gap-2"><span className="w-6 text-right text-[10px] text-slate-800">{marker}</span><span className="h-1.5 flex-1 rounded-sm bg-slate-300" /></span>)}</span>;
 }
 
 function ColorPalette({ label, value, onSelect, onClear, clearLabel }: { label: string; value?: string; onSelect: (color: string) => void; onClear?: () => void; clearLabel?: string }) {
@@ -128,6 +163,9 @@ export function ContentEditor({
   const [imageSearch, setImageSearch] = useState('');
   const [textColorOpen, setTextColorOpen] = useState(false);
   const [highlightColorOpen, setHighlightColorOpen] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [bulletOpen, setBulletOpen] = useState(false);
+  const [numberedOpen, setNumberedOpen] = useState(false);
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -193,6 +231,16 @@ export function ContentEditor({
     const current = Number(editor.getAttributes(node).indent || 0);
     editor.chain().focus().updateAttributes(node, { indent: Math.max(0, Math.min(8, current + delta)) }).run();
   };
+  const setBulletStyle = (style: string) => {
+    if (editor.isActive('bulletList')) editor.chain().focus().updateAttributes('bulletList', { bulletStyle: style }).run();
+    else editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { bulletStyle: style }).run();
+    setBulletOpen(false);
+  };
+  const setNumberStyle = (style: string) => {
+    if (editor.isActive('orderedList')) editor.chain().focus().updateAttributes('orderedList', { numberStyle: style }).run();
+    else editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { numberStyle: style }).run();
+    setNumberedOpen(false);
+  };
   const addComment = () => {
     const note = window.prompt('Add a note');
     if (note?.trim()) {
@@ -220,7 +268,7 @@ export function ContentEditor({
   const tableActive = editor.isActive('table');
 
   return (
-    <div className="relative overflow-visible rounded-lg border border-slate-200 bg-white">
+    <div className="relative min-w-0 w-full overflow-visible rounded-lg border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center gap-0.5 rounded-t-lg border-b border-slate-200 bg-slate-50 p-1.5">
         <IconButton label="Undo" title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><Undo2 size={16} /></IconButton>
         <IconButton label="Redo" title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><Redo2 size={16} /></IconButton>
@@ -243,14 +291,14 @@ export function ContentEditor({
         <Divider />
         <div className="relative"><IconButton label="Insert or edit link" title="Insert or edit link" active={editor.isActive('link')} onClick={() => { setLinkUrl(editor.getAttributes('link').href || ''); setLinkOpen((open) => !open); }}><Link2 size={16} /></IconButton>{linkOpen && <div className="absolute left-0 top-10 z-20 flex w-72 gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"><input autoFocus value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitLink(); if (event.key === 'Escape') setLinkOpen(false); }} placeholder="https://example.com" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitLink} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Apply</button></div>}</div>
         <IconButton label="Add note" title="Add note" onClick={addComment}><MessageSquarePlus size={16} /></IconButton>
-        <div className="relative"><IconButton label="Insert image" title="Insert image" onClick={() => setImageOpen((open) => !open)}><ImagePlus size={16} /></IconButton>{imageOpen && <div className="absolute left-0 top-10 z-20 w-72 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"><button type="button" onClick={() => imageInput.current?.click()} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50"><Upload size={15} />Upload from computer</button><div className="flex gap-2"><input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="Paste image URL" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitImageUrl} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Insert</button></div><div className="flex gap-2"><input value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} placeholder="Search web images" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" title="Open image search" onClick={() => { if (imageSearch.trim()) window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(imageSearch.trim())}`, '_blank', 'noopener,noreferrer'); }} className="rounded border border-slate-300 px-2 text-slate-700"><Search size={14} /></button></div></div>}</div>
+        <div className="relative"><IconButton label="Insert image" title="Insert image" onClick={() => setImageOpen((open) => !open)}><ImagePlus size={16} /></IconButton>{imageOpen && <div className="absolute right-0 top-10 z-20 w-72 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"><button type="button" onClick={() => imageInput.current?.click()} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50"><Upload size={15} />Upload from computer</button><div className="flex gap-2"><input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="Paste image URL" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitImageUrl} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Insert</button></div><div className="flex gap-2"><input value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} placeholder="Search web images" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" title="Open image search" onClick={() => { if (imageSearch.trim()) window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(imageSearch.trim())}`, '_blank', 'noopener,noreferrer'); }} className="rounded border border-slate-300 px-2 text-slate-700"><Search size={14} /></button></div></div>}</div>
         <input ref={imageInput} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) addImageFile(file); event.currentTarget.value = ''; }} />
         <Divider />
-        <div className="relative"><IconButton label="Alignment" title="Alignment" active={currentAlignment !== 'left'} onClick={() => editor.chain().focus().setTextAlign('left').run()}><AlignLeft size={16} /></IconButton><select aria-label="Text alignment" className="absolute inset-0 cursor-pointer opacity-0" value={currentAlignment} onChange={(event) => editor.chain().focus().setTextAlign(event.target.value).run()}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select></div>
-        <div className="relative"><IconButton label="Line and paragraph spacing" title="Line and paragraph spacing" active={currentLineHeight !== '1.5'} onClick={() => setLineHeight('1.5')}><BetweenVerticalStart size={17} strokeWidth={1.8} /></IconButton><select aria-label="Line spacing" className="absolute inset-0 cursor-pointer opacity-0" value={currentLineHeight} onChange={(event) => setLineHeight(event.target.value)}><option value="1">Single</option><option value="1.15">1.15</option><option value="1.5">1.5</option><option value="2">Double</option></select></div>
-        <IconButton label="Checklist" title="Checklist" active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()}><ListTodo size={16} /></IconButton>
-        <IconButton label="Bulleted list" title="Bulleted list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={16} /></IconButton>
-        <IconButton label="Numbered list" title="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={16} /></IconButton>
+        <div className="relative flex items-center"><IconButton label="Alignment" title="Alignment" active={currentAlignment !== 'left'} onClick={() => editor.chain().focus().setTextAlign('left').run()}>{currentAlignment === 'center' ? <AlignCenter size={16} /> : currentAlignment === 'right' ? <AlignRight size={16} /> : currentAlignment === 'justify' ? <AlignJustify size={16} /> : <AlignLeft size={16} />}</IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Text alignment" className="absolute inset-0 cursor-pointer opacity-0" value={currentAlignment} onChange={(event) => editor.chain().focus().setTextAlign(event.target.value).run()}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select></div>
+        <div className="relative flex items-center"><IconButton label="Line and paragraph spacing" title="Line and paragraph spacing" active={currentLineHeight !== '1.5'} onClick={() => setLineHeight('1.5')}><LineSpacingIcon /></IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Line spacing" className="absolute inset-0 cursor-pointer opacity-0" value={currentLineHeight} onChange={(event) => setLineHeight(event.target.value)}><option value="1">Single</option><option value="1.15">1.15</option><option value="1.5">1.5</option><option value="2">Double</option></select></div>
+        <div className="relative flex items-center"><IconButton label="Checklist" title="Checklist" active={editor.isActive('taskList')} onClick={() => { editor.chain().focus().toggleTaskList().run(); setChecklistOpen(false); }}><ListChecks size={16} /></IconButton><button type="button" aria-label="Checklist options" title="Checklist options" onMouseDown={(event) => event.preventDefault()} onClick={() => setChecklistOpen((open) => !open)} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{checklistOpen && <div className="absolute left-0 top-10 z-30 grid w-60 grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl"><button type="button" title="Apply checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().toggleTaskList().run(); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button><button type="button" title="Apply compact checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().toggleTaskList().run(); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button></div>}</div>
+        <div className="relative flex items-center"><IconButton label="Bulleted list" title="Bulleted list" active={editor.isActive('bulletList')} onClick={() => { editor.chain().focus().toggleBulletList().run(); setBulletOpen(false); }}><List size={16} /></IconButton><button type="button" aria-label="Bulleted list options" title="Bulleted list options" onMouseDown={(event) => event.preventDefault()} onClick={() => setBulletOpen((open) => !open)} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{bulletOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['disc', 'circle', 'square', 'diamond', 'arrow', 'star'].map((style) => <button key={style} type="button" title={`Use ${style} bullets`} onMouseDown={(event) => event.preventDefault()} onClick={() => setBulletStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><BulletPreview style={style} /></button>)}</div>}</div>
+        <div className="relative flex items-center"><IconButton label="Numbered list" title="Numbered list" active={editor.isFocused && editor.isActive('orderedList')} onClick={() => { editor.chain().focus().toggleOrderedList().run(); setNumberedOpen(false); }}><ListOrdered size={16} /></IconButton><button type="button" aria-label="Numbered list options" title="Numbered list options" onMouseDown={(event) => event.preventDefault()} onClick={() => setNumberedOpen((open) => !open)} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{numberedOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['decimal', 'lower-alpha', 'upper-alpha', 'lower-roman', 'upper-roman', 'decimal-leading-zero'].map((style) => <button key={style} type="button" title={`Use ${style} numbering`} onMouseDown={(event) => event.preventDefault()} onClick={() => setNumberStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><NumberPreview style={style} /></button>)}</div>}</div>
         <IconButton label="Decrease indent" title="Decrease indent" onClick={() => changeIndent(-1)}><Outdent size={16} /></IconButton>
         <IconButton label="Increase indent" title="Increase indent" onClick={() => changeIndent(1)}><Indent size={16} /></IconButton>
         <IconButton label="Clear formatting" title="Clear formatting" onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}><Eraser size={16} /></IconButton>

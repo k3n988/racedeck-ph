@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const supabase = await createClient();
-  const { data: event } = await supabase.from('events').select('id,name,event_date,venue,address,registration_opens_at,registration_closes_at,registration_availability').eq('id', params.eventId).eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
+  const { data: event } = await supabase.from('events').select('id,name,banner_url,event_date,venue,address,registration_opens_at,registration_closes_at,registration_availability').eq('id', params.eventId).eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   const [{ data: categories }, { data: fields }, { data: waiver }] = await Promise.all([
     supabase.from('race_categories').select('id,name,registration_fee,registration_availability').eq('event_id', params.eventId).eq('registration_availability', 'open').order('name'),
