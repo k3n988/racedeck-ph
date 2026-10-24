@@ -12,6 +12,7 @@ export type PublicEventCard = {
   distances: number[]; registration_availability: string; registration_closes_at: string | null;
   starting_registration_fee: number | null;
 };
+export type FeaturedPublicEvent = PublicEventCard & { registration_enabled: boolean };
 export type PublicEventDetails = PublicEventCard & {
   description: string | null; tagline: string | null; logo_url: string | null; start_time: string | null;
   registration_opens_at: string | null; assembly_time: string | null; gun_start_time: string | null;
@@ -26,7 +27,7 @@ export type PublicEventDetails = PublicEventCard & {
   announcements: Array<{ id: string; title: string; message: string; published_at: string | null }>;
   results_available: boolean;
 };
-type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: { facebook?: string; instagram?: string } | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean };
+type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: { facebook?: string; instagram?: string } | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string };
 type CategoryRow = { id: string; event_id: string; name: string; distance_km: number | null; registration_fee: number; max_slots: number | null; confirmed_count: number; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null };
 
 async function getVisibleEvent(identifier: string) {
@@ -46,19 +47,23 @@ async function organizerForEvent(organizationId: string) {
   const { data } = await createAdminClient().from('organizations').select('name,slug,logo_url,description,website,social_links').eq('id', organizationId).maybeSingle();
   return data ?? null;
 }
-function card(event: EventRow, categories: CategoryRow[], organizer: Awaited<ReturnType<typeof organizerForEvent>>): PublicEventCard {
+function card(event: EventRow, categories: CategoryRow[], organizer: { name: string; logo_url: string | null } | null): PublicEventCard {
   const fees = categories.map((category) => Number(category.registration_fee)).filter(Number.isFinite);
-  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, social_links: event.social_links, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: effectiveAvailability(event), registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
+  const distances = Array.from(new Set(categories.map((category) => category.distance_km).filter((value): value is number => value !== null)));
+  const availability = effectiveAvailability(event);
+  const closesAt = event.registration_closes_at ? new Date(event.registration_closes_at).getTime() : null;
+  const closingSoon = availability === 'open' && closesAt !== null && closesAt > Date.now() && closesAt <= Date.now() + 7 * 24 * 60 * 60 * 1000;
+  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, social_links: event.social_links, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances, registration_availability: closingSoon ? 'closing_soon' : availability, registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
 }
 export function effectiveAvailability(event: Pick<EventRow, 'registration_availability' | 'registration_opens_at' | 'registration_closes_at'>) {
   if (event.registration_availability === 'sold_out') return 'sold_out';
-  if (event.registration_availability === 'closed') return 'closed';
-  if (event.registration_availability === 'not_yet_open') return 'not_yet_open';
   const now = Date.now();
   const opens = event.registration_opens_at ? new Date(event.registration_opens_at).getTime() : null;
   const closes = event.registration_closes_at ? new Date(event.registration_closes_at).getTime() : null;
   if (opens !== null && Number.isFinite(opens) && now < opens) return 'not_yet_open';
   if (closes !== null && Number.isFinite(closes) && now >= closes) return 'closed';
+  if (event.registration_availability === 'closed') return 'closed';
+  if (event.registration_availability === 'not_yet_open' && opens === null) return 'not_yet_open';
   if ((opens !== null && Number.isFinite(opens)) || (closes !== null && Number.isFinite(closes))) return 'open';
   return event.registration_availability;
 }
@@ -69,7 +74,60 @@ function extractTagline(description: string | null) {
   // from being duplicated in the left event profile card.
   return tagline && tagline.length <= 160 && tagline.split(/[.!?]/).filter(Boolean).length <= 1 ? tagline : null;
 }
-export async function getPublicEvents(input: { search?: string; location?: string; distance?: string; status?: string; sort?: string; period?: string; page?: number }) {
+function manilaDate(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+export async function getFeaturedPublicEvents(): Promise<FeaturedPublicEvent[]> {
+  noStore();
+  const admin = createAdminClient();
+  const db = admin as unknown as SupabaseClient;
+  const { data, error } = await db.from('events')
+    .select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,is_featured')
+    .in('lifecycle_status', ['published', 'ongoing'])
+    .eq('review_status', 'approved')
+    .eq('is_featured', true)
+    .gte('event_date', manilaDate(new Date()))
+    .order('event_date', { ascending: true })
+    .limit(50);
+  if (error) throw new Error('Featured events could not be loaded');
+
+  const rows = (data ?? []) as unknown as EventRow[];
+  if (!rows.length) return [];
+  const eventIds = rows.map((event) => event.id);
+  const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
+  const [{ data: categoryRows, error: categoryError }, { data: organizationRows, error: organizationError }] = await Promise.all([
+    admin.from('race_categories').select('id,event_id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').in('event_id', eventIds).order('distance_km', { ascending: true, nullsFirst: false }).order('name'),
+    admin.from('organizations').select('id,name,logo_url').in('id', organizationIds),
+  ]);
+  if (categoryError || organizationError) throw new Error('Featured event details could not be loaded');
+
+  const categoriesByEvent = new Map<string, CategoryRow[]>();
+  for (const category of (categoryRows ?? []) as CategoryRow[]) {
+    categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
+  }
+  const organizationsById = new Map((organizationRows ?? []).map((organization) => [organization.id, { name: organization.name, logo_url: organization.logo_url }]));
+  const events = rows.map((event) => {
+    const categories = categoriesByEvent.get(event.id) ?? [];
+    const view = card(event, categories, organizationsById.get(event.organization_id) ?? null);
+    const availableCategory = categories.some((category) => category.registration_availability !== 'sold_out' && (category.max_slots === null || category.confirmed_count < category.max_slots));
+    const confirmedCount = categories.reduce((total, category) => total + category.confirmed_count, 0);
+    const overallCapacityReached = event.overall_capacity !== null && confirmedCount >= event.overall_capacity;
+    return {
+      ...view,
+      registration_enabled: ['open', 'closing_soon'].includes(view.registration_availability) && availableCategory && !overallCapacityReached,
+    };
+  });
+
+  return events.sort((a, b) => {
+    const rank = (event: FeaturedPublicEvent) => event.registration_enabled ? 0 : event.registration_availability === 'not_yet_open' ? 1 : 2;
+    return rank(a) - rank(b) || a.event_date.localeCompare(b.event_date) || a.name.localeCompare(b.name);
+  });
+}
+
+export async function getPublicEvents(input: { search?: string; location?: string; date?: string; distance?: string; status?: string; sort?: string; period?: string; page?: number }) {
   noStore();
   const admin = createAdminClient();
   let distanceEventIds: string[] | null = null;
@@ -80,21 +138,46 @@ export async function getPublicEvents(input: { search?: string; location?: strin
       const { data: matchingCategories, error: categoryError } = await admin.from('race_categories').select('event_id').eq('distance_km', numericDistance);
       if (categoryError) throw new Error('Public event filters could not be loaded');
       distanceEventIds = Array.from(new Set((matchingCategories ?? []).map((category) => category.event_id)));
+    } else if (distance === 'other') {
+      const { data: matchingCategories, error: categoryError } = await admin.from('race_categories').select('event_id,distance_km');
+      if (categoryError) throw new Error('Public event filters could not be loaded');
+      const commonDistances = new Set([3, 5, 10, 21, 42]);
+      distanceEventIds = Array.from(new Set((matchingCategories ?? []).filter((category) => category.distance_km === null || !commonDistances.has(Number(category.distance_km))).map((category) => category.event_id)));
     }
   }
-  let query = (admin as unknown as SupabaseClient).from('event_discovery').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,is_featured', { count: 'exact' });
-  const today = new Date().toISOString().slice(0, 10);
-  if (input.period === 'upcoming') query = query.gte('event_date', today);
-  if (input.period === 'past') query = query.lt('event_date', today);
+  const db = admin as unknown as SupabaseClient;
+  let query = db.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,is_featured,created_at', { count: 'exact' })
+    .in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved');
+  const today = manilaDate(new Date());
+  if (input.period === 'upcoming') query = query.gte('event_date', today).neq('lifecycle_status', 'completed');
+  if (input.period === 'past') query = query.or(`lifecycle_status.eq.completed,event_date.lt.${today}`);
   if (distanceEventIds) {
     if (!distanceEventIds.length) return { events: [], featured: null, page: Math.max(1, input.page ?? 1), pageSize: PAGE_SIZE, total: 0, totalPages: 0 };
     query = query.in('id', distanceEventIds);
   }
   const search = input.search?.trim(); const location = input.location?.trim();
-  if (search) query = query.ilike('name', `%${search.replace(/[%_]/g, '\\$&')}%`);
-  if (location) { const safe = location.replace(/[%_]/g, '\\$&'); query = query.or(`venue.ilike.%${safe}%,address.ilike.%${safe}%`); }
-  if (input.status && ['not_yet_open', 'open', 'closed', 'sold_out'].includes(input.status)) query = query.eq('registration_availability', input.status as 'not_yet_open' | 'open' | 'closed' | 'sold_out');
-  query = query.order(input.sort === 'name' ? 'name' : 'event_date', { ascending: input.sort !== 'date_desc' }).order('name');
+  if (search) {
+    const safe = search.replace(/[%_]/g, '\\$&').replaceAll('"', '\\"');
+    const { data: matchingOrganizations, error: organizationSearchError } = await admin.from('organizations').select('id').ilike('name', `%${search.replace(/[%_]/g, '\\$&')}%`);
+    if (organizationSearchError) throw new Error('Public event search could not be loaded');
+    const organizationIdsForSearch = (matchingOrganizations ?? []).map((organization) => organization.id);
+    const clauses = [`name.ilike."%${safe}%"`, `venue.ilike."%${safe}%"`, `address.ilike."%${safe}%"`];
+    if (organizationIdsForSearch.length) clauses.push(`organization_id.in.(${organizationIdsForSearch.join(',')})`);
+    query = query.or(clauses.join(','));
+  }
+  if (location) { const safe = location.replace(/[%_]/g, '\\$&').replaceAll('"', '\\"'); query = query.or(`venue.ilike."%${safe}%",address.ilike."%${safe}%"`); }
+  if (input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date)) query = query.eq('event_date', input.date);
+  if (input.status === 'sold_out') query = query.eq('registration_availability', 'sold_out');
+  if (input.status === 'open') query = query.eq('registration_availability', 'open').or(`registration_closes_at.is.null,registration_closes_at.gt.${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}`);
+  if (input.status === 'closing_soon') {
+    const now = new Date();
+    const soon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    query = query.eq('registration_availability', 'open').gt('registration_closes_at', now.toISOString()).lte('registration_closes_at', soon.toISOString());
+  }
+  if (input.sort === 'name') query = query.order('name', { ascending: true });
+  else if (input.sort === 'latest') query = query.order('created_at', { ascending: false });
+  else query = query.order('event_date', { ascending: true });
+  query = query.order('name', { ascending: true });
   const page = Math.max(1, input.page ?? 1); query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const { data, count, error } = await query;
   if (error) {

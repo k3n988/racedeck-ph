@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -24,6 +25,9 @@ type Category = {
   registration_fee: number;
   registration_availability: string;
 };
+type KitItem = { id: string; item_name: string; details: unknown; is_required: boolean; is_active: boolean; display_order: number };
+type KitConfig = { id: string; category_id: string | null; name: string; race_kit_items: KitItem[] };
+type MerchandiseOption = { id: string; name: string; description: string | null; unit_price: number; variants: string[]; image_urls: string[]; display_order: number };
 type RegistrationInfo = {
   event: {
     id: string;
@@ -36,6 +40,8 @@ type RegistrationInfo = {
   };
   categories: Category[];
   fields: Field[];
+  kits: KitConfig[];
+  merchandise: MerchandiseOption[];
   waiver: {
     id: string;
     title: string;
@@ -43,6 +49,16 @@ type RegistrationInfo = {
     content: string | null;
   } | null;
 };
+
+function kitDetails(details: unknown) {
+  const value = details && typeof details === "object" && !Array.isArray(details) ? details as Record<string, unknown> : {};
+  return {
+    description: typeof value.description === "string" ? value.description : "",
+    variants: Array.isArray(value.variants) ? value.variants.filter((variant): variant is string => typeof variant === "string") : [],
+    images: Array.isArray(value.product_image_urls) ? value.product_image_urls.filter((url): url is string => typeof url === "string") : [],
+    sizeChart: typeof value.reference_image_url === "string" ? value.reference_image_url : "",
+  };
+}
 
 const peso = (amount: number) => `PHP ${Number(amount).toFixed(2)}`;
 
@@ -171,6 +187,8 @@ export default function RegisterPage({
   const [registrantCount, setRegistrantCount] = useState("1");
   const [promoCode, setPromoCode] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [kitSelections, setKitSelections] = useState<Record<string, string>>({});
+  const [merchandiseSelections, setMerchandiseSelections] = useState<Record<string, { quantity: number; variant: string }>>({});
   const [acceptWaiver, setAcceptWaiver] = useState(false);
   const [message, setMessage] = useState("Loading registration details...");
   const [busy, setBusy] = useState(false);
@@ -224,6 +242,8 @@ export default function RegisterPage({
       body: JSON.stringify({
         category_id: categoryId,
         answers,
+        race_kit_selections: kitSelections,
+        merchandise: Object.entries(merchandiseSelections).filter(([, selection]) => selection.quantity > 0).map(([item_id, selection]) => ({ item_id, quantity: selection.quantity, variant: selection.variant || null })),
         promo_code: promoCode.trim() || undefined,
         accept_waiver: acceptWaiver,
         idempotency_key: idempotencyKey.current,
@@ -264,6 +284,10 @@ export default function RegisterPage({
   const selectedCategory = data.categories.find(
     (category) => category.id === categoryId,
   );
+  const categoryKits = data.kits.filter((kit) => kit.category_id === categoryId);
+  const sharedKits = data.kits.filter((kit) => kit.category_id === null);
+  const selectedKits = (categoryKits.length ? categoryKits : sharedKits).flatMap((kit) => kit.race_kit_items ?? []).filter((item) => item.is_active).sort((a, b) => a.display_order - b.display_order);
+  const merchandiseTotal = data.merchandise.reduce((total, item) => total + item.unit_price * (merchandiseSelections[item.id]?.quantity ?? 0), 0);
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <Link
@@ -337,7 +361,7 @@ export default function RegisterPage({
                       name="category"
                       value={category.id}
                       checked={categoryId === category.id}
-                      onChange={() => setCategoryId(category.id)}
+                      onChange={() => { setCategoryId(category.id); setKitSelections({}); }}
                     />
                     <span className="block font-bold text-slate-900">
                       {category.name}
@@ -349,6 +373,27 @@ export default function RegisterPage({
                 ))}
               </div>
             </section>
+            {selectedKits.length > 0 && <section>
+              <h2 className="text-xl font-bold text-slate-900">Race kit &amp; product options</h2>
+              <p className="mt-1 text-sm text-slate-600">Review the included items and choose your preferred variants.</p>
+              <div className="mt-4 space-y-4">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
+                  {details.variants.length > 0 && <label className="mt-4 block text-sm font-semibold text-slate-800">Choose your option <span className="text-orange-600">*</span><select required value={kitSelections[item.id] ?? ""} onChange={(event) => setKitSelections((current) => ({ ...current, [item.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"><option value="">Select {item.item_name.toLowerCase()} option</option>{details.variants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>}
+                  {details.sizeChart && <a href={details.sizeChart} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-semibold text-orange-700 underline">View size chart</a>}
+                </div>
+                {details.images.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">{details.images.map((image, index) => <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" aria-label={`View ${item.item_name} photo ${index + 1}`}><Image src={image} alt={`${item.item_name} sample ${index + 1}`} width={440} height={224} unoptimized className="h-28 w-full rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
+              </article>; })}</div>
+            </section>}
+            {data.merchandise.length > 0 && <section>
+              <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xl font-bold text-slate-900">Optional additional merchandise</h2><p className="mt-1 text-sm text-slate-600">Available to all categories. These items are paid add-ons, separate from your included race kit.</p></div><span className="text-sm font-bold text-slate-700">Subtotal: {peso(merchandiseTotal)}</span></div>
+              <div className="mt-4 space-y-4">{data.merchandise.map((item) => { const selection = merchandiseSelections[item.id] ?? { quantity: 0, variant: "" }; const variants = item.variants ?? []; const images = item.image_urls ?? []; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+                <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.name}</h3><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800">Optional add-on</span></div>{item.description && <p className="mt-1 text-sm text-slate-600">{item.description}</p>}<p className="mt-2 text-sm font-bold text-[#071b41]">{peso(item.unit_price)} each</p>
+                  {variants.length > 0 && <label className="mt-3 block text-sm font-semibold text-slate-800">Variant {selection.quantity > 0 && <span className="text-orange-600">*</span>}<select required={selection.quantity > 0} value={selection.variant} onChange={(event) => setMerchandiseSelections((current) => ({ ...current, [item.id]: { ...selection, variant: event.target.value } }))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option value="">Select an option</option>{variants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>}
+                  <label className="mt-3 block max-w-48 text-sm font-semibold text-slate-800">Quantity<select value={selection.quantity} onChange={(event) => setMerchandiseSelections((current) => ({ ...current, [item.id]: { ...selection, quantity: Number(event.target.value) } }))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm">{[0, 1, 2, 3, 4, 5].map((quantity) => <option key={quantity} value={quantity}>{quantity === 0 ? "Not adding" : quantity}</option>)}</select></label>
+                </div>
+                {images.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">{images.map((image, index) => <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" aria-label={`View ${item.name} photo ${index + 1}`}><Image src={image} alt={`${item.name} sample ${index + 1}`} width={440} height={224} unoptimized className="h-28 w-full rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
+              </article>; })}</div>
+            </section>}
             <section>
               <h2 className="text-xl font-bold text-slate-900">
                 Personal Information
@@ -638,6 +683,7 @@ export default function RegisterPage({
             payment.
           </p>
           <div className="mt-5 rounded-xl bg-white p-4 text-sm">
+            {selectedCategory && <div className="mb-3 border-b border-slate-100 pb-3"><p className="font-semibold text-slate-900">Order summary</p><div className="mt-2 flex justify-between gap-3 text-slate-600"><span>{selectedCategory.name}</span><span>{peso(selectedCategory.registration_fee)}</span></div>{merchandiseTotal > 0 && <div className="mt-1 flex justify-between gap-3 text-slate-600"><span>Additional merchandise</span><span>{peso(merchandiseTotal)}</span></div>}<div className="mt-2 flex justify-between gap-3 font-bold text-[#071b41]"><span>Subtotal before fees</span><span>{peso(Number(selectedCategory.registration_fee) + merchandiseTotal)}</span></div></div>}
             <p className="font-semibold text-slate-900">What happens next</p>
             <ol className="mt-3 space-y-2 text-slate-600">
               <li>1. Slot is reserved</li>

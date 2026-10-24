@@ -118,3 +118,23 @@ main.mx-auto.max-w-7xl.space-y-7.bg-\[\#f5f7fa\] > header > a {
   right: 1.5rem;
   z-index: 40;
 }
+
+html:has(.events-discovery) {
+  scroll-behavior: smooth;
+}
+
+html:has(.home-hero) {
+  scroll-behavior: smooth;
+}
+
+@keyframes heroFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.events-discovery),
+  html:has(.home-hero) {
+    scroll-behavior: auto;
+  }
+}

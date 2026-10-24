@@ -13,7 +13,7 @@ const sections = (id: string) => [
   { label: 'Categories & Pricing', href: `/organizer/events/${id}/setup/categories-pricing` },
   { label: 'Registration Form', href: `/organizer/events/${id}/setup/registration-form` },
   { label: 'Waiver', href: `/organizer/events/${id}/setup/waiver` },
-  { label: 'Race Kit', href: `/organizer/events/${id}/setup/race-kit-config` },
+  { label: 'Race Kit', href: `/organizer/events/${id}/setup/race-kit-config` },  { label: 'Additional Merchandise', href: `/organizer/events/${id}/setup/merchandise` },
   { label: 'Registrations', href: `/organizer/events/${id}/registrations` },
   { label: 'Bib Management', href: `/organizer/events/${id}/bib-management` },
   { label: 'Kit Claiming', href: `/organizer/events/${id}/race-kit-claiming` },

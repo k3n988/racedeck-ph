@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { ContentEditor } from "@/components/organizer/content-editor";
 import { Check } from "lucide-react";
 
-type KitItem = { name: string; variants: string; referenceImage: UploadValue };
+type KitItem = { name: string; description: string; variants: string[]; productImages: UploadValue[]; referenceImage: UploadValue };
+type MerchandiseItem = { name: string; description: string; unitPrice: string; variants: string[]; images: UploadValue[] };
 type Category = {
   name: string;
   distance: string;
@@ -33,7 +35,8 @@ const steps = [
 const input =
   "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100";
 const emptyUpload = (): UploadValue => ({ url: "", file: null });
-const emptyKitItem = (): KitItem => ({ name: "", variants: "", referenceImage: emptyUpload() });
+const emptyKitItem = (): KitItem => ({ name: "", description: "", variants: [], productImages: [], referenceImage: emptyUpload() });
+const emptyMerchandiseItem = (): MerchandiseItem => ({ name: "", description: "", unitPrice: "", variants: [], images: [] });
 const emptyCategory = (): Category => ({
   name: "",
   distance: "",
@@ -75,14 +78,17 @@ function Upload({
   onChange,
   wide = false,
   multiple = false,
+  onRemove,
 }: {
   label: string;
   value: UploadValue | UploadValue[];
   onChange: (file: File, url: string) => void;
   wide?: boolean;
   multiple?: boolean;
+  onRemove?: (index: number) => void;
 }) {
   const previews = Array.isArray(value) ? value : [value];
+  const containPreview = /chart|guide/i.test(label);
   return (
     <div>
       <label className="block text-sm font-semibold text-slate-700">
@@ -104,16 +110,53 @@ function Upload({
         {previews
           .filter((item) => item.url)
           .map((item, index) => (
-            <img
-              key={`${item.url}-${index}`}
-              src={item.url}
-              alt={`${label} preview ${index + 1}`}
-              className={`rounded-lg border object-cover ${wide ? "aspect-[3/1] w-full" : "h-24 w-24"}`}
-            />
+            <div key={`${item.url}-${index}`} className="relative">
+              <Image src={item.url} alt={`${label} preview ${index + 1}`} width={wide ? 1200 : 96} height={wide ? 400 : 96} unoptimized className={`rounded-lg border ${containPreview ? "bg-slate-50 object-contain" : "object-cover"} ${wide ? "aspect-[3/1] w-full" : "h-24 w-24"}`} />
+              {onRemove && <button type="button" onClick={() => onRemove(index)} aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-bold text-red-600 shadow ring-1 ring-slate-200">×</button>}
+            </div>
           ))}
       </div>
     </div>
   );
+}
+
+function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: (item: KitItem) => void; onRemove: () => void }) {
+  const [variantDraft, setVariantDraft] = useState("");
+  const addVariant = () => {
+    const variant = variantDraft.trim();
+    if (!variant || item.variants.some((value) => value.toLowerCase() === variant.toLowerCase())) return;
+    onChange({ ...item, variants: [...item.variants, variant] });
+    setVariantDraft("");
+  };
+  return <article className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="mb-3 flex items-center justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Product or inclusion</h4><p className="text-xs text-slate-500">Add its available options, photos, and size guide.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
+    <div className="grid gap-3 md:grid-cols-2">
+      <label className="block text-sm font-semibold text-slate-700">Product name<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder="e.g. Race singlet" className={input} /></label>
+      <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="e.g. Moisture-wicking race singlet" className={input} /></label>
+    </div>
+    <div className="mt-4">
+      <label className="block text-sm font-semibold text-slate-700">Available variants <span className="font-normal text-slate-400">(sizes, colors, or other options)</span></label>
+      <div className="mt-2 flex flex-wrap gap-2">{item.variants.map((variant) => <span key={variant} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-800">{variant}<button type="button" onClick={() => onChange({ ...item, variants: item.variants.filter((value) => value !== variant) })} className="ml-1 text-orange-700" aria-label={`Remove ${variant}`}>×</button></span>)}</div>
+      <div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
+    </div>
+    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <Upload label="Product photos (front, back, details)" value={item.productImages} multiple onChange={(file, url) => onChange({ ...item, productImages: [...item.productImages, { file, url }] })} onRemove={(imageIndex) => { const image = item.productImages[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, productImages: item.productImages.filter((_, index) => index !== imageIndex) }); }} />
+      <Upload label="Size chart or reference guide" value={item.referenceImage} onChange={(file, url) => onChange({ ...item, referenceImage: { file, url } })} />
+    </div>
+    <p className="mt-2 text-xs text-slate-500">Use JPG, PNG, or WEBP images up to 10 MB each. Variants and images will be shown with the event race kit.</p>
+  </article>;
+}
+
+function MerchandiseEditor({ item, onChange, onRemove }: { item: MerchandiseItem; onChange: (item: MerchandiseItem) => void; onRemove: () => void }) {
+  const [variantDraft, setVariantDraft] = useState("");
+  const addVariant = () => { const variant = variantDraft.trim(); if (!variant || item.variants.some((value) => value.toLowerCase() === variant.toLowerCase())) return; onChange({ ...item, variants: [...item.variants, variant] }); setVariantDraft(""); };
+  return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex items-start justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Additional merchandise</h4><p className="text-xs text-slate-500">Optional paid add-on available to every category.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
+    <div className="mt-3 grid gap-3 md:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Product name<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder="e.g. Event finisher shirt" className={input} /></label><label className="block text-sm font-semibold text-slate-700">Price (PHP)<input type="number" min="0.01" step="0.01" value={item.unitPrice} onChange={(event) => onChange({ ...item, unitPrice: event.target.value })} placeholder="450.00" className={input} /></label></div>
+    <label className="mt-3 block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="A limited edition event shirt" className={input} /></label>
+    <div className="mt-3"><label className="block text-sm font-semibold text-slate-700">Variants <span className="font-normal text-slate-400">(optional, e.g. size or color)</span></label><div className="mt-2 flex flex-wrap gap-2">{item.variants.map((variant) => <span key={variant} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-800">{variant}<button type="button" onClick={() => onChange({ ...item, variants: item.variants.filter((value) => value !== variant) })} aria-label={`Remove ${variant}`} className="ml-1 text-orange-700">×</button></span>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add option, e.g. Medium" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
+    <div className="mt-4"><Upload label="Merchandise photos" value={item.images} multiple onChange={(file, url) => onChange({ ...item, images: [...item.images, { file, url }] })} onRemove={(imageIndex) => { const image = item.images[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, images: item.images.filter((_, index) => index !== imageIndex) }); }} /></div>
+  </article>;
 }
 
 export default function CreateEventPage() {
@@ -149,6 +192,7 @@ export default function CreateEventPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [sameKit, setSameKit] = useState(false);
   const [sharedKit, setSharedKit] = useState<KitItem[]>([emptyKitItem()]);
+  const [merchandise, setMerchandise] = useState<MerchandiseItem[]>([]);
   const [posters, setPosters] = useState<UploadValue[]>([]);
   const [eventPages, setEventPages] = useState<EventPage[]>([
     {
@@ -213,10 +257,16 @@ export default function CreateEventPage() {
       ),
     [categories],
   );
+  const categoriesReady = categories.length > 0 && categories.every((category) =>
+    category.name.trim() && Number.isFinite(Number(category.distance)) && Number(category.distance) > 0 &&
+    Number.isInteger(Number(category.capacity)) && Number(category.capacity) > 0 &&
+    Number.isFinite(Number(category.fee)) && Number(category.fee) >= 0,
+  );
   const missing = [
     !form.name.trim() && "event name",
     !form.eventDate && "event date",
     !form.facebook.trim() && "Facebook link",
+    !categoriesReady && "at least one complete race category",
   ].filter(Boolean) as string[];
   const ready = missing.length === 0;
   const fieldCompletedSteps = [
@@ -240,7 +290,7 @@ export default function CreateEventPage() {
 
   async function uploadAsset(
     eventId: string,
-    kind: "logo" | "banner" | "poster" | "sponsor_logo" | "size_chart",
+    kind: "logo" | "banner" | "poster" | "sponsor_logo" | "size_chart" | "race_kit_image" | "merchandise",
     file: File,
   ) {
     const data = new FormData();
@@ -268,6 +318,7 @@ export default function CreateEventPage() {
       const referenceImageUrl = item.referenceImage.file
         ? await uploadAsset(eventId, "size_chart", item.referenceImage.file)
         : item.referenceImage.url || null;
+      const productImageUrls = await Promise.all(item.productImages.map((image) => image.file ? uploadAsset(eventId, "race_kit_image", image.file) : image.url));
       const response = await fetch(`/api/organizer/events/${eventId}/race-kit-config/${config.id}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -275,7 +326,7 @@ export default function CreateEventPage() {
           item_code: `${categoryId ?? "shared"}-${index + 1}-${itemName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
           item_name: itemName,
           quantity: 1,
-          details: { variants: item.variants.split(",").map((variant) => variant.trim()).filter(Boolean), reference_image_url: referenceImageUrl },
+          details: { description: item.description.trim() || null, variants: item.variants, product_image_urls: productImageUrls, reference_image_url: referenceImageUrl },
           is_required: true,
           is_active: true,
           display_order: index,
@@ -292,6 +343,21 @@ export default function CreateEventPage() {
     if (!ready) {
       setMessage(`Complete the required ${missing.join(" and ")} first.`);
       setStep(missing.includes("event date") ? 1 : 0);
+      return;
+    }
+    const incompleteMerchandise = merchandise.some((item) => {
+      const started = item.name.trim() || item.description.trim() || item.unitPrice.trim() || item.variants.length || item.images.length;
+      return Boolean(started && (!item.name.trim() || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 || item.variants.length > 40 || item.images.length > 8));
+    });
+    if (incompleteMerchandise) {
+      setMessage("Finish each additional merchandise item with a name and positive price (up to 40 variants and 8 photos), or remove the empty item.");
+      setStep(2);
+      return;
+    }
+    const incompleteKit = [...sharedKit, ...categories.flatMap((category) => category.kitItems)].some((item) => item.name.trim() && (item.variants.length > 40 || item.productImages.length > 8));
+    if (incompleteKit) {
+      setMessage("Each race-kit item supports up to 40 variants and 8 product photos.");
+      setStep(2);
       return;
     }
     setBusy(true);
@@ -378,6 +444,12 @@ export default function CreateEventPage() {
       }
       const sharedItems = sharedKit.filter((item) => item.name.trim());
       if (sameKit && sharedItems.length) await saveKit(eventId, null, "Shared Race Kit", sharedItems);
+      for (const [index, item] of Array.from(merchandise.filter((entry) => entry.name.trim()).entries())) {
+        const imageUrls = await Promise.all(item.images.map((image) => image.file ? uploadAsset(eventId, "merchandise", image.file) : image.url));
+        const saved = await fetch(`/api/organizer/events/${eventId}/merchandise`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: item.name.trim(), description: item.description.trim() || null, unit_price: Number(item.unitPrice), variants: item.variants, image_urls: imageUrls, display_order: index }) });
+        const savedBody = await saved.json().catch(() => ({}));
+        if (!saved.ok) throw new Error(savedBody.error ?? "Additional merchandise could not be saved.");
+      }
       if (form.logo.file) await uploadAsset(eventId, "logo", form.logo.file);
       if (form.banner.file)
         await uploadAsset(eventId, "banner", form.banner.file);
@@ -597,46 +669,15 @@ export default function CreateEventPage() {
               </label>
               {sameKit && (
                 <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-                  <h3 className="font-bold text-[#071b41]">
-                    Shared Race Kit / Inclusions
-                  </h3>
-                  {sharedKit.map((item, index) => (
-                    <div key={index} className="mt-3 grid gap-2 rounded-lg border border-orange-200 bg-white p-3 sm:grid-cols-[1fr_1fr_auto]">
-                      <input
-                        value={item.name}
-                        onChange={(event) =>
-                          setSharedKit((current) =>
-                            current.map((value, itemIndex) =>
-                              itemIndex === index ? { ...value, name: event.target.value } : value,
-                            ),
-                          )
-                        }
-                        placeholder="Item name (e.g. Singlet)"
-                        className={input}
-                      />
-                      <input value={item.variants} onChange={(event) => setSharedKit((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, variants: event.target.value } : value))} placeholder="Variants (e.g. XXS, XS, S, M, L)" className={input} />
-                      <Upload label="Reference size chart" value={item.referenceImage} onChange={(file, url) => setSharedKit((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, referenceImage: { file, url } } : value))} />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSharedKit((current) =>
-                            current.filter(
-                              (_, itemIndex) => itemIndex !== index,
-                            ),
-                          )
-                        }
-                        className="text-sm font-bold text-red-600"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                  <h3 className="font-bold text-[#071b41]">Shared race kit products &amp; inclusions</h3>
+                  <p className="mt-1 text-sm text-slate-600">These items apply to every category. Add sample photos and variant choices so runners know what they will receive.</p>
+                  {sharedKit.map((item, index) => <KitItemEditor key={index} item={item} onChange={(value) => setSharedKit((current) => current.map((entry, itemIndex) => itemIndex === index ? value : entry))} onRemove={() => setSharedKit((current) => current.filter((_, itemIndex) => itemIndex !== index))} />)}
                   <button
                     type="button"
                     onClick={() => setSharedKit((current) => [...current, emptyKitItem()])}
                     className="mt-3 rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700"
                   >
-                    + Add kit item
+                    + Add product or inclusion
                   </button>
                 </div>
               )}
@@ -707,56 +748,10 @@ export default function CreateEventPage() {
                     />
                   </div>
                   {!sameKit && (
-                    <div className="mt-4 rounded-lg bg-slate-50 p-4">
-                      <h3 className="font-bold text-[#071b41]">
-                        Race Kit / Inclusions
-                      </h3>
-                      {category.kitItems.map((item, itemIndex) => (
-                        <div key={itemIndex} className="mt-3 grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_1fr_auto]">
-                          <input
-                            value={item.name}
-                            onChange={(event) =>
-                              setCategories((current) =>
-                                current.map((entry, categoryIndex) =>
-                                  categoryIndex === index
-                                    ? {
-                                        ...entry,
-                                        kitItems: entry.kitItems.map(
-                                          (kit, kitIndex) => kitIndex === itemIndex ? { ...kit, name: event.target.value } : kit,
-                                        ),
-                                      }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            placeholder="Item name (e.g. Singlet)"
-                            className={input}
-                          />
-                          <input value={item.variants} onChange={(event) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? { ...kit, variants: event.target.value } : kit) } : entry))} placeholder="Variants (e.g. XXS, XS, S, M, L)" className={input} />
-                          <Upload label="Reference size chart" value={item.referenceImage} onChange={(file, url) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? { ...kit, referenceImage: { file, url } } : kit) } : entry))} />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCategories((current) =>
-                                current.map((entry, categoryIndex) =>
-                                  categoryIndex === index
-                                    ? {
-                                        ...entry,
-                                        kitItems: entry.kitItems.filter(
-                                          (_, kitIndex) =>
-                                            kitIndex !== itemIndex,
-                                        ),
-                                      }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            className="text-sm font-bold text-red-600"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+                    <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/60 p-4">
+                      <h3 className="font-bold text-[#071b41]">Race kit products &amp; inclusions</h3>
+                      <p className="mt-1 text-sm text-slate-600">Add products such as a singlet or finisher shirt, their available variants, and photos or a size chart.</p>
+                      {category.kitItems.map((item, itemIndex) => <KitItemEditor key={itemIndex} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
                       <button
                         type="button"
                         onClick={() =>
@@ -773,7 +768,7 @@ export default function CreateEventPage() {
                         }
                         className="mt-3 rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700"
                       >
-                        + Add kit item
+                        + Add product or inclusion
                       </button>
                     </div>
                   )}
@@ -799,6 +794,10 @@ export default function CreateEventPage() {
               >
                 + Add another category
               </button>
+              <section className="rounded-xl border border-orange-200 bg-orange-50/60 p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black text-[#071b41]">Additional merchandise</h3><p className="mt-1 max-w-2xl text-sm text-slate-600">Optional paid products sold separately from each category’s included race kit. Runners can add these during registration.</p></div><button type="button" onClick={() => setMerchandise((current) => [...current, emptyMerchandiseItem()])} className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white hover:bg-orange-700">+ Add merchandise</button></div>
+                {merchandise.length === 0 ? <div className="mt-4 rounded-lg border border-dashed border-orange-200 bg-white p-5 text-center text-sm text-slate-500">No additional merchandise. Your category inclusions remain unchanged.</div> : <div className="mt-4 space-y-3">{merchandise.map((item, index) => <MerchandiseEditor key={index} item={item} onChange={(value) => setMerchandise((current) => current.map((entry, itemIndex) => itemIndex === index ? value : entry))} onRemove={() => setMerchandise((current) => current.filter((_, itemIndex) => itemIndex !== index))} />)}</div>}
+              </section>
             </div>
           )}
           {step === 3 && (

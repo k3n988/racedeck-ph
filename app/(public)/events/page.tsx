@@ -1,25 +1,172 @@
 import Link from 'next/link';
+import { CalendarDays, MapPin } from 'lucide-react';
 import { getPublicEvents, type PublicEventCard } from '@/lib/public/events';
 
 export const dynamic = 'force-dynamic';
-const statusLabel = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
-const formatDate = (value: string) => { const date = new Date(value.includes('T') ? value : `${value}T00:00:00`); return Number.isNaN(date.getTime()) ? 'Date to be announced' : new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(date); };
-function DateBadge({ value }: { value: string }) { const date = new Date(`${value.slice(0, 10)}T00:00:00`); if (Number.isNaN(date.getTime())) return null; return <div className="absolute left-3 top-3 z-10 w-12 overflow-hidden rounded-lg bg-white text-center shadow-lg ring-1 ring-slate-900/10"><p className="bg-orange-600 px-1 py-1 text-[10px] font-black uppercase tracking-wide text-white">{new Intl.DateTimeFormat('en-PH', { month: 'short' }).format(date)}</p><p className="py-1 text-xl font-black leading-none text-[#071b41]">{date.getDate()}</p></div>; }
-const eventHref = (event: PublicEventCard) => `/events/${event.slug}`;
-function StatusPill({ status }: { status: string }) { const color = status === 'open' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : status === 'sold_out' ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-slate-100 text-slate-700 ring-slate-200'; return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${color}`}>{statusLabel(status)}</span>; }
-function EventVisual({ event, featured = false }: { event: PublicEventCard; featured?: boolean }) { return <div className={`relative overflow-hidden bg-slate-900 ${featured ? 'h-60 md:h-72' : 'h-56 sm:h-64'}`}>{event.banner_url ? <img src={event.banner_url} alt={`${event.name} banner`} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-br from-slate-950 via-slate-800 to-orange-700" />}<DateBadge value={event.event_date} /><div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/10 to-transparent" /><div className="absolute inset-x-0 bottom-0 p-5 text-white"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200">{featured ? 'Featured race' : event.organizer?.name ?? 'RaceDeck event'}</p><h2 className={featured ? 'mt-1 text-3xl font-bold md:text-4xl' : 'mt-1 text-2xl font-bold'}>{event.name}</h2></div></div>; }
-export default async function EventsPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
-  const get = (key: string) => { const value = searchParams[key]; return Array.isArray(value) ? value[0] : value; };
-  const periodValue = get('period'); const period = periodValue === 'upcoming' || periodValue === 'past' ? periodValue : 'all'; const page = Number(get('page') ?? '1');
+
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const FILTER_KEYS = ['search', 'location', 'date', 'distance', 'status', 'sort', 'period'];
+
+function periodHref(period: string, values: Record<string, string | undefined>) {
+  const query = new URLSearchParams();
+  for (const key of FILTER_KEYS) if (key !== 'period' && values[key]) query.set(key, values[key]!);
+  query.set('period', period);
+  return `/events?${query}#all-events`;
+}
+
+function displayDate(value: string) {
+  const date = new Date(`${value.slice(0, 10)}T00:00:00+08:00`);
+  return Number.isNaN(date.getTime())
+    ? 'Date to be announced'
+    : new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }).format(date);
+}
+
+function EventCard({ event }: { event: PublicEventCard }) {
+  const status = event.registration_availability;
+  const statusStyle = status === 'open'
+    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+    : status === 'closing_soon'
+      ? 'bg-orange-50 text-orange-700 ring-orange-200'
+      : status === 'sold_out'
+        ? 'bg-slate-100 text-slate-600 ring-slate-200'
+        : 'bg-slate-100 text-slate-600 ring-slate-200';
+  const statusText = status === 'closing_soon'
+    ? 'Closing Soon'
+    : status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const location = event.venue ?? event.address ?? 'Location to be announced';
+  const distances = Array.from(new Set(event.distances));
+
+  return (
+    <article className="group h-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2">
+      <Link href={`/events/${event.slug}`} className="flex h-full flex-col rounded-2xl focus:outline-none">
+        <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-[#071b41] via-[#163c70] to-orange-600">
+          {event.banner_url ? (
+            <img src={event.banner_url} alt={`${event.name} event poster`} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+          ) : (
+            <div className="flex h-full items-end bg-[radial-gradient(circle_at_82%_20%,rgba(249,115,22,.5),transparent_28%),linear-gradient(130deg,#071b41,#163c70_70%,#a9441b)] p-5">
+              <span className="text-xs font-bold uppercase tracking-[0.18em] text-orange-200">RaceDeck PH</span>
+            </div>
+          )}
+          <span className={`absolute right-3 top-3 inline-flex rounded-full px-3 py-1.5 text-xs font-bold ring-1 ring-inset ${statusStyle}`}>{statusText}</span>
+        </div>
+        <div className="flex flex-1 flex-col p-5">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="line-clamp-2 min-w-0 flex-1 break-words text-lg font-bold leading-snug text-[#0a234b] transition group-hover:text-orange-700">{event.name}</h3>
+            <span className="shrink-0 rounded-xl bg-orange-50 px-2.5 py-1.5 text-center text-xs font-bold text-orange-700 ring-1 ring-inset ring-orange-100">
+              {displayDate(event.event_date)}
+            </span>
+          </div>
+          <p className="mt-3 flex items-start gap-2 text-sm leading-5 text-slate-600">
+            <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-orange-600" />
+            <span className="line-clamp-2">{location}</span>
+          </p>
+          <p className="mt-2 text-xs font-medium text-slate-500">{event.organizer?.name ?? 'RaceDeck event'}</p>
+          <div className="mt-4 flex min-h-7 flex-wrap gap-2">
+            {distances.length ? distances.map((distance) => (
+              <span key={distance} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{distance}K</span>
+            )) : <span className="text-xs text-slate-500">Race categories to be announced</span>}
+          </div>
+          <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <span className="text-sm font-bold text-[#0a234b]">{event.starting_registration_fee !== null ? `From ₱${event.starting_registration_fee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : 'View event details'}</span>
+            <span className="inline-flex items-center rounded-lg bg-orange-600 px-3.5 py-2.5 text-sm font-bold text-white transition group-hover:bg-orange-700">View Details <span aria-hidden="true" className="ml-1">→</span></span>
+          </div>
+        </div>
+      </Link>
+    </article>
+  );
+}
+
+function PeriodTabs({ period, values }: { period: string; values: Record<string, string | undefined> }) {
+  const tabs = [
+    { value: 'upcoming', label: 'Upcoming Events' },
+    { value: 'past', label: 'Past Events' },
+    { value: 'all', label: 'All Events' },
+  ];
+  return (
+    <nav aria-label="Event periods" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
+      {tabs.map((tab) => (
+        <Link key={tab.value} href={periodHref(tab.value, values)} aria-current={period === tab.value ? 'page' : undefined} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition sm:px-4 ${period === tab.value ? 'bg-[#0a2957] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-[#0a2957]'}`}>
+          {tab.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+export default async function EventsPage({ searchParams }: { searchParams: SearchParams }) {
+  const get = (key: string) => {
+    const value = searchParams[key];
+    return Array.isArray(value) ? value[0] : value;
+  };
+  const periodValue = get('period');
+  const period = periodValue === 'past' || periodValue === 'upcoming' ? periodValue : 'all';
+  const page = Number(get('page') ?? '1');
+  const values = Object.fromEntries(FILTER_KEYS.map((key) => [key, get(key)])) as Record<string, string | undefined>;
   let eventsUnavailable = false;
-  const data = await getPublicEvents({ search: get('search'), location: get('location'), distance: get('distance'), status: get('status'), sort: get('sort'), period, page: Number.isFinite(page) ? page : 1 }).catch(() => {
+  const data = await getPublicEvents({
+    search: values.search,
+    location: values.location,
+    date: values.date,
+    distance: values.distance,
+    status: values.status,
+    sort: values.sort,
+    period,
+    page: Number.isFinite(page) ? page : 1,
+  }).catch(() => {
     eventsUnavailable = true;
     return { events: [] as PublicEventCard[], featured: null, page: 1, pageSize: 12, total: 0, totalPages: 0 };
   });
-  const paginationHref = (next: number) => { const query = new URLSearchParams(); for (const key of ['search', 'location', 'distance', 'status', 'sort', 'period']) { const value = get(key); if (value) query.set(key, value); } query.set('page', String(next)); return `/events?${query}`; };
-  const listingTitle = period === 'upcoming' ? 'Upcoming Events' : period === 'past' ? 'Past Events' : 'All Events';
-  return <main className="mx-auto -mt-4 max-w-7xl space-y-3 px-4 pb-1 pt-0 sm:px-6"><header className="flex flex-wrap items-end justify-between gap-4"><div className="space-y-2"><p className="text-sm font-semibold uppercase tracking-[0.16em] text-orange-600">Find your next finish line</p><h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Events</h1><p className="max-w-2xl text-slate-600">Discover verified RaceDeck events, compare categories, and view full race details before you register.</p></div><form method="get" className="flex items-center gap-3"><label htmlFor="event-period" className="text-sm font-semibold text-slate-700">Show</label><select id="event-period" name="period" defaultValue={period} onChange={(event) => event.currentTarget.form?.submit()} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"><option value="all">All Events</option><option value="upcoming">Upcoming Events</option><option value="past">Past Events</option></select></form></header>{eventsUnavailable && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Events are temporarily unavailable because RaceDeck could not connect to its data service. Please try again later.</p>}
-  <section className="grid gap-0 lg:grid-cols-[260px_1fr]"><aside className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><h2 className="text-lg font-bold text-slate-900">Upcoming Events</h2><p className="mt-1 text-sm text-slate-600">Browse races happening soon.</p><div className="mt-5 space-y-3">{data.events.slice(0, 4).map(event => <Link key={event.id} href={eventHref(event)} className="block rounded-xl bg-white p-3 transition hover:bg-orange-50 hover:text-orange-700"><span className="block text-sm font-semibold">{event.name}</span><span className="mt-1 block text-xs text-slate-500">{formatDate(event.event_date)}</span></Link>)}</div><Link href="#all-events" className="mt-5 inline-block text-sm font-semibold text-orange-600 hover:text-orange-700">Browse events →</Link></aside><div>{data.featured ? <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><Link href={eventHref(data.featured)} className="block focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"><EventVisual event={data.featured} featured /><div className="flex flex-wrap items-center justify-between gap-4 p-5"><div className="text-sm text-slate-600"><span>{formatDate(data.featured.event_date)}</span><span className="mx-2">•</span><span>{data.featured.venue ?? data.featured.address ?? 'Location to be announced'}</span></div><div className="flex gap-2"><span className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">View Details</span><span className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-semibold text-white">Register Now →</span></div></div></Link></article> : <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-600">No featured event is available yet.</div>}</div></section>
-  <section id="all-events"><div className="mb-5 flex items-end justify-between gap-4"><div><h2 className="text-2xl font-bold text-slate-900">{listingTitle}</h2><p className="mt-1 text-sm text-slate-600">Find your next race. Challenge yourself and enjoy the journey.</p></div><span className="text-sm text-slate-500">{data.total} event{data.total === 1 ? '' : 's'}</span></div>{data.events.length ? <div className="grid gap-8 sm:grid-cols-2">{data.events.map(event => <article key={event.id} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><Link href={eventHref(event)} className="block h-full focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-inset"><EventVisual event={event} /><div className="space-y-4 p-6"><div className="flex items-start justify-between gap-3"><div><p className="text-sm text-slate-500">{formatDate(event.event_date)}</p><p className="mt-1 text-base text-slate-600">{event.venue ?? event.address ?? 'Location to be announced'}</p></div><StatusPill status={event.registration_availability} /></div><div className="flex flex-wrap gap-2">{event.distances.length ? event.distances.map(distance => <span key={distance} className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-700">{distance}K</span>) : <span className="text-sm text-slate-500">Categories to be announced</span>}</div>{event.registration_closes_at && <p className="text-sm text-slate-500">Registration closes {formatDate(event.registration_closes_at)}</p>}{event.starting_registration_fee !== null && <p className="text-base font-semibold text-slate-900">From ₱{event.starting_registration_fee.toFixed(2)}</p>}<div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4"><span className="text-base font-semibold text-slate-700">View Details</span><span className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white">Register Now →</span></div></div></Link></article>)}</div> : <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600">No events match this selection.</p>}</section>
-  <nav className="flex items-center gap-4 text-sm font-semibold text-slate-700">{data.page > 1 && <Link href={paginationHref(data.page - 1)} className="rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50">Previous</Link>}{data.page < data.totalPages && <Link href={paginationHref(data.page + 1)} className="rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50">Next</Link>}</nav></main>;
+  const activeFilters = FILTER_KEYS.some((key) => key !== 'period' && key !== 'sort' && Boolean(values[key]));
+  const clearHref = `/events?period=${period}#all-events`;
+  const paginationHref = (next: number) => {
+    const query = new URLSearchParams();
+    for (const key of FILTER_KEYS) if (values[key]) query.set(key, values[key]!);
+    query.set('page', String(next));
+    return `/events?${query}#all-events`;
+  };
+  return (
+    <main className="events-discovery mx-auto max-w-7xl space-y-8 px-4 pb-14 pt-5 sm:px-6 lg:pt-7">
+      <section className="relative overflow-hidden rounded-2xl bg-[#071b41] shadow-sm">
+        <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_82%_12%,rgba(249,115,22,.38),transparent_25%),linear-gradient(112deg,#071b41,#103469_70%,#8c3e24)]" />
+        <div className="relative max-w-3xl px-6 py-7 text-white sm:px-9 sm:py-9">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200">RaceDeck PH</p>
+          <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Find your next race.</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-100 sm:text-base">Discover upcoming runs, explore exciting events, and register for your next challenge.</p>
+          <a href="#all-events" className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-orange-600">Browse Events <span aria-hidden="true" className="ml-2">→</span></a>
+        </div>
+      </section>
+
+      {eventsUnavailable && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Events are temporarily unavailable. Please try again later.</p>}
+
+      <section id="all-events" aria-labelledby="events-heading" className="scroll-mt-24 space-y-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 id="events-heading" className="text-2xl font-bold tracking-tight text-[#0a234b] sm:text-3xl">Explore {period === 'past' ? 'Past' : period === 'upcoming' ? 'Upcoming' : 'All'} Events</h2>
+            <p className="mt-1 text-sm text-slate-600">Find your next race. Challenge yourself and enjoy the journey.</p>
+          </div>
+          <PeriodTabs period={period} values={values} />
+        </div>
+
+        {data.events.length ? (
+          <div className="grid items-stretch gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {data.events.map((event) => <EventCard key={event.id} event={event} />)}
+          </div>
+        ) : !eventsUnavailable ? (
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-9 text-center shadow-sm sm:py-11">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-600"><CalendarDays aria-hidden="true" className="h-6 w-6" /></span>
+            <h3 className="mt-4 text-lg font-bold text-[#0a234b]">{activeFilters ? 'No matching events found' : period === 'past' ? 'No past events yet' : 'No upcoming events yet'}</h3>
+            <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-600">{activeFilters ? 'Try changing your search or filters to find a race.' : 'New races are coming soon. Check back for upcoming events on RaceDeck PH.'}</p>
+            {activeFilters && <Link href={clearHref} className="mt-4 inline-flex min-h-10 items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500">Clear filters</Link>}
+          </div>
+        ) : null}
+
+        {data.totalPages > 1 && <nav aria-label="Event pages" className="flex items-center justify-center gap-3 pt-2 text-sm font-semibold">
+          {data.page > 1 && <Link href={paginationHref(data.page - 1)} className="min-h-10 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-slate-700 hover:bg-slate-50">Previous</Link>}
+          <span className="text-slate-500">Page {data.page} of {data.totalPages}</span>
+          {data.page < data.totalPages && <Link href={paginationHref(data.page + 1)} className="min-h-10 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-slate-700 hover:bg-slate-50">Next</Link>}
+        </nav>}
+      </section>
+    </main>
+  );
 }

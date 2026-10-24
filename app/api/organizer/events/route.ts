@@ -9,15 +9,26 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const search = params.get('search')?.trim();
     const lifecycleStatus = params.get('lifecycle_status')?.trim();
+    const eventId = params.get('eventId')?.trim();
+    const from = params.get('from');
+    const to = params.get('to');
     let query = auth.admin
       .from('events')
       .select(EVENT_FIELDS, { count: 'exact' })
       .eq('organization_id', auth.membership.organization_id)
       .order('event_date', { ascending: true });
 
+    if (auth.membership.restricted_event_ids) query = query.in('id', auth.membership.restricted_event_ids);
     if (search) query = query.ilike('name', `%${search.replace(/[%_]/g, '\\$&')}%`);
-    if (lifecycleStatus && ['draft', 'published', 'ongoing', 'completed', 'cancelled', 'archived'].includes(lifecycleStatus)) query = query.eq('lifecycle_status', lifecycleStatus as 'draft' | 'published' | 'ongoing' | 'completed' | 'cancelled' | 'archived');
-
+    if (eventId) query = query.eq('id', eventId);
+    const allowedStatuses = ['draft', 'published', 'ongoing', 'completed', 'cancelled', 'archived'];
+    const lifecycleStatuses = lifecycleStatus?.split(',').map((status) => status.trim()).filter((status) => allowedStatuses.includes(status));
+    if (lifecycleStatuses?.length === 1) query = query.eq('lifecycle_status', lifecycleStatuses[0] as never);
+    else if (lifecycleStatuses && lifecycleStatuses.length > 1) query = query.in('lifecycle_status', lifecycleStatuses as never);
+    const fromTime = from ? Date.parse(from) : Number.NaN;
+    const toTime = to ? Date.parse(to) : Number.NaN;
+    if (Number.isFinite(fromTime)) query = query.gte('created_at', new Date(fromTime).toISOString());
+    if (Number.isFinite(toTime)) query = query.lte('created_at', new Date(toTime).toISOString());
     const { data: events, count, error } = await query;
     if (error) return errorResponse(error, 'Organizer events query');
 
