@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { effectiveAvailability } from '@/lib/public/events';
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const supabase = await createClient();
@@ -10,5 +11,5 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     supabase.from('event_registration_fields').select('id,label,field_type,is_required,display_order,event_registration_field_options(id,label,value,display_order)').eq('event_id', params.eventId).eq('is_active', true).order('display_order'),
     supabase.from('event_waivers').select('id,title,version,content,content_storage_reference,effective_at').eq('event_id', params.eventId).eq('status', 'published').maybeSingle(),
   ]);
-  return NextResponse.json({ event, categories: categories ?? [], fields: fields ?? [], waiver: waiver ?? null });
+  return NextResponse.json({ event: { ...event, registration_availability: effectiveAvailability(event) }, categories: categories ?? [], fields: fields ?? [], waiver: waiver ?? null });
 }

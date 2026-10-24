@@ -4122,6 +4122,7 @@ export type Database = {
         Returns: boolean
       }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
+      publish_event: { Args: { p_event_id: string }; Returns: string }
       redeem_promo_code: {
         Args: {
           p_category_id: string
@@ -4142,6 +4143,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      review_event: {
+        Args: {
+          p_event_id: string
+          p_decision: Database["public"]["Enums"]["event_review_status"]
+          p_feedback?: string | null
+        }
+        Returns: string
+      }
       reserve_registration_slot: {
         Args: {
           p_category_id: string
@@ -4156,6 +4165,7 @@ export type Database = {
         Args: { p_payment_id: string; p_registration_id: string }
         Returns: boolean
       }
+      submit_event_for_review: { Args: { p_event_id: string }; Returns: string }
       verify_certificate: {
         Args: { p_verification_token: string }
         Returns: {

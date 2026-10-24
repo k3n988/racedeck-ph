@@ -1,18 +1,15 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { hasPermission, loadAuthContext } from '@/lib/auth/permissions';
+import { requireOrganizerPermission } from '@/lib/auth/organizer-access';
 import { createClient } from '@/lib/supabase/server';
 
 const availability = z.enum(['not_yet_open', 'open', 'closed', 'sold_out']);
 const categorySchema = z.object({ name: z.string().trim().min(1).max(120), distance_km: z.number().finite().nonnegative().max(9999.99).nullable(), registration_fee: z.number().finite().nonnegative().max(99999999.99), max_slots: z.number().int().nonnegative().max(2147483647).nullable(), gun_start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/).nullable(), cutoff_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/).nullable(), registration_availability: availability });
 
 async function access(eventId: string, permission: 'view_events' | 'edit_events') {
-  const context = await loadAuthContext(); if (!context) return { response: NextResponse.json({ error: 'Authentication required' }, { status: 401 }) } as const;
-  const membership = context.memberships[0]; if (!membership) return { response: NextResponse.json({ error: 'Organization access required' }, { status: 403 }) } as const;
-  if (!(await hasPermission(membership.organization_id, permission, eventId))) return { response: NextResponse.json({ error: 'You do not have access to this event' }, { status: 403 }) } as const;
-  const supabase = await createClient(); const { data: event } = await supabase.from('events').select('id,organization_id').eq('id', eventId).eq('organization_id', membership.organization_id).maybeSingle();
-  if (!event) return { response: NextResponse.json({ error: 'Event not found' }, { status: 404 }) } as const;
-  return { context, membership, supabase } as const;
+  const auth = await requireOrganizerPermission(permission, eventId);
+  if ('response' in auth) return { response: auth.response } as const;
+  return { ...auth, supabase: await createClient() } as const;
 }
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {

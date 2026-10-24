@@ -2,7 +2,17 @@
 
 This document is the official development progress tracker for RaceDeck PH. It records the current implementation state, validation status, and remaining work before production launch.
 
-Last updated: 2026-09-12
+Last updated: 2026-10-24
+
+### Organizer event approval and production flow (2026-10-24)
+
+- Event creation now saves a draft. Organizers submit a configured draft for RaceDeck review, admins approve/request changes/reject, and organizers publish only approved drafts.
+- The forward-only `20261024000000_event_approval_workflow.sql` migration owns these transitions, records review/status history, writes audit records, and creates in-app review notifications. It removes direct event writes from ordinary authenticated clients and locks key draft configuration while review is pending or approved. A database guard also locks reviewed event details against privileged upload races.
+- The organizer event list opens the authenticated draft preview; the create form restores poster uploads, creates a shared kit once, uses Philippine time for registration dates, and links to a saved draft if later setup fails.
+- Event access checks now resolve the event's organization before choosing a membership. Organizer settings no longer offer admin-controlled featured placement.
+- The admin review queue now filters pending events and shows a submission checklist before review actions. Review decisions reach organization owners through in-app notifications. Published events keep an open base status while the public discovery view, registration page, checkout route, and database slot-hold guard enforce opening and closing dates; a manual closed status stays closed.
+- TypeScript and the production Next.js build pass. Existing image and hook lint warnings remain. The new migration and end-to-end review/publish flow still require validation against a running Supabase database before deployment; local Docker was unavailable during this pass.
+- Review decision email delivery was not added. Automatic approval review rejected sending that feedback externally without specific authorization; the decision remains available in the authenticated organizer portal and in-app notifications.
 
 ### Organizer create-event workflow hardening (2026-09-12)
 
@@ -13,7 +23,7 @@ Last updated: 2026-09-12
 - Tagline, race mechanics, and separate city/province inputs are preserved in the event description/address because the existing `events` schema has no dedicated columns for those values.
 - Event asset uploads now idempotently ensure the `event-assets` bucket exists before uploading, preventing `Bucket not found` when the remote storage migration has not been applied.
 - Public event details now load persisted content-image metadata for the specific event. Public list/details continue to show only approved published/ongoing/completed events; newly created drafts remain available through the organizer preview until admin approval.
-- Create Event now intentionally creates a `published` and `approved` event so completed organizer submissions appear in the public event list/details immediately, and a forward-only grant allows route-map metadata to be saved by the server-side asset endpoint.
+- Superseded on 2026-10-24: Create Event previously created `published` and `approved` events immediately. It now creates drafts that require admin approval and an organizer publish action. A forward-only grant allows route-map metadata to be saved by the server-side asset endpoint.
 - Added an idempotent repair migration for remote projects missing `event_content_images`; it recreates the table, index, grants, RLS read policy, and reloads the PostgREST schema cache so multi-poster uploads can complete.
 - The repair policy uses RaceDeck's existing `is_org_member()` tenant-check function, matching the established event-content RLS pattern.
 - Public event list/home reads are now explicitly uncached (`noStore` plus the list page's `force-dynamic` mode) so newly published events are not hidden by a stale server-rendered empty state; the existing public approval/lifecycle filter remains in place.
@@ -529,6 +539,7 @@ No historical migration was modified as part of the application work documented 
 - Added the dedicated registration screen layout with the event banner above the progress stepper and registration form.
 - Fixed Register Now navigation to use the event ID required by the registration data and checkout APIs.
 - Restored separate registration screen navigation from the Event Details Register Now action.
+- Enhanced Create Event race-kit inclusions with item names, comma-separated variants, and reference size-chart image uploads saved in item details.
 - Matched registration controls to the requested age range, company/school/club, and finisher shirt fields.
 - Updated the Content & Media toolbar with reference-style icon/dropdown controls and dynamic alignment icons.
 - Refined the spacing and checklist controls with closer reference-matching Lucide icons.

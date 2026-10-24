@@ -50,8 +50,10 @@ function card(event: EventRow, categories: CategoryRow[], organizer: Awaited<Ret
   const fees = categories.map((category) => Number(category.registration_fee)).filter(Number.isFinite);
   return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, social_links: event.social_links, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances: categories.map((category) => category.distance_km).filter((value): value is number => value !== null), registration_availability: effectiveAvailability(event), registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
 }
-function effectiveAvailability(event: Pick<EventRow, 'registration_availability' | 'registration_opens_at' | 'registration_closes_at'>) {
+export function effectiveAvailability(event: Pick<EventRow, 'registration_availability' | 'registration_opens_at' | 'registration_closes_at'>) {
   if (event.registration_availability === 'sold_out') return 'sold_out';
+  if (event.registration_availability === 'closed') return 'closed';
+  if (event.registration_availability === 'not_yet_open') return 'not_yet_open';
   const now = Date.now();
   const opens = event.registration_opens_at ? new Date(event.registration_opens_at).getTime() : null;
   const closes = event.registration_closes_at ? new Date(event.registration_closes_at).getTime() : null;
@@ -80,7 +82,7 @@ export async function getPublicEvents(input: { search?: string; location?: strin
       distanceEventIds = Array.from(new Set((matchingCategories ?? []).map((category) => category.event_id)));
     }
   }
-  let query = admin.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_closes_at,is_featured', { count: 'exact' }).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved');
+  let query = (admin as unknown as SupabaseClient).from('event_discovery').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,is_featured', { count: 'exact' });
   const today = new Date().toISOString().slice(0, 10);
   if (input.period === 'upcoming') query = query.gte('event_date', today);
   if (input.period === 'past') query = query.lt('event_date', today);
@@ -94,7 +96,11 @@ export async function getPublicEvents(input: { search?: string; location?: strin
   if (input.status && ['not_yet_open', 'open', 'closed', 'sold_out'].includes(input.status)) query = query.eq('registration_availability', input.status as 'not_yet_open' | 'open' | 'closed' | 'sold_out');
   query = query.order(input.sort === 'name' ? 'name' : 'event_date', { ascending: input.sort !== 'date_desc' }).order('name');
   const page = Math.max(1, input.page ?? 1); query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-  const { data, count, error } = await query; if (error) throw new Error('Public events could not be loaded');
+  const { data, count, error } = await query;
+  if (error) {
+    console.error('Public events query failed', { code: error.code, message: error.message, details: error.details, hint: error.hint });
+    throw new Error('Public events could not be loaded');
+  }
   const rows = (data ?? []) as unknown as EventRow[];
   const eventIds = rows.map((event) => event.id);
   const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
@@ -106,7 +112,7 @@ export async function getPublicEvents(input: { search?: string; location?: strin
   const categoriesByEvent = new Map<string, CategoryRow[]>();
   for (const category of (categoryRows ?? []) as CategoryRow[]) categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
   const organizationsById = new Map((organizationRows ?? []).map((organization) => [organization.id, organization]));
-  const cards = rows.map((event) => card(event, categoriesByEvent.get(event.id) ?? [], organizationsById.get(event.organization_id) ?? null));
+  const cards = rows.map((event) => card({ ...event, social_links: event.social_links ?? null }, categoriesByEvent.get(event.id) ?? [], organizationsById.get(event.organization_id) ?? null));
   return { events: cards, featured: cards.find((_item, index) => rows[index].is_featured) ?? cards[0] ?? null, page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / PAGE_SIZE) };
 }
 export async function getPublicEventDetails(identifier: string): Promise<PublicEventDetails | null> {

@@ -8,10 +8,20 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   const auth = await requireOrganizerPermission('edit_events', params.eventId);
   if ('response' in auth) return auth.response;
   try {
+    const { data: event, error: eventError } = await auth.admin.from('events')
+      .select('lifecycle_status,review_status')
+      .eq('id', params.eventId)
+      .eq('organization_id', auth.membership.organization_id)
+      .maybeSingle();
+    if (eventError) return errorResponse(eventError, 'Checking event asset access');
+    if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    if (event.lifecycle_status !== 'draft' || event.review_status === 'pending_review' || event.review_status === 'approved') {
+      return NextResponse.json({ error: 'Event images are locked during review and after approval.' }, { status: 409 });
+    }
     const form = await request.formData();
     const kind = form.get('kind');
     const file = form.get('file');
-    if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map' && kind !== 'sponsor_logo') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
+    if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map' && kind !== 'sponsor_logo' && kind !== 'size_chart') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
     // The migration creates this bucket in a fresh project. Creating it here as
     // an idempotent fallback also makes an already-running project recover when
     // the storage migration was not yet applied.
@@ -28,7 +38,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       if (error) return errorResponse(error, 'Saving event poster');
       return NextResponse.json({ url: publicUrl.publicUrl, kind });
     }
-    if (kind === 'sponsor_logo') return NextResponse.json({ url: publicUrl.publicUrl, kind });
+    if (kind === 'sponsor_logo' || kind === 'size_chart') return NextResponse.json({ url: publicUrl.publicUrl, kind });
     if (kind === 'route_map') {
       const db = auth.admin as unknown as SupabaseClient;
       const { error } = await db.from('event_routes').insert({ event_id: params.eventId, route_map_url: publicUrl.publicUrl });

@@ -35,7 +35,6 @@ import {
   List,
   ListChecks,
   ListOrdered,
-  ListTodo,
   MessageSquarePlus,
   Minus,
   Outdent,

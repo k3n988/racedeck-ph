@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-access';
 import type { Database } from '@/types/database.types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
 
@@ -14,8 +15,11 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     auth.admin.from('registrations').select('id,status,created_at').eq('event_id', params.eventId).order('created_at', { ascending: false }).limit(1000),
     auth.admin.from('payments').select('amount_paid,status,created_at').eq('event_id', params.eventId).order('created_at', { ascending: false }).limit(1000),
   ]);
+  const { data: contentImages, error: imagesError } = await (auth.admin as unknown as SupabaseClient)
+    .from('event_content_images').select('id,image_url').eq('event_id', params.eventId).order('created_at');
+  if (imagesError) return errorResponse(imagesError, 'Loading organizer event images');
   const successful = (payments ?? []).filter((row) => ['succeeded', 'partially_refunded', 'refunded'].includes(row.status));
-  return NextResponse.json({ event: data, overview: { total_registrations: registrations?.length ?? 0, confirmed_registrations: (registrations ?? []).filter((row) => row.status === 'confirmed').length, gross_sales: successful.reduce((sum, row) => sum + Number(row.amount_paid ?? 0), 0), recent_registrations: (registrations ?? []).slice(0, 5), recent_payments: (payments ?? []).slice(0, 5) } });
+  return NextResponse.json({ event: data, content_images: contentImages ?? [], overview: { total_registrations: registrations?.length ?? 0, confirmed_registrations: (registrations ?? []).filter((row) => row.status === 'confirmed').length, gross_sales: successful.reduce((sum, row) => sum + Number(row.amount_paid ?? 0), 0), recent_registrations: (registrations ?? []).slice(0, 5), recent_payments: (payments ?? []).slice(0, 5) } });
 }
 
 export async function PATCH(request: Request, { params }: { params: { eventId: string } }) {
@@ -24,12 +28,41 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
 
   try {
     const body = await request.json();
-    const allowed = ['name', 'slug', 'description', 'banner_url', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability', 'is_featured'];
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid event details' }, { status: 400 });
+    const { data: current, error: currentError } = await auth.admin.from('events').select('lifecycle_status,review_status,event_date,registration_opens_at,registration_closes_at').eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).maybeSingle();
+    if (currentError) return errorResponse(currentError, 'Loading event before update');
+    if (!current) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    if (current.review_status === 'pending_review' || (current.lifecycle_status === 'draft' && current.review_status === 'approved')) {
+      return NextResponse.json({ error: 'Event details are locked during review and after approval. Publish the approved draft or ask RaceDeck to request changes.' }, { status: 409 });
+    }
+    const allowed = ['name', 'slug', 'description', 'banner_url', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability'];
+    const operational = ['registration_opens_at', 'registration_closes_at', 'overall_capacity', 'registration_availability'];
+    const keys = Object.keys(body).filter((key) => allowed.includes(key));
+    if (!keys.length) return NextResponse.json({ error: 'No event changes provided' }, { status: 400 });
+    if (current.lifecycle_status !== 'draft' && keys.some((key) => !operational.includes(key))) {
+      return NextResponse.json({ error: 'Published event content cannot be changed without a new review' }, { status: 409 });
+    }
+    if (keys.includes('registration_availability') && !['not_yet_open', 'open', 'closed', 'sold_out'].includes(body.registration_availability)) {
+      return NextResponse.json({ error: 'Invalid registration availability' }, { status: 400 });
+    }
     const update = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)).map(([key, value]) => {
       if (typeof value === 'string' && value.trim() === '') return [key, null];
       if (key === 'overall_capacity' && typeof value === 'string') return [key, Number(value) || null];
       return [key, value];
     })) as Database['public']['Tables']['events']['Update'];
+    if ('name' in update && !update.name) return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
+    if ('slug' in update && (!update.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(update.slug))) return NextResponse.json({ error: 'Use lowercase letters, numbers, and hyphens for the event slug' }, { status: 400 });
+    if ('overall_capacity' in update && update.overall_capacity != null && (!Number.isInteger(update.overall_capacity) || update.overall_capacity <= 0)) return NextResponse.json({ error: 'Overall capacity must be a positive whole number' }, { status: 400 });
+    const opening = 'registration_opens_at' in update ? update.registration_opens_at : current.registration_opens_at;
+    const closing = 'registration_closes_at' in update ? update.registration_closes_at : current.registration_closes_at;
+    if (opening || closing) {
+      const opensAt = opening ? Date.parse(opening) : NaN;
+      const closesAt = closing ? Date.parse(closing) : NaN;
+      const endOfEventDay = Date.parse(`${current.event_date}T00:00:00+08:00`) + 24 * 60 * 60 * 1000;
+      if (!Number.isFinite(opensAt) || !Number.isFinite(closesAt) || opensAt >= closesAt || closesAt > endOfEventDay) {
+        return NextResponse.json({ error: 'Set valid registration dates in order, closing no later than the event day.' }, { status: 400 });
+      }
+    }
     const { data, error } = await auth.admin.from('events').update(update).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).select(FIELDS).single();
     if (error) {
       console.error('[Updating organizer event]', error);
@@ -46,6 +79,16 @@ export async function DELETE(_request: Request, { params }: { params: { eventId:
   if ('response' in auth) return auth.response;
 
   try {
+    const { data: event, error: eventError } = await auth.admin.from('events')
+      .select('lifecycle_status,review_status')
+      .eq('id', params.eventId)
+      .eq('organization_id', auth.membership.organization_id)
+      .maybeSingle();
+    if (eventError) return errorResponse(eventError, 'Checking event before deletion');
+    if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    if (event.lifecycle_status !== 'draft' || !['not_submitted', 'needs_changes', 'rejected'].includes(event.review_status)) {
+      return NextResponse.json({ error: 'Only an unpublished draft outside review can be deleted.' }, { status: 409 });
+    }
     const [{ count: registrationCount, error: registrationError }, { count: paymentCount, error: paymentError }] = await Promise.all([
       auth.admin.from('registrations').select('id', { count: 'exact', head: true }).eq('event_id', params.eventId),
       auth.admin.from('payments').select('id', { count: 'exact', head: true }).eq('event_id', params.eventId),
