@@ -3,7 +3,7 @@ import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-
 import type { Database } from '@/types/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
+const FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const auth = await requireOrganizerPermission('view_events', params.eventId);
@@ -32,16 +32,12 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     const { data: current, error: currentError } = await auth.admin.from('events').select('lifecycle_status,review_status,event_date,registration_opens_at,registration_closes_at').eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).maybeSingle();
     if (currentError) return errorResponse(currentError, 'Loading event before update');
     if (!current) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-    if (current.review_status === 'pending_review' || (current.lifecycle_status === 'draft' && current.review_status === 'approved')) {
-      return NextResponse.json({ error: 'Event details are locked during review and after approval. Publish the approved draft or ask RaceDeck to request changes.' }, { status: 409 });
+    if (current.review_status === 'pending_review') {
+      return NextResponse.json({ error: 'Event details cannot be changed while RaceDeck is reviewing the event.' }, { status: 409 });
     }
-    const allowed = ['name', 'slug', 'description', 'banner_url', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability'];
-    const operational = ['registration_opens_at', 'registration_closes_at', 'overall_capacity', 'registration_availability'];
+    const allowed = ['name', 'slug', 'description', 'banner_url', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability'];
     const keys = Object.keys(body).filter((key) => allowed.includes(key));
     if (!keys.length) return NextResponse.json({ error: 'No event changes provided' }, { status: 400 });
-    if (current.lifecycle_status !== 'draft' && keys.some((key) => !operational.includes(key))) {
-      return NextResponse.json({ error: 'Published event content cannot be changed without a new review' }, { status: 409 });
-    }
     if (keys.includes('registration_availability') && !['not_yet_open', 'open', 'closed', 'sold_out'].includes(body.registration_availability)) {
       return NextResponse.json({ error: 'Invalid registration availability' }, { status: 400 });
     }
@@ -50,6 +46,14 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
       if (key === 'overall_capacity' && typeof value === 'string') return [key, Number(value) || null];
       return [key, value];
     })) as Database['public']['Tables']['events']['Update'];
+    if ('social_links' in update) {
+      const socialLinks = body.social_links && typeof body.social_links === 'object' && !Array.isArray(body.social_links) ? body.social_links : {};
+      update.social_links = {
+        facebook: typeof socialLinks.facebook === 'string' ? socialLinks.facebook.trim() : '',
+        phone: typeof socialLinks.phone === 'string' ? socialLinks.phone.trim() : '',
+        website: typeof socialLinks.website === 'string' ? socialLinks.website.trim() : '',
+      };
+    }
     if ('name' in update && !update.name) return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
     if ('slug' in update && (!update.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(update.slug))) return NextResponse.json({ error: 'Use lowercase letters, numbers, and hyphens for the event slug' }, { status: 400 });
     if ('overall_capacity' in update && update.overall_capacity != null && (!Number.isInteger(update.overall_capacity) || update.overall_capacity <= 0)) return NextResponse.json({ error: 'Overall capacity must be a positive whole number' }, { status: 400 });
@@ -58,7 +62,8 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if (opening || closing) {
       const opensAt = opening ? Date.parse(opening) : NaN;
       const closesAt = closing ? Date.parse(closing) : NaN;
-      const endOfEventDay = Date.parse(`${current.event_date}T00:00:00+08:00`) + 24 * 60 * 60 * 1000;
+    const eventDate = typeof update.event_date === 'string' ? update.event_date : current.event_date;
+    const endOfEventDay = Date.parse(`${eventDate}T00:00:00+08:00`) + 24 * 60 * 60 * 1000;
       if (!Number.isFinite(opensAt) || !Number.isFinite(closesAt) || opensAt >= closesAt || closesAt > endOfEventDay) {
         return NextResponse.json({ error: 'Set valid registration dates in order, closing no later than the event day.' }, { status: 400 });
       }

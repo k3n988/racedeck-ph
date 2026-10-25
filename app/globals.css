@@ -54,6 +54,11 @@ a[href="/auth/logout"]:hover {
   line-height: 1.75;
 }
 
+.content-editor--readonly .ProseMirror {
+  min-height: 0;
+  padding: 0;
+}
+
 .content-editor .ProseMirror.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
 import { unstable_noStore as noStore } from 'next/cache';
 
 const VISIBLE_LIFECYCLE = ['published', 'ongoing', 'completed'] as const;
@@ -8,11 +8,14 @@ const PAGE_SIZE = 12;
 export type PublicEventCard = {
   id: string; slug: string; name: string; banner_url: string | null; event_date: string;
   venue: string | null; address: string | null; organizer: { name: string; logo_url: string | null } | null;
-  social_links: { facebook?: string; instagram?: string } | null;
+  social_links: { facebook?: string; phone?: string; website?: string; instagram?: string } | null;
   distances: number[]; registration_availability: string; registration_closes_at: string | null;
-  starting_registration_fee: number | null;
+  starting_registration_fee: number | null; registration_enabled: boolean; event_status: string | null; results_available: boolean;
+  poster_fallback: boolean; event_period: 'ongoing' | 'upcoming' | 'past';
 };
-export type FeaturedPublicEvent = PublicEventCard & { registration_enabled: boolean };
+export type FeaturedPublicEvent = PublicEventCard;
+export type HomepagePublicEventsData = { events: PublicEventCard[]; carouselEvents: PublicEventCard[] };
+export type HomepagePublicEventsResult = HomepagePublicEventsData & { error: boolean };
 export type PublicEventDetails = PublicEventCard & {
   description: string | null; tagline: string | null; logo_url: string | null; start_time: string | null;
   registration_opens_at: string | null; assembly_time: string | null; gun_start_time: string | null;
@@ -27,12 +30,12 @@ export type PublicEventDetails = PublicEventCard & {
   announcements: Array<{ id: string; title: string; message: string; published_at: string | null }>;
   results_available: boolean;
 };
-type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: { facebook?: string; instagram?: string } | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string };
+type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: { facebook?: string; phone?: string; website?: string; instagram?: string } | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string; lifecycle_status?: string };
 type CategoryRow = { id: string; event_id: string; name: string; distance_km: number | null; registration_fee: number; max_slots: number | null; confirmed_count: number; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null };
 
 async function getVisibleEvent(identifier: string) {
   const admin = createAdminClient();
-  const fields = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity';
+  const fields = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status';
   const byId = await admin.from('events').select(fields).eq('id', identifier).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved').maybeSingle();
   if (byId.data) return byId.data as unknown as EventRow;
   if (byId.error && byId.error.code !== '22P02') return null;
@@ -48,12 +51,19 @@ async function organizerForEvent(organizationId: string) {
   return data ?? null;
 }
 function card(event: EventRow, categories: CategoryRow[], organizer: { name: string; logo_url: string | null } | null): PublicEventCard {
-  const fees = categories.map((category) => Number(category.registration_fee)).filter(Number.isFinite);
+  const availableCategories = categories.filter((category) => ['open', 'closing_soon'].includes(category.registration_availability) && (category.max_slots === null || category.confirmed_count < category.max_slots));
+  const fees = availableCategories.map((category) => Number(category.registration_fee)).filter(Number.isFinite);
   const distances = Array.from(new Set(categories.map((category) => category.distance_km).filter((value): value is number => value !== null)));
-  const availability = effectiveAvailability(event);
+  const overallCapacityReached = event.overall_capacity !== null && categories.reduce((total, category) => total + category.confirmed_count, 0) >= event.overall_capacity;
+  const categoryCapacityReached = categories.length > 0 && categories.every((category) => category.registration_availability === 'sold_out' || (category.max_slots !== null && category.confirmed_count >= category.max_slots));
+  const eventAvailability = effectiveAvailability(event);
+  const availability = overallCapacityReached || categoryCapacityReached ? 'sold_out' : eventAvailability;
   const closesAt = event.registration_closes_at ? new Date(event.registration_closes_at).getTime() : null;
   const closingSoon = availability === 'open' && closesAt !== null && closesAt > Date.now() && closesAt <= Date.now() + 7 * 24 * 60 * 60 * 1000;
-  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, social_links: event.social_links, organizer: organizer ? { name: organizer.name, logo_url: organizer.logo_url } : null, distances, registration_availability: closingSoon ? 'closing_soon' : availability, registration_closes_at: event.registration_closes_at, starting_registration_fee: fees.length ? Math.min(...fees) : null };
+  const finalAvailability = closingSoon ? 'closing_soon' : availability;
+  const registrationEnabled = event.lifecycle_status !== 'completed' && ['open', 'closing_soon'].includes(finalAvailability) && availableCategories.length > 0 && !overallCapacityReached;
+  const priceAvailable = event.lifecycle_status !== 'completed' && !['closed', 'sold_out'].includes(finalAvailability);
+  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer, social_links: event.social_links, distances, registration_availability: finalAvailability, registration_closes_at: event.registration_closes_at, starting_registration_fee: priceAvailable && fees.length ? Math.min(...fees) : null, registration_enabled: registrationEnabled, event_status: event.lifecycle_status ?? null, results_available: false, poster_fallback: false, event_period: 'upcoming' };
 }
 export function effectiveAvailability(event: Pick<EventRow, 'registration_availability' | 'registration_opens_at' | 'registration_closes_at'>) {
   if (event.registration_availability === 'sold_out') return 'sold_out';
@@ -80,51 +90,86 @@ function manilaDate(date: Date) {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-export async function getFeaturedPublicEvents(): Promise<FeaturedPublicEvent[]> {
+function createPublicReadClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) throw new Error('Missing public Supabase configuration');
+  return createSupabaseClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } });
+}
+
+export async function getHomepagePublicEvents(): Promise<HomepagePublicEventsData> {
   noStore();
   const admin = createAdminClient();
   const db = admin as unknown as SupabaseClient;
-  const { data, error } = await db.from('events')
-    .select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,is_featured')
-    .in('lifecycle_status', ['published', 'ongoing'])
-    .eq('review_status', 'approved')
-    .eq('is_featured', true)
-    .gte('event_date', manilaDate(new Date()))
-    .order('event_date', { ascending: true })
-    .limit(50);
-  if (error) throw new Error('Featured events could not be loaded');
+  const publicRead = createPublicReadClient();
+  const pageSize = 250;
+  const rows: EventRow[] = [];
 
-  const rows = (data ?? []) as unknown as EventRow[];
-  if (!rows.length) return [];
-  const eventIds = rows.map((event) => event.id);
-  const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
-  const [{ data: categoryRows, error: categoryError }, { data: organizationRows, error: organizationError }] = await Promise.all([
-    admin.from('race_categories').select('id,event_id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').in('event_id', eventIds).order('distance_km', { ascending: true, nullsFirst: false }).order('name'),
-    admin.from('organizations').select('id,name,logo_url').in('id', organizationIds),
-  ]);
-  if (categoryError || organizationError) throw new Error('Featured event details could not be loaded');
-
-  const categoriesByEvent = new Map<string, CategoryRow[]>();
-  for (const category of (categoryRows ?? []) as CategoryRow[]) {
-    categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db.from('events')
+      .select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,lifecycle_status')
+      .in('lifecycle_status', [...VISIBLE_LIFECYCLE])
+      .eq('review_status', 'approved')
+      .order('event_date', { ascending: true })
+      .order('name', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`Homepage events could not be loaded: ${error.code ?? 'unknown'} ${error.message}`);
+    const page = (data ?? []) as unknown as EventRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
   }
-  const organizationsById = new Map((organizationRows ?? []).map((organization) => [organization.id, { name: organization.name, logo_url: organization.logo_url }]));
+
+  if (!rows.length) return { events: [], carouselEvents: [] };
+  const chunks = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+  const eventIds = rows.map((event) => event.id);
+  const missingBannerIds = rows.filter((event) => !event.banner_url).map((event) => event.id);
+  const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
+
+  const [categoryPages, organizationPages, resultPages, imagePages] = await Promise.all([
+    Promise.all(chunks(eventIds, 250).map((ids) => admin.from('race_categories').select('id,event_id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').in('event_id', ids).order('distance_km', { ascending: true, nullsFirst: false }).order('name'))),
+    Promise.all(chunks(organizationIds, 250).map((ids) => admin.from('organizations').select('id,name,logo_url').in('id', ids))),
+    Promise.all(chunks(eventIds, 250).map((ids) => publicRead.from('result_batches').select('event_id').in('event_id', ids).eq('publication_status', 'published'))),
+    Promise.all(chunks(missingBannerIds, 250).map((ids) => db.from('event_content_images').select('event_id,image_url,display_order').in('event_id', ids).order('display_order', { ascending: true }))),
+  ]);
+  const detailError = categoryPages.find((page) => page.error)?.error ?? organizationPages.find((page) => page.error)?.error;
+  if (detailError) throw new Error(`Homepage event details could not be loaded: ${detailError.code ?? 'unknown'} ${detailError.message}`);
+  const resultError = resultPages.find((page) => page.error)?.error;
+  if (resultError) throw new Error(`Homepage event results could not be loaded: ${resultError.code ?? 'unknown'} ${resultError.message}`);
+
+  const categories = categoryPages.flatMap((page) => page.data ?? []) as CategoryRow[];
+  const organizations = organizationPages.flatMap((page) => page.data ?? []);
+  const resultEventIds = new Set(resultPages.flatMap((page) => page.error ? [] : page.data ?? []).map((batch) => batch.event_id));
+  const posterByEvent = new Map<string, string>();
+  for (const image of imagePages.flatMap((page) => page.error ? [] : page.data ?? [])) {
+    if (!posterByEvent.has(image.event_id)) posterByEvent.set(image.event_id, image.image_url);
+  }
+  const categoriesByEvent = new Map<string, CategoryRow[]>();
+  for (const category of categories) categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
+  const organizationsById = new Map(organizations.map((organization) => [organization.id, { name: organization.name, logo_url: organization.logo_url }]));
+  const today = manilaDate(new Date());
   const events = rows.map((event) => {
-    const categories = categoriesByEvent.get(event.id) ?? [];
-    const view = card(event, categories, organizationsById.get(event.organization_id) ?? null);
-    const availableCategory = categories.some((category) => category.registration_availability !== 'sold_out' && (category.max_slots === null || category.confirmed_count < category.max_slots));
-    const confirmedCount = categories.reduce((total, category) => total + category.confirmed_count, 0);
-    const overallCapacityReached = event.overall_capacity !== null && confirmedCount >= event.overall_capacity;
+    const poster = !event.banner_url ? posterByEvent.get(event.id) ?? null : null;
+    const isOngoing = event.lifecycle_status === 'ongoing';
+    const eventPeriod: PublicEventCard['event_period'] = isOngoing ? 'ongoing' : event.lifecycle_status === 'completed' || event.event_date < today ? 'past' : 'upcoming';
+    const eventCard = card({ ...event, banner_url: event.banner_url ?? poster, social_links: event.social_links ?? null }, categoriesByEvent.get(event.id) ?? [], organizationsById.get(event.organization_id) ?? null);
     return {
-      ...view,
-      registration_enabled: ['open', 'closing_soon'].includes(view.registration_availability) && availableCategory && !overallCapacityReached,
+      ...eventCard,
+      results_available: resultEventIds.has(event.id),
+      poster_fallback: Boolean(poster),
+      event_period: eventPeriod,
+      registration_enabled: eventPeriod !== 'past' && eventCard.registration_enabled,
     };
   });
 
-  return events.sort((a, b) => {
-    const rank = (event: FeaturedPublicEvent) => event.registration_enabled ? 0 : event.registration_availability === 'not_yet_open' ? 1 : 2;
-    return rank(a) - rank(b) || a.event_date.localeCompare(b.event_date) || a.name.localeCompare(b.name);
+  const carouselEvents = [...events].sort((a, b) => {
+    const stage = (event: PublicEventCard) => event.event_period === 'ongoing' ? 0 : event.event_period === 'past' ? 2 : 1;
+    const aStage = stage(a);
+    const bStage = stage(b);
+    if (aStage !== bStage) return aStage - bStage;
+    const byDate = a.event_date.localeCompare(b.event_date);
+    return (aStage === 2 ? -byDate : byDate) || a.name.localeCompare(b.name);
   });
+  return { events, carouselEvents };
 }
 
 export async function getPublicEvents(input: { search?: string; location?: string; date?: string; distance?: string; status?: string; sort?: string; period?: string; page?: number }) {
@@ -146,7 +191,7 @@ export async function getPublicEvents(input: { search?: string; location?: strin
     }
   }
   const db = admin as unknown as SupabaseClient;
-  let query = db.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,is_featured,created_at', { count: 'exact' })
+  let query = db.from('events').select('id,organization_id,slug,name,banner_url,event_date,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,is_featured,created_at,lifecycle_status,overall_capacity', { count: 'exact' })
     .in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved');
   const today = manilaDate(new Date());
   if (input.period === 'upcoming') query = query.gte('event_date', today).neq('lifecycle_status', 'completed');
@@ -187,15 +232,17 @@ export async function getPublicEvents(input: { search?: string; location?: strin
   const rows = (data ?? []) as unknown as EventRow[];
   const eventIds = rows.map((event) => event.id);
   const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
-  const [{ data: categoryRows, error: categoryError }, { data: organizationRows, error: organizationError }] = await Promise.all([
+  const [{ data: categoryRows, error: categoryError }, { data: organizationRows, error: organizationError }, { data: resultBatches }] = await Promise.all([
     eventIds.length ? admin.from('race_categories').select('id,event_id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').in('event_id', eventIds).order('distance_km', { ascending: true, nullsFirst: false }).order('name') : Promise.resolve({ data: [], error: null }),
     organizationIds.length ? admin.from('organizations').select('id,name,slug,logo_url,description,website,social_links').in('id', organizationIds) : Promise.resolve({ data: [], error: null }),
+    eventIds.length ? admin.from('result_batches').select('event_id').in('event_id', eventIds).eq('publication_status', 'published') : Promise.resolve({ data: [], error: null }),
   ]);
   if (categoryError || organizationError) throw new Error('Public event details could not be loaded');
   const categoriesByEvent = new Map<string, CategoryRow[]>();
   for (const category of (categoryRows ?? []) as CategoryRow[]) categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
   const organizationsById = new Map((organizationRows ?? []).map((organization) => [organization.id, organization]));
-  const cards = rows.map((event) => card({ ...event, social_links: event.social_links ?? null }, categoriesByEvent.get(event.id) ?? [], organizationsById.get(event.organization_id) ?? null));
+  const resultEventIds = new Set((resultBatches ?? []).map((batch) => batch.event_id));
+  const cards = rows.map((event) => ({ ...card({ ...event, social_links: event.social_links ?? null }, categoriesByEvent.get(event.id) ?? [], organizationsById.get(event.organization_id) ?? null), results_available: resultEventIds.has(event.id) }));
   return { events: cards, featured: cards.find((_item, index) => rows[index].is_featured) ?? cards[0] ?? null, page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / PAGE_SIZE) };
 }
 export async function getPublicEventDetails(identifier: string): Promise<PublicEventDetails | null> {

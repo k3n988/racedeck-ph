@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CalendarDays, MapPin } from 'lucide-react';
-import { getPublicEvents, type PublicEventCard } from '@/lib/public/events';
+import { HomeHero } from '@/components/public/home-hero';
+import { getHomepagePublicEvents, getPublicEvents, type PublicEventCard } from '@/lib/public/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,19 +105,25 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const page = Number(get('page') ?? '1');
   const values = Object.fromEntries(FILTER_KEYS.map((key) => [key, get(key)])) as Record<string, string | undefined>;
   let eventsUnavailable = false;
-  const data = await getPublicEvents({
-    search: values.search,
-    location: values.location,
-    date: values.date,
-    distance: values.distance,
-    status: values.status,
-    sort: values.sort,
-    period,
-    page: Number.isFinite(page) ? page : 1,
-  }).catch(() => {
-    eventsUnavailable = true;
-    return { events: [] as PublicEventCard[], featured: null, page: 1, pageSize: 12, total: 0, totalPages: 0 };
-  });
+  const [data, homepageData] = await Promise.all([
+    getPublicEvents({
+      search: values.search,
+      location: values.location,
+      date: values.date,
+      distance: values.distance,
+      status: values.status,
+      sort: values.sort,
+      period,
+      page: Number.isFinite(page) ? page : 1,
+    }).catch(() => {
+      eventsUnavailable = true;
+      return { events: [] as PublicEventCard[], featured: null, page: 1, pageSize: 12, total: 0, totalPages: 0 };
+    }),
+    getHomepagePublicEvents().catch((error) => {
+      console.error('Failed to load public event banner:', error instanceof Error ? error.message : 'Unknown error');
+      return { events: [], carouselEvents: [] };
+    }),
+  ]);
   const activeFilters = FILTER_KEYS.some((key) => key !== 'period' && key !== 'sort' && Boolean(values[key]));
   const clearHref = `/events?period=${period}#all-events`;
   const paginationHref = (next: number) => {
@@ -126,16 +133,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
     return `/events?${query}#all-events`;
   };
   return (
-    <main className="events-discovery mx-auto max-w-7xl space-y-8 px-4 pb-14 pt-5 sm:px-6 lg:pt-7">
-      <section className="relative overflow-hidden rounded-2xl bg-[#071b41] shadow-sm">
-        <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_82%_12%,rgba(249,115,22,.38),transparent_25%),linear-gradient(112deg,#071b41,#103469_70%,#8c3e24)]" />
-        <div className="relative max-w-3xl px-6 py-7 text-white sm:px-9 sm:py-9">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-200">RaceDeck PH</p>
-          <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Find your next race.</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-100 sm:text-base">Discover upcoming runs, explore exciting events, and register for your next challenge.</p>
-          <a href="#all-events" className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-orange-600">Browse Events <span aria-hidden="true" className="ml-2">→</span></a>
-        </div>
-      </section>
+    <main className="events-discovery mx-auto max-w-7xl space-y-8 px-4 pb-14 pt-2 sm:px-6">
+      <HomeHero events={homepageData.carouselEvents} browseHref="#all-events" />
 
       {eventsUnavailable && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Events are temporarily unavailable. Please try again later.</p>}
 

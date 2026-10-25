@@ -176,7 +176,8 @@ export default function CreateEventPage() {
     name: "",
     tagline: "",
     facebook: "",
-    instagram: "",
+    phone: "",
+    website: "",
     description: "",
     eventDate: "",
     registrationOpen: "",
@@ -265,12 +266,11 @@ export default function CreateEventPage() {
   const missing = [
     !form.name.trim() && "event name",
     !form.eventDate && "event date",
-    !form.facebook.trim() && "Facebook link",
     !categoriesReady && "at least one complete race category",
   ].filter(Boolean) as string[];
   const ready = missing.length === 0;
   const fieldCompletedSteps = [
-    form.name.trim().length > 0 && form.facebook.trim().length > 0,
+    form.name.trim().length > 0,
     Boolean(form.eventDate && form.address.trim()),
     categories.length > 0 &&
       categories.every(
@@ -397,7 +397,8 @@ export default function CreateEventPage() {
           address: form.address.trim() || null,
           social_links: {
             facebook: form.facebook.trim(),
-            instagram: form.instagram.trim(),
+            phone: form.phone.trim(),
+            website: form.website.trim(),
           },
           registration_opens_at: form.registrationOpen
             ? `${form.registrationOpen}T00:00:00+08:00`
@@ -565,13 +566,18 @@ export default function CreateEventPage() {
                   type="url"
                   value={form.facebook}
                   onChange={(value) => update("facebook", value)}
-                  required
                 />
                 <TextField
-                  label="Instagram link"
+                  label="Phone number"
+                  type="tel"
+                  value={form.phone}
+                  onChange={(value) => update("phone", value)}
+                />
+                <TextField
+                  label="Website link"
                   type="url"
-                  value={form.instagram}
-                  onChange={(value) => update("instagram", value)}
+                  value={form.website}
+                  onChange={(value) => update("website", value)}
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">

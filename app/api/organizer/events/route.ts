@@ -97,7 +97,8 @@ export async function POST(request: Request) {
       description: typeof body.description === 'string' ? body.description.trim() || null : null,
       social_links: {
         facebook: typeof body.social_links?.facebook === 'string' ? body.social_links.facebook.trim() : '',
-        instagram: typeof body.social_links?.instagram === 'string' ? body.social_links.instagram.trim() : '',
+        phone: typeof body.social_links?.phone === 'string' ? body.social_links.phone.trim() : '',
+        website: typeof body.social_links?.website === 'string' ? body.social_links.website.trim() : '',
       } as never,
       registration_opens_at: typeof body.registration_opens_at === 'string' ? body.registration_opens_at : null,
       registration_closes_at: typeof body.registration_closes_at === 'string' ? body.registration_closes_at : null,

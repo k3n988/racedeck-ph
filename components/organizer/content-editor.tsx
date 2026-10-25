@@ -145,12 +145,16 @@ export function ContentEditor({
   value,
   onChange,
   placeholder = 'Start writing event content...',
+  editorLabel = 'Event content editor',
   onComment,
+  editable = true,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  editorLabel?: string;
   onComment?: (note: string) => void;
+  editable?: boolean;
 }) {
   const lastValue = useRef(value);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -185,8 +189,9 @@ export function ContentEditor({
       TableCell,
     ],
     content: value || '<p></p>',
+    editable,
     immediatelyRender: false,
-    editorProps: { attributes: { 'data-placeholder': placeholder } },
+    editorProps: { attributes: { 'data-placeholder': placeholder, 'aria-label': editorLabel } },
     onUpdate: ({ editor: current }) => {
       lastValue.current = current.getHTML();
       onChange(lastValue.current);
@@ -202,7 +207,11 @@ export function ContentEditor({
     }
   }, [editor, value]);
 
-  if (!editor) return <div className="min-h-[420px] rounded-b-lg border border-slate-200 p-4 text-sm text-slate-400">Loading editor...</div>;
+  useEffect(() => {
+    editor?.setEditable(editable);
+  }, [editor, editable]);
+
+  if (!editor) return editable ? <div className="min-h-[420px] rounded-b-lg border border-slate-200 p-4 text-sm text-slate-400">Loading editor...</div> : null;
 
   const textStyle = editor.getAttributes('textStyle') as { fontSize?: string; fontFamily?: string; color?: string };
   const selectedSize = Number.parseInt(textStyle.fontSize || '12', 10) || 12;
@@ -267,7 +276,8 @@ export function ContentEditor({
   const tableActive = editor.isActive('table');
 
   return (
-    <div className="relative min-w-0 w-full overflow-visible rounded-lg border border-slate-200 bg-white">
+    <div className={`relative min-w-0 w-full overflow-visible ${editable ? 'rounded-lg border border-slate-200 bg-white' : 'content-editor--readonly'}`}>
+      {editable && (
       <div className="flex flex-wrap items-center gap-0.5 rounded-t-lg border-b border-slate-200 bg-slate-50 p-1.5">
         <IconButton label="Undo" title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><Undo2 size={16} /></IconButton>
         <IconButton label="Redo" title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><Redo2 size={16} /></IconButton>
@@ -304,7 +314,8 @@ export function ContentEditor({
         {tableActive && <><Divider /><IconButton label="Add table row" title="Add table row" onClick={() => editor.chain().focus().addRowAfter().run()}><Plus size={15} /></IconButton><IconButton label="Delete table row" title="Delete table row" onClick={() => editor.chain().focus().deleteRow().run()}><Minus size={15} /></IconButton><IconButton label="Add table column" title="Add table column" onClick={() => editor.chain().focus().addColumnAfter().run()}><Plus size={15} /></IconButton><IconButton label="Delete table column" title="Delete table column" onClick={() => editor.chain().focus().deleteColumn().run()}><Minus size={15} /></IconButton></>}
         <IconButton label="Insert table" title="Insert 3 by 3 table" active={tableActive} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><CheckSquare size={16} /></IconButton>
       </div>
-      <EditorContent editor={editor} className="content-editor min-h-[420px] p-4" />
+      )}
+      <EditorContent editor={editor} className={`content-editor ${editable ? 'min-h-[420px] p-4' : ''}`} />
     </div>
   );
 }
