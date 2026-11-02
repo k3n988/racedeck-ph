@@ -15,6 +15,7 @@ async function manager() {
 export async function PATCH(request: Request, { params }: { params: { memberId: string } }) {
   const access = await manager(); if ('response' in access) return access.response;
   const parsed = updateSchema.safeParse(await request.json().catch(() => null)); if (!parsed.success) return NextResponse.json({ error: 'Invalid member changes' }, { status: 400 });
+  if (parsed.data.role === 'owner') return NextResponse.json({ error: 'Owner access cannot be assigned through staff management' }, { status: 400 });
   const admin = createAdminClient(); const { data: target } = await admin.from('organization_members').select('id,user_id,role,is_active,restricted_event_ids').eq('id', params.memberId).eq('organization_id', access.membership.organization_id).maybeSingle();
   if (!target) return NextResponse.json({ error: 'Member not found in this organization' }, { status: 404 });
   const isOwner = target.role === 'owner'; const actorIsOwner = access.membership.role === 'owner';

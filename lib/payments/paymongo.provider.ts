@@ -16,6 +16,9 @@ export function parsePayMongoWebhookPayload(body: JsonRecord): VerifiedWebhook {
   const latestPayment = record(payments.at(-1)); const latestPaymentAttributes = record(latestPayment.attributes);
   const paymentResource = Object.keys(latestPayment).length ? latestPayment : resource;
   const paymentAttributes = Object.keys(latestPayment).length ? latestPaymentAttributes : resourceAttributes;
+  const source = record(paymentAttributes.source);
+  const rawMethod = text(source.type)?.toLowerCase();
+  const paymentMethod = rawMethod && ['gcash', 'qrph', 'paymaya', 'maya', 'card'].includes(rawMethod) ? rawMethod : undefined;
   // RaceDeck stores the Checkout Session (`cs_…`) as gateway_payment_id. The
   // resulting `pay_…` is retained as the immutable transaction reference.
   const checkoutSessionId = text(resource.id) ?? text(resourceAttributes.checkout_session_id) ?? text(paymentAttributes.checkout_session_id);
@@ -24,7 +27,7 @@ export function parsePayMongoWebhookPayload(body: JsonRecord): VerifiedWebhook {
   if (!eventId || !paymentId || !eventType) throw new Error('Invalid payment webhook payload');
   const normalizedType = eventType.toLowerCase();
   const status: VerifiedWebhook['status'] = /paid|succeeded|completed/.test(normalizedType) ? 'succeeded' : /expired/.test(normalizedType) ? 'expired' : /failed/.test(normalizedType) ? 'failed' : 'cancelled';
-  return { eventId, eventType, paymentId, status, amount: amountInPesos(paymentAttributes.amount), gatewayTransactionId: text(paymentResource.id) ?? text(paymentAttributes.external_reference_number), raw: body };
+  return { eventId, eventType, paymentId, status, amount: amountInPesos(paymentAttributes.amount), gatewayTransactionId: text(paymentResource.id) ?? text(paymentAttributes.external_reference_number), paymentMethod, raw: body };
 }
 
 export function parsePayMongoRefundWebhookPayload(body: JsonRecord): VerifiedRefundWebhook | null {

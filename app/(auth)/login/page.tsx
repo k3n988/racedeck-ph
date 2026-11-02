@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { safeNextPath } from "@/lib/auth/safe-next-path";
 
 export default function LoginPage() {
   const supabase = createClient();
@@ -11,9 +12,12 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [registeredMessage, setRegisteredMessage] = useState("");
+  const [nextPath, setNextPath] = useState<string | null>(null);
 
   useEffect(() => {
-    const requestedPortal = new URLSearchParams(window.location.search).get("portal");
+    const search = new URLSearchParams(window.location.search);
+    const requestedPortal = search.get("portal");
+    setNextPath(safeNextPath(search.get("next")));
     if (requestedPortal === "organizer") setPortal("organizer");
     if (new URLSearchParams(window.location.search).get("registered") === "1") setRegisteredMessage("Account created successfully. Verify your email first, then sign in.");
   }, []);
@@ -37,7 +41,8 @@ export default function LoginPage() {
     const landingResponse = await fetch('/api/auth/landing-route');
     const landing = await landingResponse.json().catch(() => ({})) as { route?: string };
     if (!landingResponse.ok || !landing.route) { setMessage('Sign-in succeeded, but your portal could not be resolved. Please contact support.'); return; }
-    window.location.assign(landing.route);
+    const requestedNext = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+    window.location.assign(requestedNext ?? landing.route);
   }
 
   return <main className="mx-auto flex min-h-screen max-w-md items-center p-6"><form onSubmit={submit} className="w-full space-y-4">
@@ -49,6 +54,6 @@ export default function LoginPage() {
     {registeredMessage && <p role="status" className="text-sm text-green-700">{registeredMessage}</p>}
     {message && <p role="alert" className="text-sm text-red-600">{message}</p>}
     <a href="/forgot-password" className="text-sm underline">Forgot password?</a>
-    <p className="text-sm">No account? <a href={portal === "organizer" ? "/organizer-register" : "/register"} className="underline">Register</a></p>
+    <p className="text-sm">No account? <a href={portal === "organizer" ? "/organizer-register" : `/register${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`} className="underline">Register</a></p>
   </form></main>;
 }

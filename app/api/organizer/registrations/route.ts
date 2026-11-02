@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   const canViewPii = auth.membership.permissions.includes('view_participant_info');
   const { data, error } = eventIds.length ? await fetchAllPages((from, to) => {
     const participantFields = canViewPii ? 'first_name,last_name,email,' : '';
-    let query = auth.admin.from('registrations').select(`id,event_id,registration_number,category_id,status,${participantFields}created_at,events(name),race_categories(name)`).in('event_id', eventIds).order('created_at', { ascending: false }).range(from, to);
+    let query = auth.admin.from('registrations').select(`id,event_id,registration_number,category_id,checkout_group_id,status,${participantFields}created_at,events(name),race_categories(name)`).in('event_id', eventIds).order('created_at', { ascending: false }).range(from, to);
     if (requestedStatus) query = query.eq('status', requestedStatus as never);
     if (Number.isFinite(fromTime)) query = query.gte('created_at', new Date(fromTime).toISOString());
     if (Number.isFinite(toTime)) query = query.lte('created_at', new Date(toTime).toISOString());
@@ -46,22 +46,36 @@ export async function GET(request: Request) {
     console.error('Organizer registrations: registration query failed', error);
     return NextResponse.json({ error: 'Registrations could not be loaded' }, { status: 500 });
   }
-  const registrations = data ?? [];
+  // The conditional participant field list is valid at runtime, but Supabase's
+  // generated select parser cannot infer a single row type for both variants.
+  const registrations = (data ?? []) as unknown as Array<{ id: string; [key: string]: unknown }>;
   const registrationIds = registrations.map((registration) => registration.id);
-  const { data: payments, error: paymentError } = registrationIds.length
-    ? await auth.admin.from('payments').select('registration_id,status,created_at').in('registration_id', registrationIds).order('created_at', { ascending: false })
+  const groupIds = Array.from(new Set(registrations.map((registration) => registration.checkout_group_id).filter((id): id is string => typeof id === 'string')));
+  const { data: groupedRegistrations } = groupIds.length
+    ? await auth.admin.from('registrations').select('id,checkout_group_id').in('checkout_group_id', groupIds).in('event_id', eventIds)
+    : { data: [] };
+  const paymentRegistrationIds = Array.from(new Set([...registrationIds, ...(groupedRegistrations ?? []).map((row) => row.id)]));
+  const { data: payments, error: paymentError } = paymentRegistrationIds.length
+    ? await auth.admin.from('payments').select('registration_id,status,created_at').in('registration_id', paymentRegistrationIds).order('created_at', { ascending: false })
     : { data: [], error: null };
   if (paymentError) {
     console.error('Organizer registrations: payment status query failed', paymentError);
     return NextResponse.json({ error: 'Registration payment statuses could not be loaded' }, { status: 500 });
   }
   const latestPaymentByRegistration = new Map<string, { status: string }>();
+  const groupByRegistration = new Map((groupedRegistrations ?? []).map((row) => [row.id, row.checkout_group_id]));
+  const latestPaymentByGroup = new Map<string, { status: string }>();
   for (const payment of payments ?? []) {
     if (!latestPaymentByRegistration.has(payment.registration_id)) latestPaymentByRegistration.set(payment.registration_id, { status: payment.status });
+    const groupId = groupByRegistration.get(payment.registration_id);
+    if (groupId && !latestPaymentByGroup.has(groupId)) latestPaymentByGroup.set(groupId, { status: payment.status });
   }
   return NextResponse.json({
     events,
-    registrations: registrations.map((registration) => ({ ...registration, payments: latestPaymentByRegistration.has(registration.id) ? [latestPaymentByRegistration.get(registration.id)] : [] })),
+    registrations: registrations.map((registration) => {
+      const payment = latestPaymentByRegistration.get(registration.id) ?? (typeof registration.checkout_group_id === 'string' ? latestPaymentByGroup.get(registration.checkout_group_id) : undefined);
+      return { ...registration, payments: payment ? [payment] : [] };
+    }),
     can_view_pii: canViewPii,
     can_manage_registrations: auth.membership.permissions.includes('manage_registrations'),
   });

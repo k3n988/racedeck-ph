@@ -24,6 +24,15 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Consistent account action in the Admin and Organizer shells. */

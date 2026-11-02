@@ -60,6 +60,14 @@ describe('PayMongo webhook route', () => {
     expect(fake.operations.some(operation => operation.table === 'payments' && operation.kind === 'update' && (operation.value as { status: string }).status === 'succeeded')).toBe(true);
   });
 
+  it('persists the payment source only from a verified webhook', async () => {
+    const fake = fakeAdmin({ payment, registration }); mocks.createAdminClient.mockReturnValue(fake.admin); mocks.verifyWebhook.mockReturnValue(webhook({ paymentMethod: 'qrph' }));
+    const response = await POST(request());
+    const update = fake.operations.find(operation => operation.table === 'payments' && operation.kind === 'update');
+    expect(response.status).toBe(200);
+    expect((update?.value as { metadata?: { payment_method?: string } })?.metadata?.payment_method).toBe('qrph');
+  });
+
   it('returns safely for a processed duplicate without reconfirming or regenerating artifacts', async () => {
     const fake = fakeAdmin({ existing: { id: 'webhook-test', status: 'processed' } }); mocks.createAdminClient.mockReturnValue(fake.admin); mocks.verifyWebhook.mockReturnValue(webhook());
     const response = await POST(request());

@@ -2037,44 +2037,80 @@ export type Database = {
       }
       organization_payout_accounts: {
         Row: {
+          account_holder_name: string | null
           account_label: string | null
           account_reference: string
+          address_line1: string | null
+          address_line2: string | null
+          bank_address: string | null
+          bank_name: string | null
+          city: string | null
           created_at: string
           created_by: string | null
+          contact_phone: string | null
+          country_code: string
           currency: string
           id: string
           is_active: boolean
           is_default: boolean
+          notification_emails: string[]
           organization_id: string
+          postal_code: string | null
           provider: string
+          state_province: string | null
+          swift_bic: string | null
           updated_at: string
           verified_at: string | null
         }
         Insert: {
+          account_holder_name?: string | null
           account_label?: string | null
           account_reference: string
+          address_line1?: string | null
+          address_line2?: string | null
+          bank_address?: string | null
+          bank_name?: string | null
+          city?: string | null
           created_at?: string
           created_by?: string | null
+          contact_phone?: string | null
+          country_code?: string
           currency?: string
           id?: string
           is_active?: boolean
           is_default?: boolean
+          notification_emails?: string[]
           organization_id: string
+          postal_code?: string | null
           provider: string
+          state_province?: string | null
+          swift_bic?: string | null
           updated_at?: string
           verified_at?: string | null
         }
         Update: {
+          account_holder_name?: string | null
           account_label?: string | null
           account_reference?: string
+          address_line1?: string | null
+          address_line2?: string | null
+          bank_address?: string | null
+          bank_name?: string | null
+          city?: string | null
           created_at?: string
           created_by?: string | null
+          contact_phone?: string | null
+          country_code?: string
           currency?: string
           id?: string
           is_active?: boolean
           is_default?: boolean
+          notification_emails?: string[]
           organization_id?: string
+          postal_code?: string | null
           provider?: string
+          state_province?: string | null
+          swift_bic?: string | null
           updated_at?: string
           verified_at?: string | null
         }
@@ -2113,19 +2149,26 @@ export type Database = {
         Row: {
           account_status: Database["public"]["Enums"]["organization_account_status"]
           address: string | null
+          city: string | null
           contact_email: string | null
           contact_person: string | null
           contact_phone: string | null
+          contact_phone_extension: string | null
+          country_code: string
           created_at: string
           created_by: string | null
           description: string | null
           id: string
           invoice_mode: Database["public"]["Enums"]["organization_invoice_mode"]
+          is_nonprofit: boolean
           logo_url: string | null
           name: string
           payout_account: Json | null
+          postal_code: string | null
           slug: string
           social_links: Json | null
+          state_province: string | null
+          timezone: string
           updated_at: string
           verification_documents: Json | null
           verification_status: Database["public"]["Enums"]["organization_verification_status"]
@@ -2134,19 +2177,26 @@ export type Database = {
         Insert: {
           account_status?: Database["public"]["Enums"]["organization_account_status"]
           address?: string | null
+          city?: string | null
           contact_email?: string | null
           contact_person?: string | null
           contact_phone?: string | null
+          contact_phone_extension?: string | null
+          country_code?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           invoice_mode?: Database["public"]["Enums"]["organization_invoice_mode"]
+          is_nonprofit?: boolean
           logo_url?: string | null
           name: string
           payout_account?: Json | null
+          postal_code?: string | null
           slug: string
           social_links?: Json | null
+          state_province?: string | null
+          timezone?: string
           updated_at?: string
           verification_documents?: Json | null
           verification_status?: Database["public"]["Enums"]["organization_verification_status"]
@@ -2155,19 +2205,26 @@ export type Database = {
         Update: {
           account_status?: Database["public"]["Enums"]["organization_account_status"]
           address?: string | null
+          city?: string | null
           contact_email?: string | null
           contact_person?: string | null
           contact_phone?: string | null
+          contact_phone_extension?: string | null
+          country_code?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           invoice_mode?: Database["public"]["Enums"]["organization_invoice_mode"]
+          is_nonprofit?: boolean
           logo_url?: string | null
           name?: string
           payout_account?: Json | null
+          postal_code?: string | null
           slug?: string
           social_links?: Json | null
+          state_province?: string | null
+          timezone?: string
           updated_at?: string
           verification_documents?: Json | null
           verification_status?: Database["public"]["Enums"]["organization_verification_status"]
@@ -3606,6 +3663,7 @@ export type Database = {
           bib_id: string | null
           birthdate: string | null
           category_id: string
+          checkout_group_id: string | null
           competition_classification: string | null
           created_at: string
           email: string
@@ -3629,6 +3687,7 @@ export type Database = {
           bib_id?: string | null
           birthdate?: string | null
           category_id: string
+          checkout_group_id?: string | null
           competition_classification?: string | null
           created_at?: string
           email: string
@@ -3652,6 +3711,7 @@ export type Database = {
           bib_id?: string | null
           birthdate?: string | null
           category_id?: string
+          checkout_group_id?: string | null
           competition_classification?: string | null
           created_at?: string
           email?: string

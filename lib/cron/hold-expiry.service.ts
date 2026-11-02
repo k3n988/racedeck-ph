@@ -16,7 +16,7 @@ export async function expireRegistrationHolds(): Promise<{ holds_expired: number
     .update({ status: 'expired' })
     .in('status', ['pending', 'processing'])
     .lt('expires_at', new Date().toISOString())
-    .select('id,registration_id');
+    .select('id,registration_id,metadata');
   if (paymentError) throw paymentError;
 
   const rpc = admin as unknown as ServerRpcClient;
@@ -25,7 +25,15 @@ export async function expireRegistrationHolds(): Promise<{ holds_expired: number
     p_registration_id: payment.registration_id,
   })));
 
-  const registrationIds = (payments ?? []).map((payment) => payment.registration_id);
+  const registrationIds = Array.from(new Set((payments ?? []).flatMap((payment) => {
+    const metadata = payment.metadata && typeof payment.metadata === 'object' && !Array.isArray(payment.metadata)
+      ? payment.metadata as Record<string, unknown>
+      : {};
+    const groupedIds = Array.isArray(metadata.registration_ids)
+      ? metadata.registration_ids.filter((id): id is string => typeof id === 'string')
+      : [];
+    return [payment.registration_id, ...groupedIds];
+  })));
   if (registrationIds.length) {
     const { error: registrationError } = await admin
       .from('registrations')

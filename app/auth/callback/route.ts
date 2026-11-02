@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { provisionUser } from '@/lib/auth/provisioning';
 import { resolveLandingRoute } from '@/lib/auth/resolve-landing-route';
+import { safeNextPath } from '@/lib/auth/safe-next-path';
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
@@ -19,6 +20,6 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.redirect(new URL('/login?error=profile_setup_failed', request.url));
   }
-  const destination = await resolveLandingRoute();
+  const destination = safeNextPath(request.nextUrl.searchParams.get('next')) ?? await resolveLandingRoute();
   return NextResponse.redirect(new URL(destination, request.url));
 }

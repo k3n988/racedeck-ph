@@ -1,17 +1,25 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { safeNextPath } from "@/lib/auth/safe-next-path";
 
 export default function RegisterPage() {
   const supabase = createClient();
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "" });
   const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
+  const [nextPath, setNextPath] = useState<string | null>(null);
+  useEffect(() => {
+    setNextPath(safeNextPath(new URLSearchParams(window.location.search).get("next")));
+  }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     if (busy) return;
     event.preventDefault(); setBusy(true); setMessage("");
+    const nextPath = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+    const callback = new URL("/auth/callback", window.location.origin);
+    callback.searchParams.set("next", nextPath ?? "/dashboard");
     const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password, options: {
-      emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+      emailRedirectTo: callback.toString(),
       data: { first_name: form.firstName, last_name: form.lastName, account_type: "participant" },
     }});
     setBusy(false);
@@ -25,7 +33,11 @@ export default function RegisterPage() {
       await supabase.auth.signOut();
     }
     setMessage("Participant account created. Check your email, verify it, then sign in to continue.");
-    window.setTimeout(() => window.location.assign("/login?portal=participant&registered=1"), 1200);
+    const login = new URL("/login", window.location.origin);
+    login.searchParams.set("portal", "participant");
+    login.searchParams.set("registered", "1");
+    if (nextPath) login.searchParams.set("next", nextPath);
+    window.setTimeout(() => window.location.assign(login.toString()), 1200);
   }
   return <main className="mx-auto flex min-h-screen max-w-md items-center p-6"><form onSubmit={submit} className="w-full space-y-4">
     <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-600">Participant Portal</p>
@@ -35,7 +47,7 @@ export default function RegisterPage() {
     <input required type="email" autoComplete="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded border p-3" />
     <input required minLength={8} type="password" autoComplete="new-password" placeholder="Password (8+ characters)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full rounded border p-3" />
     <button disabled={busy} className="w-full rounded bg-black p-3 text-white disabled:opacity-50">{busy ? "Creating…" : "Create account"}</button>
-    {message && <p role="status" className="text-sm">{message}</p>}<p className="text-sm">Already registered? <a href="/login?portal=participant" className="underline">Sign in</a></p>
+    {message && <p role="status" className="text-sm">{message}</p>}<p className="text-sm">Already registered? <a href={`/login?portal=participant${nextPath ? `&next=${encodeURIComponent(nextPath)}` : ""}`} className="underline">Sign in</a></p>
     <p className="text-sm">Organizing a race? <a href="/organizer-register" className="underline">Register as an organizer</a></p>
   </form></main>;
 }
