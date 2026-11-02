@@ -8,6 +8,14 @@ const authPrefixes = ['/login', '/register', '/organizer-register', '/forgot-pas
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
+  const isProtected = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const isAuthPage = authPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+
+  // Public pages do not need an Auth network request. Keep event browsing and
+  // other public routes available even if the Supabase Auth service is down.
+  if (!isProtected && !isAuthPage) return response;
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return response;
@@ -16,16 +24,24 @@ export async function middleware(request: NextRequest) {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+      cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
       },
     },
   });
-  const { data: { user } } = await supabase.auth.getUser();
-  const pathname = request.nextUrl.pathname;
-  const isProtected = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-  const isAuthPage = authPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  let user = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      if (isProtected) return new NextResponse('Authentication is temporarily unavailable. Please try again shortly.', { status: 503 });
+      return response;
+    }
+    user = data.user;
+  } catch {
+    if (isProtected) return new NextResponse('Authentication is temporarily unavailable. Please try again shortly.', { status: 503 });
+    return response;
+  }
 
   if (isProtected && !user) {
     const loginUrl = new URL('/login', request.url);

@@ -37,6 +37,15 @@ const input =
 const emptyUpload = (): UploadValue => ({ url: "", file: null });
 const emptyKitItem = (): KitItem => ({ name: "", description: "", variants: [], productImages: [], referenceImage: emptyUpload() });
 const emptyMerchandiseItem = (): MerchandiseItem => ({ name: "", description: "", unitPrice: "", variants: [], images: [] });
+const hasRichContent = (value: string) => Boolean(value.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim());
+const isOptionalWebUrlValid = (value: string) => {
+  if (!value.trim()) return true;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch { return false; }
+};
+const isOptionalPhoneValid = (value: string) => !value.trim() || (/^[+\d().\s-]+$/.test(value.trim()) && value.replace(/\D/g, "").length >= 7 && value.replace(/\D/g, "").length <= 15);
 const emptyCategory = (): Category => ({
   name: "",
   distance: "",
@@ -51,12 +60,20 @@ function TextField({
   onChange,
   type = "text",
   required = false,
+  min,
+  max,
+  maxLength,
+  step,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   required?: boolean;
+  min?: string;
+  max?: string;
+  maxLength?: number;
+  step?: string;
 }) {
   return (
     <label className="block text-sm font-semibold text-slate-700">
@@ -65,6 +82,10 @@ function TextField({
       <input
         required={required}
         type={type}
+        min={min}
+        max={max}
+        maxLength={maxLength}
+        step={step}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className={input}
@@ -162,13 +183,6 @@ function MerchandiseEditor({ item, onChange, onRemove }: { item: MerchandiseItem
 export default function CreateEventPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<boolean[]>([
-    false,
-    false,
-    false,
-    false,
-    false,
-  ]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [draftEventId, setDraftEventId] = useState<string | null>(null);
@@ -182,6 +196,8 @@ export default function CreateEventPage() {
     eventDate: "",
     registrationOpen: "",
     registrationClose: "",
+    venue: "",
+    startTime: "",
     assembly: "",
     gunStart: "",
     cutoff: "",
@@ -232,6 +248,7 @@ export default function CreateEventPage() {
     const title = customTabTitle.trim();
     if (
       !title ||
+      eventPages.length >= 12 ||
       eventPages.some(
         (page) => page.title.toLowerCase() === title.toLowerCase(),
       )
@@ -242,6 +259,10 @@ export default function CreateEventPage() {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "") || `custom-${Date.now()}`;
+    if (id === "announcements" || eventPages.some((page) => page.id === id)) {
+      setMessage("A tab with a similar name already exists. Choose a different title.");
+      return;
+    }
     setEventPages((current) => [
       ...current,
       { id, title, type: "custom", visible: true, content: "" },
@@ -251,46 +272,53 @@ export default function CreateEventPage() {
     setShowCustomTab(false);
   };
   const capacity = useMemo(
-    () =>
-      categories.reduce(
-        (sum, category) => sum + Number(category.capacity || 0),
-        0,
-      ),
+    () => categories.length > 0 && categories.every((category) => category.capacity.trim())
+      ? categories.reduce((sum, category) => sum + Number(category.capacity), 0)
+      : null,
     [categories],
   );
-  const categoriesReady = categories.length > 0 && categories.every((category) =>
-    category.name.trim() && Number.isFinite(Number(category.distance)) && Number(category.distance) > 0 &&
-    Number.isInteger(Number(category.capacity)) && Number(category.capacity) > 0 &&
-    Number.isFinite(Number(category.fee)) && Number(category.fee) >= 0,
+  const categoryStarted = (category: Category) => Boolean(category.name.trim() || category.distance.trim() || category.capacity.trim() || category.fee.trim() || category.kitItems.some((item) => item.name.trim()));
+  const categoryIsValid = (category: Category) => Boolean(
+    category.name.trim().length <= 120 && Number.isFinite(Number(category.distance)) && Number(category.distance) > 0 && Number(category.distance) <= 9999.99 &&
+    (!category.capacity.trim() || (Number.isInteger(Number(category.capacity)) && Number(category.capacity) > 0 && Number(category.capacity) <= 2147483647)) &&
+    Number.isFinite(Number(category.fee)) && Number(category.fee) >= 0 && Number(category.fee) <= 99999999.99,
   );
+  const categoriesReady = categories.length > 0 && categories.every(categoryIsValid);
+  const incompleteCategory = categories.some((category) => categoryStarted(category) && !categoryIsValid(category));
+  const manilaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const registrationWindowValid = Boolean(form.registrationOpen && form.registrationClose && form.registrationOpen <= form.registrationClose && form.eventDate && form.registrationClose <= form.eventDate);
+  const registrationFieldsValid = (!form.registrationOpen && !form.registrationClose) || registrationWindowValid;
   const missing = [
-    !form.name.trim() && "event name",
+    (!form.name.trim() || form.name.trim().length > 160) && "an event name (up to 160 characters)",
     !form.eventDate && "event date",
-    !categoriesReady && "at least one complete race category",
+    incompleteCategory && "complete or remove the unfinished race category",
+    !registrationFieldsValid && "a valid registration date range",
+    !isOptionalWebUrlValid(form.facebook) && "a valid Facebook URL",
+    !isOptionalWebUrlValid(form.website) && "a valid website URL",
+    !isOptionalPhoneValid(form.phone) && "a valid phone number",
+    capacity !== null && capacity > 2147483647 && "a total capacity below 2,147,483,647",
   ].filter(Boolean) as string[];
   const ready = missing.length === 0;
+  const submissionChecks = [
+    { label: "Event name", complete: Boolean(form.name.trim() && form.name.trim().length <= 160) },
+    { label: "Event date is today or later (Manila time)", complete: Boolean(form.eventDate && form.eventDate >= manilaToday) },
+    { label: "Venue and complete address", complete: Boolean(form.venue.trim() && form.address.trim()) },
+    { label: "Event description", complete: hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || form.description) },
+    { label: "Registration opening and closing dates are valid", complete: registrationWindowValid },
+    { label: "At least one complete race category", complete: categoriesReady },
+  ];
+  const submissionReady = submissionChecks.every((check) => check.complete);
   const fieldCompletedSteps = [
     form.name.trim().length > 0,
-    Boolean(form.eventDate && form.address.trim()),
-    categories.length > 0 &&
-      categories.every(
-        (category) =>
-          category.name.trim() &&
-          category.distance &&
-          category.capacity &&
-          category.fee,
-      ),
-    eventPages.some(
-      (page) => page.id === "event-details" && page.content.trim(),
-    ),
-    Object.values(sponsors).some((list) =>
-      list.some((sponsor) => sponsor.name.trim()),
-    ),
+    Boolean(form.eventDate && form.venue.trim() && form.address.trim()),
+    categoriesReady,
+    hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || ""),
+    submissionReady,
   ];
 
   async function uploadAsset(
     eventId: string,
-    kind: "logo" | "banner" | "poster" | "sponsor_logo" | "size_chart" | "race_kit_image" | "merchandise",
+    kind: "logo" | "banner" | "poster" | "content_image" | "sponsor_logo" | "size_chart" | "race_kit_image" | "merchandise",
     file: File,
   ) {
     const data = new FormData();
@@ -303,6 +331,23 @@ export default function CreateEventPage() {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error ?? `${kind} upload failed`);
     return body.url as string;
+  }
+  async function uploadInlineContentImages(eventId: string, content: string, pageKey: string) {
+    const matches = Array.from(content.matchAll(/src=(["'])(data:image\/(jpeg|png|webp);base64,[^"']+)\1/gi));
+    let result = content;
+    for (let index = 0; index < matches.length; index += 1) {
+      const match = matches[index];
+      const source = match[2];
+      const mime = `image/${match[3].toLowerCase()}`;
+      const blob = await fetch(source).then((response) => response.blob());
+      if (blob.size > 10 * 1024 * 1024) throw new Error("Images inserted into event content must be 10 MB or smaller.");
+      const extension = mime === "image/jpeg" ? "jpg" : match[3].toLowerCase();
+      const file = new File([blob], `${pageKey}-inline-${index + 1}.${extension}`, { type: mime });
+      const url = await uploadAsset(eventId, "content_image", file);
+      result = result.replace(match[0], `src=${match[1]}${url}${match[1]}`);
+    }
+    if (/src=["']data:image\//i.test(result)) throw new Error("Inline images must be JPG, PNG, or WEBP. Remove the unsupported image and upload it as a poster instead.");
+    return result;
   }
   async function saveKit(eventId: string, categoryId: string | null, name: string, items: KitItem[]) {
     const configResponse = await fetch(`/api/organizer/events/${eventId}/race-kit-config`, {
@@ -342,7 +387,7 @@ export default function CreateEventPage() {
     }
     if (!ready) {
       setMessage(`Complete the required ${missing.join(" and ")} first.`);
-      setStep(missing.includes("event date") ? 1 : 0);
+      setStep(missing.includes("event date") || missing.includes("a valid registration date range") ? 1 : missing.includes("complete or remove the unfinished race category") ? 2 : 0);
       return;
     }
     const incompleteMerchandise = merchandise.some((item) => {
@@ -364,24 +409,6 @@ export default function CreateEventPage() {
     setMessage("Creating event...");
     let createdEventId: string | null = null;
     try {
-      const detailsPage =
-        eventPages
-          .find((page) => page.id === "event-details")
-          ?.content.trim() || form.description.trim();
-      const mechanicsPage =
-        eventPages
-          .find((page) => page.id === "race-mechanics")
-          ?.content.trim() || form.mechanics.trim();
-      const description = [
-        form.tagline.trim(),
-        detailsPage,
-        mechanicsPage ? `Race Mechanics\n${mechanicsPage}` : "",
-        ...eventPages
-          .filter((page) => page.type === "custom" && page.content.trim())
-          .map((page) => `${page.title}\n${page.content.trim()}`),
-      ]
-        .filter(Boolean)
-        .join("\n\n");
       const response = await fetch("/api/organizer/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -391,9 +418,11 @@ export default function CreateEventPage() {
             .toLowerCase()
             .trim()
             .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, ""),
-          description,
+            .replace(/^-|-$/g, "") || `event-${Date.now()}`,
+          description: null,
           event_date: form.eventDate,
+          start_time: form.startTime || null,
+          venue: form.venue.trim() || null,
           address: form.address.trim() || null,
           social_links: {
             facebook: form.facebook.trim(),
@@ -418,6 +447,31 @@ export default function CreateEventPage() {
       const eventId = body.event.id as string;
       createdEventId = eventId;
       setDraftEventId(eventId);
+      const savedPages = await Promise.all(eventPages.map(async (page) => ({
+        ...page,
+        content: await uploadInlineContentImages(eventId, page.content, page.id),
+      })));
+      const detailsPage = savedPages.find((page) => page.id === "event-details")?.content ?? "";
+      const descriptionContent = hasRichContent(detailsPage) ? detailsPage : form.description.trim();
+      const description = hasRichContent(descriptionContent)
+        ? [form.tagline.trim(), descriptionContent].filter(Boolean).join("\n\n")
+        : null;
+      const detailsResponse = await fetch(`/api/organizer/events/${eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+      const detailsBody = await detailsResponse.json().catch(() => ({}));
+      if (!detailsResponse.ok) throw new Error(detailsBody.error ?? "Event description could not be saved.");
+      if (savedPages.some((page) => page.type === "custom" || page.content.trim())) {
+        const contentResponse = await fetch(`/api/organizer/events/${eventId}/content-pages`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pages: savedPages }),
+        });
+        const contentBody = await contentResponse.json().catch(() => ({}));
+        if (!contentResponse.ok) throw new Error(contentBody.error ?? "Event content could not be saved.");
+      }
       for (const category of categories.filter((item) => item.name.trim())) {
         const categoryResponse = await fetch(
           `/api/organizer/events/${eventId}/categories`,
@@ -428,7 +482,7 @@ export default function CreateEventPage() {
               name: category.name.trim(),
               distance_km: Number(category.distance),
               registration_fee: Number(category.fee),
-              max_slots: Number(category.capacity),
+              max_slots: category.capacity.trim() ? Number(category.capacity) : null,
               gun_start_time: form.gunStart || null,
               cutoff_time: form.cutoff || null,
               registration_availability: "not_yet_open",
@@ -522,8 +576,7 @@ export default function CreateEventPage() {
             Event setup
           </p>
           {steps.map((item, index) => {
-            const complete =
-              completedSteps[index] || fieldCompletedSteps[index];
+            const complete = fieldCompletedSteps[index];
             return (
               <button
                 key={item}
@@ -554,6 +607,7 @@ export default function CreateEventPage() {
                   label="Event name"
                   value={form.name}
                   onChange={(value) => update("name", value)}
+                  maxLength={160}
                   required
                 />
                 <TextField
@@ -566,18 +620,21 @@ export default function CreateEventPage() {
                   type="url"
                   value={form.facebook}
                   onChange={(value) => update("facebook", value)}
+                  maxLength={2048}
                 />
                 <TextField
                   label="Phone number"
                   type="tel"
                   value={form.phone}
                   onChange={(value) => update("phone", value)}
+                  maxLength={24}
                 />
                 <TextField
                   label="Website link"
                   type="url"
                   value={form.website}
                   onChange={(value) => update("website", value)}
+                  maxLength={2048}
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -607,6 +664,7 @@ export default function CreateEventPage() {
                   type="date"
                   value={form.eventDate}
                   onChange={(value) => update("eventDate", value)}
+                  min={manilaToday}
                   required
                 />
                 <TextField
@@ -614,12 +672,20 @@ export default function CreateEventPage() {
                   type="date"
                   value={form.registrationOpen}
                   onChange={(value) => update("registrationOpen", value)}
+                  max={form.registrationClose || form.eventDate || undefined}
                 />
                 <TextField
                   label="Registration close"
                   type="date"
                   value={form.registrationClose}
                   onChange={(value) => update("registrationClose", value)}
+                  max={form.eventDate || undefined}
+                />
+                <TextField
+                  label="Event start time"
+                  type="time"
+                  value={form.startTime}
+                  onChange={(value) => update("startTime", value)}
                 />
                 <TextField
                   label="Assembly time"
@@ -639,16 +705,17 @@ export default function CreateEventPage() {
                   value={form.cutoff}
                   onChange={(value) => update("cutoff", value)}
                 />
-                {form.registrationClose &&
-                  form.eventDate &&
-                  form.registrationClose > form.eventDate && (
+                {form.registrationOpen && form.registrationClose && form.registrationOpen > form.registrationClose && (
                     <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">
-                      Registration close must be before the event date.
+                      Registration must open before it closes.
                     </p>
                   )}
+                {form.registrationClose && form.eventDate && form.registrationClose > form.eventDate && <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">Registration must close no later than the event date.</p>}
               </div>
+              <p className="text-xs text-slate-500">Set both registration dates before submitting for review. Date fields use Manila local time.</p>
+              <TextField label="Venue name" value={form.venue} onChange={(value) => update("venue", value)} />
               <label className="block text-sm font-semibold">
-                Event location / Complete address
+                Complete address
                 <textarea
                   value={form.address}
                   onChange={(event) => update("address", event.target.value)}
@@ -660,9 +727,9 @@ export default function CreateEventPage() {
           )}
           {step === 2 && (
             <div className="mt-6 space-y-5">
-              <div className="rounded-lg bg-slate-50 p-3 text-sm">
+          <div className="rounded-lg bg-slate-50 p-3 text-sm">
                 {categories.length} categories -{" "}
-                <b>{capacity.toLocaleString()} total capacity</b>
+                <b>{capacity === null ? "Unlimited total capacity" : `${capacity.toLocaleString()} total capacity`}</b>
               </div>
               <label className="flex items-center gap-3 text-sm font-semibold">
                 <input
@@ -696,6 +763,7 @@ export default function CreateEventPage() {
                     <TextField
                       label="Category name"
                       value={category.name}
+                      maxLength={120}
                       onChange={(value) =>
                         setCategories((current) =>
                           current.map((item, itemIndex) =>
@@ -710,6 +778,9 @@ export default function CreateEventPage() {
                     <TextField
                       label="Distance (km)"
                       type="number"
+                      min="0.01"
+                      max="9999.99"
+                      step="0.01"
                       value={category.distance}
                       onChange={(value) =>
                         setCategories((current) =>
@@ -723,8 +794,11 @@ export default function CreateEventPage() {
                       required
                     />
                     <TextField
-                      label="Capacity"
+                      label="Capacity (optional)"
                       type="number"
+                      min="1"
+                      max="2147483647"
+                      step="1"
                       value={category.capacity}
                       onChange={(value) =>
                         setCategories((current) =>
@@ -735,11 +809,14 @@ export default function CreateEventPage() {
                           ),
                         )
                       }
-                      required
                     />
+                    <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Leave capacity blank for unlimited registration slots.</p>
                     <TextField
                       label="Registration Fee (PHP)"
                       type="number"
+                      min="0"
+                      max="99999999.99"
+                      step="0.01"
                       value={category.fee}
                       onChange={(value) =>
                         setCategories((current) =>
@@ -822,10 +899,11 @@ export default function CreateEventPage() {
                 ))}
                 <button
                   type="button"
+                  disabled={eventPages.length >= 12}
                   onClick={() => setShowCustomTab(true)}
-                  className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700"
+                  className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  + Add Custom Tab
+                  {eventPages.length >= 12 ? "Maximum tabs reached" : "+ Add Custom Tab"}
                 </button>
               </div>
               {showCustomTab && (
@@ -962,13 +1040,14 @@ export default function CreateEventPage() {
                   </div>
                 ))}
               </div>
-              <div className="rounded-xl bg-slate-50 p-5 text-sm">
-                <p>Event Profile: {form.name ? "Complete" : "Incomplete"}</p>
-                <p>Dates: {form.eventDate ? "Complete" : "Incomplete"}</p>
-                <p>Location: {form.address ? "Complete" : "Incomplete"}</p>
-                <p>
-                  Categories: {categories.length ? "Complete" : "Incomplete"}
-                </p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm">
+                <h3 className="font-bold text-[#071b41]">Ready to submit for review</h3>
+                <p className="mt-1 text-slate-600">You can save a draft now and finish these items later. RaceDeck requires all checks before the event can be submitted.</p>
+                <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {submissionChecks.map((check) => <li key={check.label} className={`flex items-center gap-2 ${check.complete ? "text-emerald-700" : "text-slate-600"}`}><span aria-hidden="true" className="font-bold">{check.complete ? "✓" : "○"}</span>{check.label}</li>)}
+                </ul>
+                <p className={`mt-3 font-semibold ${submissionReady ? "text-emerald-700" : "text-amber-700"}`}>{submissionReady ? "Event details are complete for review." : "Some required event details are still missing."}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-600">RaceDeck can accept the review request only when your organization is approved and active. You can save this as a draft and finish optional setup later.</p>
               </div>
               <button
                 type="button"
@@ -993,11 +1072,6 @@ export default function CreateEventPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setCompletedSteps((current) =>
-                    current.map((complete, index) =>
-                      index === step ? true : complete,
-                    ),
-                  );
                   setStep((current) => current + 1);
                 }}
                 className="rounded-lg bg-[#071b41] px-4 py-2 text-sm font-bold text-white"

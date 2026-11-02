@@ -4,6 +4,12 @@ import type { Database } from '@/types/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
+function isMissingContentPagesTable(error: { code?: string; message?: string } | null) {
+  return Boolean(error && (
+    error.code === 'PGRST205' || error.code === '42P01' ||
+    /event_content_pages.*(schema cache|does not exist|could not find)/i.test(error.message ?? '')
+  ));
+}
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const auth = await requireOrganizerPermission('view_events', params.eventId);
@@ -15,11 +21,16 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     auth.admin.from('registrations').select('id,status,created_at').eq('event_id', params.eventId).order('created_at', { ascending: false }).limit(1000),
     auth.admin.from('payments').select('amount_paid,status,created_at').eq('event_id', params.eventId).order('created_at', { ascending: false }).limit(1000),
   ]);
-  const { data: contentImages, error: imagesError } = await (auth.admin as unknown as SupabaseClient)
-    .from('event_content_images').select('id,image_url').eq('event_id', params.eventId).order('created_at');
+  const db = auth.admin as unknown as SupabaseClient;
+  const [{ data: contentImages, error: imagesError }, { data: contentPages, error: pagesError }] = await Promise.all([
+    db.from('event_content_images').select('id,image_url,display_order').eq('event_id', params.eventId).order('display_order').order('created_at'),
+    db.from('event_content_pages').select('page_key,title,page_type,content,is_visible,display_order').eq('event_id', params.eventId).order('display_order').order('created_at'),
+  ]);
   if (imagesError) return errorResponse(imagesError, 'Loading organizer event images');
+  if (pagesError && !isMissingContentPagesTable(pagesError)) return errorResponse(pagesError, 'Loading organizer event content pages');
+  if (pagesError) console.warn('Event content pages are unavailable until the Supabase migration is applied.');
   const successful = (payments ?? []).filter((row) => ['succeeded', 'partially_refunded', 'refunded'].includes(row.status));
-  return NextResponse.json({ event: data, content_images: contentImages ?? [], overview: { total_registrations: registrations?.length ?? 0, confirmed_registrations: (registrations ?? []).filter((row) => row.status === 'confirmed').length, gross_sales: successful.reduce((sum, row) => sum + Number(row.amount_paid ?? 0), 0), recent_registrations: (registrations ?? []).slice(0, 5), recent_payments: (payments ?? []).slice(0, 5) } });
+  return NextResponse.json({ event: data, content_images: contentImages ?? [], content_pages: (contentPages ?? []).map((page) => ({ id: page.page_key, title: page.title, type: page.page_type, content: page.content, visible: page.is_visible, display_order: page.display_order })), content_pages_available: !pagesError, overview: { total_registrations: registrations?.length ?? 0, confirmed_registrations: (registrations ?? []).filter((row) => row.status === 'confirmed').length, gross_sales: successful.reduce((sum, row) => sum + Number(row.amount_paid ?? 0), 0), recent_registrations: (registrations ?? []).slice(0, 5), recent_payments: (payments ?? []).slice(0, 5) } });
 }
 
 export async function PATCH(request: Request, { params }: { params: { eventId: string } }) {

@@ -36,6 +36,7 @@ type RegistrationInfo = {
     event_date: string;
     venue: string | null;
     address: string | null;
+    registration_availability: string;
     registration_closes_at: string | null;
   };
   categories: Category[];
@@ -78,6 +79,7 @@ function FieldInput({
     return (
       <textarea
         required={field.is_required}
+        aria-label={field.label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={4}
@@ -88,6 +90,7 @@ function FieldInput({
     return (
       <select
         required={field.is_required}
+        aria-label={field.label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
@@ -133,6 +136,7 @@ function FieldInput({
       <label className="mt-2 flex items-center gap-2 text-sm">
         <input
           required={field.is_required}
+          aria-label={field.label}
           type="checkbox"
           checked={value === "yes"}
           onChange={(event) => onChange(event.target.checked ? "yes" : "")}
@@ -143,6 +147,7 @@ function FieldInput({
   return (
     <input
       required={field.is_required}
+      aria-label={field.label}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -162,6 +167,7 @@ function AnswerInput({
   type?: string;
   required?: boolean;
 }) {
+  const autoComplete = label === "First Name" ? "given-name" : label === "Last Name" ? "family-name" : label === "Birthdate" ? "bday" : label === "Address" ? "street-address" : type === "email" ? "email" : type === "tel" ? "tel" : undefined;
   return (
     <label className="block text-sm font-semibold text-slate-800">
       {label}
@@ -169,6 +175,8 @@ function AnswerInput({
       <input
         required={required}
         type={type}
+        autoComplete={autoComplete}
+        max={type === "date" ? new Date().toISOString().slice(0, 10) : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
@@ -190,6 +198,7 @@ export default function RegisterPage({
   const [merchandiseSelections, setMerchandiseSelections] = useState<Record<string, { quantity: number; variant: string }>>({});
   const [acceptWaiver, setAcceptWaiver] = useState(false);
   const [message, setMessage] = useState("Loading registration details...");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const idempotencyKey = useRef<string>("");
@@ -197,35 +206,53 @@ export default function RegisterPage({
   useEffect(() => {
     idempotencyKey.current = crypto.randomUUID();
     const supabase = createClient();
-    void Promise.all([
-      supabase.auth
-        .getUser()
-        .then(({ data }) => setAuthenticated(Boolean(data.user))),
-      fetch(`/api/events/${params.eventId}/registration-info`).then(
-        async (response) => {
-          const body = await response.json().catch(() => ({}));
-          if (!response.ok)
-            throw new Error(
-              body.error ?? "Registration details could not be loaded",
-            );
-          setData(body as RegistrationInfo);
-          setCategoryId(body.categories[0]?.id ?? "");
-        },
-      ),
-    ])
-      .then(() => setMessage(""))
-      .catch((error) =>
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Registration details could not be loaded",
-        ),
-      );
-  }, [params.eventId]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [{ data: auth }, response] = await Promise.all([
+          supabase.auth.getUser(),
+          fetch(`/api/events/${params.eventId}/registration-info`),
+        ]);
+        if (cancelled) return;
+        const signedIn = Boolean(auth.user);
+        setAuthenticated(signedIn);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error ?? "Registration details could not be loaded");
+        const info = body as RegistrationInfo;
+        if (!Array.isArray(info.categories) || !Array.isArray(info.fields)) throw new Error("Registration details are incomplete. Please try again later.");
+        setData(info);
+        setCategoryId(info.categories[0]?.id ?? "");
+        if (signedIn) {
+          const profileResponse = await fetch("/api/participant/profile");
+          if (profileResponse.ok) {
+            const profileBody = await profileResponse.json();
+            const profile = profileBody.profile ?? {};
+            const prefilled: Record<string, string> = {
+              first_name: profile.first_name ?? "", last_name: profile.last_name ?? "",
+              birthdate: profile.birthdate ?? "", email: profileBody.email ?? "",
+              contact_number: profile.mobile ?? "", address: profile.address ?? "",
+              emergency_contact: profile.emergency_contact_name ?? "",
+              emergency_contact_phone: profile.emergency_contact_number ?? "",
+              shirt_size: profile.default_shirt_size ?? "",
+            };
+            setAnswers((current) => Object.fromEntries(Object.entries({ ...prefilled, ...current }).filter(([, value]) => Boolean(value))));
+          }
+        }
+        if (!cancelled) setMessage("");
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : "Registration details could not be loaded");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [params.eventId, loadAttempt]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data || !categoryId || busy) return;
+    if (data.event.registration_availability !== "open" && data.event.registration_availability !== "closing_soon") {
+      setMessage(data.event.registration_availability === "not_yet_open" ? "Registration has not opened yet." : "Registration is currently closed.");
+      return;
+    }
     if (authenticated === false) {
       window.location.assign(
         `/login?next=${encodeURIComponent(`/events/${params.eventId}/register`)}`,
@@ -235,32 +262,43 @@ export default function RegisterPage({
     if (authenticated === null) return;
     setBusy(true);
     setMessage("Reserving your slot and preparing secure checkout...");
-    const response = await fetch(`/api/events/${params.eventId}/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category_id: categoryId,
-        answers,
-        race_kit_selections: kitSelections,
-        merchandise: Object.entries(merchandiseSelections).filter(([, selection]) => selection.quantity > 0).map(([item_id, selection]) => ({ item_id, quantity: selection.quantity, variant: selection.variant || null })),
-        promo_code: promoCode.trim() || undefined,
-        accept_waiver: acceptWaiver,
-        idempotency_key: idempotencyKey.current,
-      }),
-    });
-    const body = await response.json().catch(() => ({}));
-    setBusy(false);
-    if (!response.ok) {
-      setMessage(
-        body.error ?? "Registration could not be started. Please try again.",
-      );
-      return;
+    try {
+      const response = await fetch(`/api/events/${params.eventId}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category_id: categoryId,
+          answers,
+          race_kit_selections: kitSelections,
+          merchandise: Object.entries(merchandiseSelections).filter(([, selection]) => selection.quantity > 0).map(([item_id, selection]) => ({ item_id, quantity: selection.quantity, variant: selection.variant || null })),
+          promo_code: promoCode.trim() || undefined,
+          accept_waiver: acceptWaiver,
+          idempotency_key: idempotencyKey.current,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // Keep the key on server/network errors so a retry can recover an
+        // already-created registration instead of opening a duplicate slot.
+        if (response.status < 500) idempotencyKey.current = crypto.randomUUID();
+        setMessage(body.error ?? "Registration could not be started. Please try again.");
+        return;
+      }
+      if (body.checkout_url) {
+        window.location.assign(body.checkout_url);
+        return;
+      }
+      if (body.status && body.status !== "pending") {
+        idempotencyKey.current = crypto.randomUUID();
+        setMessage("The previous checkout could not be completed. Review your details and try again.");
+        return;
+      }
+      setMessage("Your payment is pending. Open My Races to continue checkout.");
+    } catch {
+      setMessage("We could not reach RaceDeck. Your details are still here; please try again.");
+    } finally {
+      setBusy(false);
     }
-    if (body.checkout_url) {
-      window.location.assign(body.checkout_url);
-      return;
-    }
-    setMessage("Your payment is pending. Open My Races to continue checkout.");
   }
 
   if (!data)
@@ -278,6 +316,11 @@ export default function RegisterPage({
         >
           {message}
         </p>
+        {message !== "Loading registration details..." && (
+          <button type="button" onClick={() => { setMessage("Loading registration details..."); setLoadAttempt((attempt) => attempt + 1); }} className="mt-3 rounded-lg bg-[#0b2b5b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123b78]">
+            Try again
+          </button>
+        )}
       </main>
     );
   const selectedCategory = data.categories.find(
@@ -328,11 +371,10 @@ export default function RegisterPage({
                 "Venue to be announced"}
             </p>
           </header>
-          <div className="mt-4 grid grid-cols-4 overflow-hidden rounded-xl border border-slate-200 bg-white text-center text-[10px] font-bold sm:text-sm">
-            <div className="bg-[#0b2b5b] px-2 py-3 text-white">1 · Register</div>
-            <div className="px-2 py-3 text-slate-500">2 · Agreement</div>
-            <div className="px-2 py-3 text-slate-500">3 · Fulfillment</div>
-            <div className="px-2 py-3 text-slate-500">4 · Checkout</div>
+          <div className="mt-4 grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-white text-center text-[10px] font-bold sm:text-sm">
+            <div className="bg-[#0b2b5b] px-2 py-3 text-white">1 · Your details</div>
+            <div className="px-2 py-3 text-slate-600">2 · Options &amp; waiver</div>
+            <div className="px-2 py-3 text-slate-600">3 · Secure checkout</div>
           </div>
           <form
             onSubmit={submit}
@@ -346,11 +388,15 @@ export default function RegisterPage({
               <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">
                 Select your race category
               </h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {data.categories.length === 0 ? (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+                  Registration is currently unavailable for all race categories. Please check back later.
+                </p>
+              ) : <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {data.categories.map((category) => (
                   <label
                     key={category.id}
-                    className={`cursor-pointer rounded-xl border p-4 transition ${categoryId === category.id ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-slate-200 hover:border-orange-300"}`}
+                    className={`cursor-pointer rounded-xl border p-4 transition focus-within:ring-2 focus-within:ring-orange-400 ${categoryId === category.id ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-slate-200 hover:border-orange-300"}`}
                   >
                     <input
                       className="sr-only"
@@ -368,7 +414,7 @@ export default function RegisterPage({
                     </span>
                   </label>
                 ))}
-              </div>
+              </div>}
             </section>
             <section>
               <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">
@@ -376,19 +422,8 @@ export default function RegisterPage({
               </h2>
               <div className="mt-4 space-y-4">
                 <fieldset>
-                  <legend className="text-sm font-semibold text-slate-800">Who are you registering? <span className="text-orange-600">*</span></legend>
-                  <p className="mt-1 text-xs text-slate-500">Choose whether these participant details are yours or someone else?s.</p>
-                  <div className="mt-3 grid gap-3 sm:max-w-xl sm:grid-cols-2">
-                    {[
-                      { value: "myself", title: "Myself", detail: "Registering yourself" },
-                      { value: "someone_else", title: "Someone else", detail: "A family member or another participant" },
-                    ].map((option) => (
-                      <label key={option.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${(answers.form_for ?? "myself") === option.value ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-slate-200 hover:border-orange-300"}`}>
-                        <input type="radio" name="form_for" required checked={(answers.form_for ?? "myself") === option.value} onChange={() => setAnswers((current) => ({ ...current, form_for: option.value }))} className="mt-1 accent-orange-600" />
-                        <span><span className="block text-sm font-bold text-[#071b41]">{option.title}</span><span className="mt-0.5 block text-xs font-normal text-slate-500">{option.detail}</span></span>
-                      </label>
-                    ))}
-                  </div>
+                  <legend className="text-sm font-semibold text-slate-800">Participant information</legend>
+                  <p className="mt-1 text-xs text-slate-500">Enter the details for the person who will take part. You can register another participant using your account.</p>
                 </fieldset>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <AnswerInput
@@ -401,16 +436,6 @@ export default function RegisterPage({
                       }))
                     }
                     required
-                  />
-                  <AnswerInput
-                    label="Middle Name"
-                    value={answers.middle_name ?? ""}
-                    onChange={(value) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        middle_name: value,
-                      }))
-                    }
                   />
                   <AnswerInput
                     label="Last Name"
@@ -436,35 +461,6 @@ export default function RegisterPage({
                     required
                   />
                   <AnswerInput
-                    label="Age Range"
-                    value={answers.age_range ?? ""}
-                    onChange={(value) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        age_range: value,
-                      }))
-                    }
-                    required
-                  />
-                  <label className="block text-sm font-semibold text-slate-800">
-                    Gender <span className="text-orange-600">*</span>
-                    <select
-                      required
-                      value={answers.gender ?? ""}
-                      onChange={(event) =>
-                        setAnswers((current) => ({
-                          ...current,
-                          gender: event.target.value,
-                        }))
-                      }
-                      className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                    >
-                      <option value="">-- Select Gender --</option>
-                      <option>Male</option>
-                      <option>Female</option>
-                    </select>
-                  </label>
-                  <AnswerInput
                     label="Email"
                     type="email"
                     value={answers.email ?? ""}
@@ -475,6 +471,7 @@ export default function RegisterPage({
                   />
                   <AnswerInput
                     label="Contact Number"
+                    type="tel"
                     value={answers.contact_number ?? ""}
                     onChange={(value) =>
                       setAnswers((current) => ({
@@ -485,120 +482,38 @@ export default function RegisterPage({
                     required
                   />
                   <AnswerInput
-                    label="Company / School / Running Club"
-                    value={answers.company_school_club ?? ""}
-                    onChange={(value) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        company_school_club: value,
-                      }))
-                    }
-                  />
-                  <AnswerInput
                     label="Address"
                     value={answers.address ?? ""}
                     onChange={(value) => setAnswers((current) => ({ ...current, address: value }))}
                     required
                   />
-                  <AnswerInput
-                    label="Address line 2"
-                    value={answers.address_line_2 ?? ""}
-                    onChange={(value) => setAnswers((current) => ({ ...current, address_line_2: value }))}
-                  />
-                  <AnswerInput
-                    label="City"
-                    value={answers.city ?? ""}
-                    onChange={(value) => setAnswers((current) => ({ ...current, city: value }))}
-                    required
-                  />
-                  <AnswerInput
-                    label="State / Province"
-                    value={answers.province ?? ""}
-                    onChange={(value) => setAnswers((current) => ({ ...current, province: value }))}
-                    required
-                  />
-                  <AnswerInput
-                    label="ZIP / Postal code"
-                    value={answers.postal_code ?? ""}
-                    onChange={(value) => setAnswers((current) => ({ ...current, postal_code: value }))}
-                    required
-                  />
-                  <label className="block text-sm font-semibold text-slate-800">
-                    Country <span className="text-orange-600">*</span>
-                    <select required value={answers.country ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, country: event.target.value }))} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
-                      <option value="">Select country</option><option>Philippines</option><option>Other</option>
-                    </select>
-                  </label>
                 </div>
                 <label className="block text-sm font-semibold text-slate-800">
-                  Wave / Race Predicted Time{" "}
-                  <span className="text-orange-600">*</span>
+                  Shirt size <span className="text-xs font-normal text-slate-500">(optional)</span>
                   <select
-                    required
-                    value={answers.wave ?? ""}
+                    value={answers.shirt_size ?? ""}
                     onChange={(event) =>
                       setAnswers((current) => ({
                         ...current,
-                        wave: event.target.value,
+                        shirt_size: event.target.value,
                       }))
                     }
                     className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                   >
-                    <option value="">Select predicted wave</option>
-                    <option>5K - Wave A (Below 40 mins)</option>
-                    <option>5K - Wave B (Above 40 mins)</option>
-                  </select>
-                </label>
-                <label className="block text-sm font-semibold text-slate-800">
-                  Singlet Size <span className="text-orange-600">*</span>
-                  <select
-                    required
-                    value={answers.singlet_size ?? ""}
-                    onChange={(event) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        singlet_size: event.target.value,
-                      }))
-                    }
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                  >
-                    <option value="">Select singlet size</option>
+                    <option value="">No shirt size</option>
                     {["XS", "S", "M", "L", "XL", "XXL"].map((size) => (
                       <option key={size}>{size}</option>
                     ))}
                   </select>
                 </label>
-                <label className="block text-sm font-semibold text-slate-800">
-                  Finisher Shirt Size <span className="text-orange-600">*</span>
-                  <select
-                    required
-                    value={answers.finisher_shirt_size ?? ""}
-                    onChange={(event) =>
-                      setAnswers((current) => ({
-                        ...current,
-                        finisher_shirt_size: event.target.value,
-                      }))
-                    }
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
-                  >
-                    <option value="">Select finisher shirt size</option>
-                    {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => (
-                      <option key={size}>{size}</option>
-                    ))}
-                  </select>
-                </label>
-                <p className="text-xs text-slate-500">Click image to enlarge</p>
               </div>
               <div className="mt-4 space-y-4">
                 {data.fields.map((field) => (
-                  <label
-                    key={field.id}
-                    className="block text-sm font-semibold text-slate-800"
-                  >
-                    {field.label}
-                    {field.is_required && (
-                      <span className="text-orange-600"> *</span>
-                    )}
+                  <fieldset key={field.id} className="block text-sm font-semibold text-slate-800">
+                    <legend>
+                      {field.label}
+                      {field.is_required && <span className="text-orange-600"> *</span>}
+                    </legend>
                     <FieldInput
                       field={field}
                       value={answers[field.id] ?? ""}
@@ -609,7 +524,7 @@ export default function RegisterPage({
                         }))
                       }
                     />
-                  </label>
+                  </fieldset>
                 ))}
               </div>
             </section>
@@ -618,7 +533,7 @@ export default function RegisterPage({
               <p className="mt-1 text-sm text-slate-600">Review the included items and choose your preferred variants.</p>
               <div className="mt-4 space-y-4">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
-                  {details.variants.length > 0 && <label className="mt-4 block text-sm font-semibold text-slate-800">Choose your option <span className="text-orange-600">*</span><select required value={kitSelections[item.id] ?? ""} onChange={(event) => setKitSelections((current) => ({ ...current, [item.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"><option value="">Select {item.item_name.toLowerCase()} option</option>{details.variants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>}
+                  {details.variants.length > 0 && <label className="mt-4 block text-sm font-semibold text-slate-800">Choose your option {item.is_required ? <span className="text-orange-600">*</span> : <span className="text-xs font-normal text-slate-500">(optional)</span>}<select required={item.is_required} value={kitSelections[item.id] ?? ""} onChange={(event) => setKitSelections((current) => ({ ...current, [item.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"><option value="">Select {item.item_name.toLowerCase()} option</option>{details.variants.map((variant) => <option key={variant} value={variant}>{variant}</option>)}</select></label>}
                   {details.sizeChart && <a href={details.sizeChart} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-semibold text-orange-700 underline">View size chart</a>}
                 </div>
                 {details.images.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">{details.images.map((image, index) => <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" aria-label={`View ${item.item_name} photo ${index + 1}`}><Image src={image} alt={`${item.item_name} sample ${index + 1}`} width={440} height={224} unoptimized className="h-28 w-full rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
@@ -638,7 +553,7 @@ export default function RegisterPage({
               <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Emergency contact information</h2>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <AnswerInput label="Emergency contact person" value={answers.emergency_contact ?? ""} onChange={(value) => setAnswers((current) => ({ ...current, emergency_contact: value }))} required />
-                <AnswerInput label="Emergency contact phone" value={answers.emergency_contact_phone ?? ""} onChange={(value) => setAnswers((current) => ({ ...current, emergency_contact_phone: value }))} required />
+                <AnswerInput label="Emergency contact phone" type="tel" value={answers.emergency_contact_phone ?? ""} onChange={(value) => setAnswers((current) => ({ ...current, emergency_contact_phone: value }))} required />
               </div>
             </section>
             <section>
@@ -682,13 +597,23 @@ export default function RegisterPage({
                 </label>
               </section>
             )}
+            {authenticated === false && (
+              <p className="text-center text-sm text-slate-600">
+                Sign in with your RaceDeck account to register. {" "}
+                <Link href={`/register?next=${encodeURIComponent(`/events/${params.eventId}/register`)}`} className="font-semibold text-orange-700 underline underline-offset-2">Create an account</Link>
+              </p>
+            )}
             <button
-              disabled={busy || !categoryId}
+              disabled={busy || !categoryId || authenticated === null || !["open", "closing_soon"].includes(data.event.registration_availability)}
               className="w-full rounded-lg bg-orange-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {busy
                 ? "Preparing checkout..."
-                : `Continue to payment${selectedCategory ? ` · ${peso(selectedCategory.registration_fee)}` : ""}`}
+                : !["open", "closing_soon"].includes(data.event.registration_availability)
+                  ? data.event.registration_availability === "not_yet_open" ? "Registration has not opened" : "Registration is closed"
+                  : authenticated === false
+                  ? "Sign in to continue"
+                  : `Continue to secure checkout${selectedCategory ? ` · ${peso(selectedCategory.registration_fee)}` : ""}`}
             </button>
             {message && (
               <p role="status" className="text-center text-sm text-slate-600">
@@ -705,7 +630,7 @@ export default function RegisterPage({
             payment.
           </p>
           <div className="mt-5 rounded-xl bg-white p-4 text-sm">
-            {selectedCategory && <div className="mb-3 border-b border-slate-100 pb-3"><p className="font-semibold text-slate-900">Order summary</p><div className="mt-2 flex justify-between gap-3 text-slate-600"><span>{selectedCategory.name}</span><span>{peso(selectedCategory.registration_fee)}</span></div>{merchandiseTotal > 0 && <div className="mt-1 flex justify-between gap-3 text-slate-600"><span>Additional merchandise</span><span>{peso(merchandiseTotal)}</span></div>}<div className="mt-2 flex justify-between gap-3 font-bold text-[#071b41]"><span>Subtotal before fees</span><span>{peso(Number(selectedCategory.registration_fee) + merchandiseTotal)}</span></div></div>}
+            {selectedCategory && <div className="mb-3 border-b border-slate-100 pb-3"><p className="font-semibold text-slate-900">Order summary</p><div className="mt-2 flex justify-between gap-3 text-slate-600"><span>{selectedCategory.name}</span><span>{peso(selectedCategory.registration_fee)}</span></div>{merchandiseTotal > 0 && <div className="mt-1 flex justify-between gap-3 text-slate-600"><span>Additional merchandise</span><span>{peso(merchandiseTotal)}</span></div>}<div className="mt-2 flex justify-between gap-3 font-bold text-[#071b41]"><span>Items subtotal</span><span>{peso(Number(selectedCategory.registration_fee) + merchandiseTotal)}</span></div><p className="mt-2 text-xs leading-5 text-slate-500">Promo codes are validated when you continue. Review the final amount on the secure checkout page before paying.</p></div>}
             <p className="font-semibold text-slate-900">What happens next</p>
             <ol className="mt-3 space-y-2 text-slate-600">
               <li>1. Slot is reserved</li>

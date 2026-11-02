@@ -43,7 +43,7 @@ function EventCard({ event }: { event: PublicEventCard }) {
       <Link href={`/events/${event.slug}`} className="flex h-full flex-col rounded-2xl focus:outline-none">
         <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-[#071b41] via-[#163c70] to-orange-600">
           {event.banner_url ? (
-            <img src={event.banner_url} alt={`${event.name} event poster`} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+            <img src={event.banner_url} alt={`${event.name} event poster`} loading="lazy" className={`h-full w-full ${event.poster_fallback ? 'bg-[#071b41] object-contain p-2' : 'object-cover transition duration-300 group-hover:scale-[1.02]'}`} />
           ) : (
             <div className="flex h-full items-end bg-[radial-gradient(circle_at_82%_20%,rgba(249,115,22,.5),transparent_28%),linear-gradient(130deg,#071b41,#163c70_70%,#a9441b)] p-5">
               <span className="text-xs font-bold uppercase tracking-[0.18em] text-orange-200">RaceDeck PH</span>
@@ -105,6 +105,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const page = Number(get('page') ?? '1');
   const values = Object.fromEntries(FILTER_KEYS.map((key) => [key, get(key)])) as Record<string, string | undefined>;
   let eventsUnavailable = false;
+  let eventsLoadError = '';
   const [data, homepageData] = await Promise.all([
     getPublicEvents({
       search: values.search,
@@ -115,8 +116,9 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
       sort: values.sort,
       period,
       page: Number.isFinite(page) ? page : 1,
-    }).catch(() => {
+    }).catch((error: unknown) => {
       eventsUnavailable = true;
+      eventsLoadError = error instanceof Error ? error.message : 'Unknown event query error';
       return { events: [] as PublicEventCard[], featured: null, page: 1, pageSize: 12, total: 0, totalPages: 0 };
     }),
     getHomepagePublicEvents().catch((error) => {
@@ -136,7 +138,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
     <main className="events-discovery mx-auto max-w-7xl space-y-8 px-4 pb-14 pt-2 sm:px-6">
       <HomeHero events={homepageData.carouselEvents} browseHref="#all-events" />
 
-      {eventsUnavailable && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Events are temporarily unavailable. Please try again later.</p>}
+      {eventsUnavailable && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p>Events are temporarily unavailable. Please try again later.</p>{process.env.NODE_ENV !== 'production' && eventsLoadError && <p className="mt-2 break-words font-mono text-xs text-amber-800">Debug: {eventsLoadError}</p>}</div>}
 
       <section id="all-events" aria-labelledby="events-heading" className="scroll-mt-24 space-y-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

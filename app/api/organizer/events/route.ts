@@ -54,17 +54,20 @@ export async function GET(request: Request) {
     const categories = categoriesResult.data ?? [];
 
     return NextResponse.json({
-      events: (events ?? []).map((event) => ({
+      events: (events ?? []).map((event) => {
+        const eventCategories = categories.filter((row) => row.event_id === event.id);
+        const categoryCapacity = eventCategories.some((row) => row.max_slots === null)
+          ? null
+          : eventCategories.reduce((sum, row) => sum + Number(row.max_slots ?? 0), 0);
+        return {
         ...event,
         registrations_count: registrations.filter((row) => row.event_id === event.id).length,
         confirmed_count: registrations.filter((row) => row.event_id === event.id && row.status === 'confirmed').length,
         gross_sales: payments
           .filter((row) => row.event_id === event.id && ['succeeded', 'partially_refunded', 'refunded'].includes(row.status))
           .reduce((sum, row) => sum + Number(row.amount_paid ?? 0), 0),
-        capacity: categories
-          .filter((row) => row.event_id === event.id)
-          .reduce((sum, row) => sum + Number(row.max_slots ?? 0), 0) || event.overall_capacity,
-      })),
+        capacity: eventCategories.length ? categoryCapacity : event.overall_capacity,
+      }; }),
       total: count ?? 0,
     });
   } catch (error) {
@@ -80,9 +83,49 @@ export async function POST(request: Request) {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const slug = typeof body.slug === 'string' ? body.slug.trim().toLowerCase() : '';
     const eventDate = typeof body.event_date === 'string' ? body.event_date : '';
+    const socialLinks = body.social_links && typeof body.social_links === 'object' && !Array.isArray(body.social_links) ? body.social_links : {};
+    for (const field of ['facebook', 'website'] as const) {
+      const value = socialLinks[field];
+      if (typeof value === 'string' && value.trim()) {
+        if (value.trim().length > 2048) return NextResponse.json({ error: `${field === 'facebook' ? 'Facebook' : 'Website'} URL is too long` }, { status: 400 });
+        try {
+          const url = new URL(value.trim());
+          if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol');
+        } catch {
+          return NextResponse.json({ error: `${field === 'facebook' ? 'Facebook' : 'Website'} must be a valid HTTP or HTTPS URL` }, { status: 400 });
+        }
+      } else if (value != null && typeof value !== 'string') {
+        return NextResponse.json({ error: `Invalid ${field} URL` }, { status: 400 });
+      }
+    }
+    const phone = socialLinks.phone;
+    if (typeof phone === 'string' && phone.trim() && (phone.trim().length > 24 || !/^[+\d().\s-]+$/.test(phone.trim()) || phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15)) {
+      return NextResponse.json({ error: 'Phone number must contain 7 to 15 digits' }, { status: 400 });
+    }
 
-    if (!name || !slug || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+    const parsedDay = /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? new Date(`${eventDate}T00:00:00Z`) : null;
+    if (!name || name.length > 160 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 180 ||
+      !parsedDay || Number.isNaN(parsedDay.getTime()) || parsedDay.toISOString().slice(0, 10) !== eventDate) {
       return NextResponse.json({ error: 'Name, slug, and event date are required' }, { status: 400 });
+    }
+
+    const opensAt = typeof body.registration_opens_at === 'string' ? Date.parse(body.registration_opens_at) : null;
+    const closesAt = typeof body.registration_closes_at === 'string' ? Date.parse(body.registration_closes_at) : null;
+    const eventDayEnd = Date.parse(`${eventDate}T00:00:00+08:00`) + 24 * 60 * 60 * 1000;
+    if ((opensAt !== null || closesAt !== null) &&
+      (opensAt === null || closesAt === null || !Number.isFinite(opensAt) || !Number.isFinite(closesAt) || opensAt >= closesAt || closesAt > eventDayEnd)) {
+      return NextResponse.json({ error: 'Registration must have valid opening and closing dates, in order, closing no later than the event day.' }, { status: 400 });
+    }
+    if (body.overall_capacity != null && (!Number.isInteger(body.overall_capacity) || body.overall_capacity <= 0 || body.overall_capacity > 2147483647)) {
+      return NextResponse.json({ error: 'Overall capacity must be a positive whole number within the supported limit.' }, { status: 400 });
+    }
+    const timeFields = ['start_time', 'assembly_time', 'gun_start_time', 'cutoff_time'] as const;
+    for (const field of timeFields) {
+      const value = body[field];
+      if (value !== undefined && value !== null && value !== '' &&
+        (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value))) {
+        return NextResponse.json({ error: `${field.replaceAll('_', ' ')} must be a valid time` }, { status: 400 });
+      }
     }
 
     const { data, error } = await auth.admin.from('events').insert({
@@ -95,10 +138,11 @@ export async function POST(request: Request) {
       venue: typeof body.venue === 'string' ? body.venue.trim() || null : null,
       address: typeof body.address === 'string' ? body.address.trim() || null : null,
       description: typeof body.description === 'string' ? body.description.trim() || null : null,
+      start_time: typeof body.start_time === 'string' ? body.start_time || null : null,
       social_links: {
-        facebook: typeof body.social_links?.facebook === 'string' ? body.social_links.facebook.trim() : '',
-        phone: typeof body.social_links?.phone === 'string' ? body.social_links.phone.trim() : '',
-        website: typeof body.social_links?.website === 'string' ? body.social_links.website.trim() : '',
+        facebook: typeof socialLinks.facebook === 'string' ? socialLinks.facebook.trim() : '',
+        phone: typeof socialLinks.phone === 'string' ? socialLinks.phone.trim() : '',
+        website: typeof socialLinks.website === 'string' ? socialLinks.website.trim() : '',
       } as never,
       registration_opens_at: typeof body.registration_opens_at === 'string' ? body.registration_opens_at : null,
       registration_closes_at: typeof body.registration_closes_at === 'string' ? body.registration_closes_at : null,
