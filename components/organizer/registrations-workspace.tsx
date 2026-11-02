@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, Search, UsersRound } from 'lucide-react';
+import { BadgeCheck, CheckCircle2, CircleDollarSign, ClipboardList, Search, UsersRound } from 'lucide-react';
 import { useRegistrationsHeader } from './registrations-header-context';
 
 type EventOption = { id: string; name: string };
@@ -95,7 +95,7 @@ export default function RegistrationsWorkspace() {
   const pageRows = visibleRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const pendingCount = scopedRows.filter((row) => row.status === 'pending_payment').length;
   const confirmedCount = scopedRows.filter((row) => row.status === 'confirmed').length;
-  const unpaidCount = scopedRows.filter((row) => !row.payments?.length || ['pending', 'processing'].includes(latestPaymentStatus(row))).length;
+  const paidCount = scopedRows.filter((row) => latestPaymentStatus(row) === 'succeeded').length;
   const filtersActive = Boolean(eventId || registrationStatus || paymentStatus || search || fromDate || toDate);
 
   function clearFilters() {
@@ -132,7 +132,7 @@ export default function RegistrationsWorkspace() {
     { name: 'Total registrations', value: scopedRows.length, icon: UsersRound, note: 'For selected events' },
     { name: 'Confirmed', value: confirmedCount, icon: CheckCircle2, note: 'Ready to participate' },
     { name: 'Awaiting payment', value: pendingCount, icon: CircleDollarSign, note: 'Not confirmed yet' },
-    { name: 'Payment pending', value: unpaidCount, icon: CalendarDays, note: 'Pending or no payment' },
+    { name: 'Paid', value: paidCount, icon: BadgeCheck, note: 'Latest payment successful' },
   ];
 
   return (
@@ -148,35 +148,35 @@ export default function RegistrationsWorkspace() {
           </article>)}
         </section>
 
-        <section aria-label="Filter registrations" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Event
-              <select value={eventId} onChange={(event) => { setEventId(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
-                <option value="">All events</option>{(payload?.events ?? []).map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Registration status
-              <select value={registrationStatus} onChange={(event) => { setRegistrationStatus(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
-                <option value="">All statuses</option><option value="pending_payment">Awaiting payment</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option><option value="refunded">Refunded</option>
-              </select>
-            </label>
-            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment status
-              <select value={paymentStatus} onChange={(event) => { setPaymentStatus(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
-                <option value="">All payments</option><option value="succeeded">Paid</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="failed">Failed</option><option value="expired">Expired</option><option value="partially_refunded">Partially refunded</option><option value="refunded">Refunded</option><option value="unpaid">No payment record</option>
-              </select>
-            </label>
-            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Search
-              <span className="relative mt-1.5 block"><Search aria-hidden="true" size={17} className="pointer-events-none absolute left-3 top-3 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={payload?.can_view_pii ? 'Name, email, or registration no.' : 'Registration, event, or category'} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-medium normal-case tracking-normal text-slate-800 placeholder:font-normal focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100" /></span>
-            </label>
+        <section aria-label="Participant registrations" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="space-y-4 border-b border-slate-200 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-[#0b2348]">Participant registrations</h2><p className="mt-0.5 text-xs text-slate-500">Select a registration to view its full details.</p></div><p aria-live="polite" className="text-sm text-slate-500">{loading ? 'Loading registrations…' : `${visibleRows.length.toLocaleString()} ${visibleRows.length === 1 ? 'record' : 'records'}`}</p></div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Event
+                <select value={eventId} onChange={(event) => { setEventId(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
+                  <option value="">All events</option>{(payload?.events ?? []).map((event) => <option key={event.id} value={event.id}>{event.name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Registration status
+                <select value={registrationStatus} onChange={(event) => { setRegistrationStatus(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
+                  <option value="">All statuses</option><option value="pending_payment">Awaiting payment</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option><option value="refunded">Refunded</option>
+                </select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment status
+                <select value={paymentStatus} onChange={(event) => { setPaymentStatus(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
+                  <option value="">All payments</option><option value="succeeded">Paid</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="failed">Failed</option><option value="expired">Expired</option><option value="partially_refunded">Partially refunded</option><option value="refunded">Refunded</option><option value="unpaid">No payment record</option>
+                </select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Search
+                <span className="relative mt-1.5 block"><Search aria-hidden="true" size={17} className="pointer-events-none absolute left-3 top-3 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={payload?.can_view_pii ? 'Name, email, or registration no.' : 'Registration, event, or category'} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-medium normal-case tracking-normal text-slate-800 placeholder:font-normal focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100" /></span>
+              </label>
+            </div>
+            {filtersActive && <div className="flex justify-end"><button type="button" onClick={clearFilters} className="text-sm font-semibold text-orange-700 underline underline-offset-2">Clear filters</button></div>}
           </div>
-          {filtersActive && <div className="flex justify-end border-t border-slate-100 pt-3"><button type="button" onClick={clearFilters} className="min-h-9 px-2 text-sm font-semibold text-orange-700 underline underline-offset-2">Clear filters</button></div>}
-        </section>
-
-        {loading ? <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-5" aria-label="Loading registrations">{[0, 1, 2, 3].map((row) => <div key={row} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}</div> : <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3"><div><h2 className="font-bold text-[#0b2348]">Participant registrations</h2><p className="mt-0.5 text-xs text-slate-500">Select a registration to view its full details.</p></div><p className="text-sm text-slate-500">{visibleRows.length.toLocaleString()} {visibleRows.length === 1 ? 'record' : 'records'}</p></div>
+          {loading ? <div className="space-y-3 p-5" aria-label="Loading registrations">{[0, 1, 2, 3].map((row) => <div key={row} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}</div> : <>
           <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Registration / Participant</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Payment</th><th className="px-4 py-3">Registration</th><th className="px-4 py-3">Registered</th><th className="px-4 py-3"><span className="sr-only">Action</span></th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{visibleRows.length === 0 ? <tr><td colSpan={7} className="px-4 py-14 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><ClipboardList aria-hidden="true" size={23} /></span><p className="mt-3 text-sm font-semibold text-slate-700">{filtersActive ? 'No matching registrations' : payload?.events.length ? 'No registrations yet' : 'No events to show'}</p></td></tr> : pageRows.map((row) => <tr key={row.id} className="transition hover:bg-slate-50/70">
+            <tbody className="divide-y divide-slate-100">{visibleRows.length === 0 ? <tr><td colSpan={7} className="px-4 py-12 text-center"><div className="mx-auto flex max-w-md flex-col items-center"><span className="grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><ClipboardList aria-hidden="true" size={23} /></span><p className="mt-3 text-sm font-semibold text-slate-700">{filtersActive ? 'No matching registrations' : payload?.events.length ? 'No registrations yet' : 'No events to show'}</p><p className="mt-1 text-sm text-slate-500">{filtersActive ? 'Try changing your filters or use Clear filters above to see all registrations.' : payload?.events.length ? 'Participant sign-ups will appear here when someone registers for your events.' : 'Create an event first, then participant registrations will appear here.'}</p>{!filtersActive && !payload?.events.length && <Link href="/organizer/events" className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">Manage events</Link>}</div></td></tr> : pageRows.map((row) => <tr key={row.id} className="transition hover:bg-slate-50/70">
               <td className="px-4 py-3"><p className="font-bold text-[#0b2348]">{row.registration_number}</p><p className="mt-0.5 text-slate-700">{payload?.can_view_pii ? `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || 'Participant name unavailable' : 'Participant details restricted'}</p>{payload?.can_view_pii && row.email && <p className="text-xs text-slate-500">{row.email}</p>}</td>
               <td className="max-w-56 px-4 py-3 text-slate-700">{row.events?.name ?? 'Event unavailable'}</td><td className="px-4 py-3 text-slate-700">{row.race_categories?.name ?? '—'}</td>
               <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${chipClass(latestPaymentStatus(row))}`}>{paymentLabel(latestPaymentStatus(row))}</span></td>
@@ -185,7 +185,8 @@ export default function RegistrationsWorkspace() {
             </tr>)}</tbody>
           </table></div>
           {visibleRows.length > 0 && <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3"><p className="text-xs text-slate-500">Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleRows.length)} of {visibleRows.length.toLocaleString()}</p><div className="flex items-center gap-2"><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Previous</button><span aria-live="polite" className="px-2 text-sm text-slate-600">Page {page} of {totalPages}</span><button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Next</button></div></footer>}
-        </section>}
+          </>}
+        </section>
       </>}
     </main>
   );
