@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { loadAuthContext } from '@/lib/auth/permissions';
 import { createClient } from '@/lib/supabase/server';
@@ -29,5 +30,9 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     console.error('[Admin event review]', error);
     return NextResponse.json({ error: error.code === 'P0001' ? error.message : 'Event review could not be saved' }, { status: error.code === 'P0001' ? 409 : 500 });
   }
-  return NextResponse.json({ status: data });
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/admin/events');
+  revalidatePath(`/admin/events/${params.eventId}`);
+  revalidatePath(`/organizer/events/${params.eventId}`);
+  return NextResponse.json({ status: data }, { headers: { 'Cache-Control': 'no-store' } });
 }

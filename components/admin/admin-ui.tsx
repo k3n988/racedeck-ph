@@ -1,7 +1,8 @@
 import Link from 'next/link';
+import { Inbox } from 'lucide-react';
 
-export function AdminPage({ eyebrow = 'RaceDeck platform', title, description, action, children }: { eyebrow?: string; title: string; description: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return <main className="min-h-screen bg-[#f4f6fa] px-4 py-6 text-slate-900 sm:px-6 lg:px-8"><div className="mx-auto max-w-[1500px] space-y-6"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-orange-600">{eyebrow}</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#071b41] sm:text-3xl">{title}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">{description}</p></div>{action}</div>{children}</div></main>;
+export function AdminPage({ eyebrow = 'RaceDeck platform', title, description, action, showHeading = false, children }: { eyebrow?: string; title: string; description: string; action?: React.ReactNode; showHeading?: boolean; children: React.ReactNode }) {
+  return <main className="min-h-[calc(100dvh-4rem)] bg-[#f4f6fa] px-4 py-5 text-slate-900 sm:px-6 lg:px-8"><div className="mx-auto max-w-[1500px] space-y-6">{showHeading ? <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-orange-600">{eyebrow}</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#071b41] sm:text-3xl">{title}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">{description}</p></div>{action}</div> : <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4"><p className="max-w-3xl text-sm text-slate-600">{description}</p>{action}</div>}{children}</div></main>;
 }
 
 export function StatCard({ label, value, detail, tone = 'plain' }: { label: string; value: React.ReactNode; detail?: string; tone?: 'plain' | 'orange' | 'green' | 'amber' }) {
@@ -23,8 +24,8 @@ export function DataTable({ headers, children }: { headers: string[]; children: 
   return <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50"><tr>{headers.map((header) => <th key={header} className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table></div>;
 }
 
-export function EmptyState({ message, href, label }: { message: string; href?: string; label?: string }) {
-  return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center"><p className="font-bold text-slate-800">{message}</p>{href && label && <Link href={href} className="mt-4 inline-flex rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white">{label}</Link>}</div>;
+export function EmptyState({ message, href, label, icon: Icon = Inbox }: { message: string; href?: string; label?: string; icon?: typeof Inbox }) {
+  return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-500"><Icon size={22} aria-hidden="true" /></span><p className="mt-3 font-bold text-slate-800">{message}</p>{href && label && <Link href={href} className="mt-4 inline-flex rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white">{label}</Link>}</div>;
 }
 
 export function ActionLink({ href, children = 'View' }: { href: string; children?: React.ReactNode }) {

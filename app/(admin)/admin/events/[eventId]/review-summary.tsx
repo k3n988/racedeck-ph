@@ -1,5 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import Image from 'next/image';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import EventContentPreview from './event-content-preview';
+
+type ContentPage = { id: string; page_key: string; title: string; content: string; is_visible: boolean };
+const hasRichContent = (value: string) => Boolean(value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim() || /<(img|table)\b/i.test(value));
 
 function safeUrl(value: string | null | undefined) {
   if (!value) return null;
@@ -11,24 +16,41 @@ function safeUrl(value: string | null | undefined) {
   }
 }
 
-export default async function EventReviewSummary({ eventId }: { eventId: string }) {
+export default async function EventReviewSummary({ eventId, description }: { eventId: string; description: string | null }) {
   const db = createAdminClient();
   const mediaDb = db as unknown as SupabaseClient;
-  const [{ data: event }, { data: images }, { data: routes }, { data: fields }, { data: waivers }, { data: partners }] = await Promise.all([
-    db.from('events').select('banner_url,logo_url,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,review_feedback').eq('id', eventId).maybeSingle(),
+  const [eventResult, imagesResult, routesResult, fieldsResult, waiversResult, partnersResult, contentResult] = await Promise.all([
+    db.from('events').select('banner_url,logo_url,assembly_time,gun_start_time,cutoff_time').eq('id', eventId).maybeSingle(),
     mediaDb.from('event_content_images').select('id,image_url').eq('event_id', eventId).order('display_order').order('created_at'),
     db.from('event_routes').select('id,route_map_url,description').eq('event_id', eventId),
     db.from('event_registration_fields').select('id,label,field_type,is_required').eq('event_id', eventId).order('display_order'),
     db.from('event_waivers').select('id,title,version,status').eq('event_id', eventId).order('version', { ascending: false }).limit(1),
     db.from('event_partners').select('id,name,partner_type').eq('event_id', eventId).order('display_order'),
+    mediaDb.from('event_content_pages').select('id,page_key,title,content,is_visible').eq('event_id', eventId).order('display_order'),
   ]);
+  const { data: event } = eventResult;
+  const { data: images } = imagesResult;
+  const { data: routes } = routesResult;
+  const { data: fields } = fieldsResult;
+  const { data: waivers } = waiversResult;
+  const { data: partners } = partnersResult;
+  const { data: contentPages } = contentResult;
+  const setupLoadFailed = [eventResult, imagesResult, routesResult, fieldsResult, waiversResult, partnersResult, contentResult].some((result) => result.error);
   const posters = (images ?? []) as Array<{ id: string; image_url: string }>;
+  const pages = (contentPages ?? []) as ContentPage[];
+  const detailsPage = pages.find((page) => page.page_key === 'event-details' && page.is_visible);
+  const eventDescription = detailsPage && hasRichContent(detailsPage.content) ? detailsPage.content : description ?? '';
+  const otherPages = pages.filter((page) => page.is_visible && page.page_key !== 'event-details' && hasRichContent(page.content));
+  const bannerUrl = safeUrl(event?.banner_url);
+  const heroUrl = bannerUrl ?? safeUrl(posters[0]?.image_url);
   return <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-    <h2 className="font-bold text-[#071b41]">Submission checklist</h2>
-    {event?.review_feedback && <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">Previous feedback: {event.review_feedback}</p>}
+    <div><h2 className="text-lg font-extrabold text-[#071b41]">Artwork & setup</h2><p className="mt-1 text-sm text-slate-500">Review the same uploaded assets used by the event.</p></div>
+    {setupLoadFailed && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Some saved event setup could not be loaded. Refresh and check the full submission before completing this review.</p>}
+    {heroUrl ? <div className="relative aspect-[16/6] max-h-80 overflow-hidden rounded-xl bg-[#071b41]"><Image src={heroUrl} alt="Uploaded event banner or poster" fill unoptimized sizes="(max-width: 1280px) 100vw, 60vw" className={bannerUrl ? 'object-cover' : 'object-contain'} /></div> : !eventResult.error && !imagesResult.error ? <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">No event banner or poster uploaded.</p> : null}
+    <div className="border-t border-slate-100 pt-4"><h3 className="font-bold text-[#071b41]">Participant-facing event details</h3>{eventDescription.trim() ? <EventContentPreview content={eventDescription} label="Event details review preview" /> : <p className="mt-2 text-sm text-slate-500">No event description provided.</p>}</div>
+    {otherPages.length > 0 && <div className="space-y-2"><h3 className="font-bold text-[#071b41]">Other visible event sections</h3>{otherPages.map((page) => <details key={page.id} className="rounded-lg border border-slate-200"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[#071b41]">{page.title}</summary><div className="border-t border-slate-100 px-4 pb-4"><EventContentPreview content={page.content} label={`${page.title} review preview`} /></div></details>)}</div>}
+    <h3 className="font-bold text-[#071b41]">Submission checklist</h3>
     <dl className="grid gap-3 text-sm sm:grid-cols-2">
-      <div><dt className="text-slate-500">Registration opens</dt><dd>{event?.registration_opens_at ? new Date(event.registration_opens_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : 'Not set'}</dd></div>
-      <div><dt className="text-slate-500">Registration closes</dt><dd>{event?.registration_closes_at ? new Date(event.registration_closes_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : 'Not set'}</dd></div>
       <div><dt className="text-slate-500">Assembly / gun start</dt><dd>{event?.assembly_time ?? '—'} / {event?.gun_start_time ?? '—'}</dd></div>
       <div><dt className="text-slate-500">Cutoff</dt><dd>{event?.cutoff_time ?? '—'}</dd></div>
       <div><dt className="text-slate-500">Registration fields</dt><dd>{fields?.length ? fields.map((field) => `${field.label}${field.is_required ? ' *' : ''}`).join(', ') : 'Default fields only'}</dd></div>

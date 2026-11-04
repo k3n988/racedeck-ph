@@ -29,13 +29,17 @@ export async function applyRefundGatewayResult(admin: RefundAdmin, refundId: str
 
 export async function requestPayMongoRefund(input: { paymentId: string; amount: number; reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' | 'others'; idempotencyKey: string; requestedBy: string; notes: string }) {
   const admin = createAdminClient();
+  const { data: payment, error: paymentError } = await admin.from('payments').select('gateway').eq('id', input.paymentId).maybeSingle();
+  if (paymentError) throw new Error('Payment could not be checked for refund eligibility');
+  if (!payment) throw new Error('Payment was not found');
+  if (payment.gateway !== 'paymongo') throw new Error('This payment gateway does not support refunds through RaceDeck');
   const { data: reserved, error: reservationError } = await (admin as unknown as RefundRpc).rpc('create_refund_request', { p_payment_id: input.paymentId, p_amount: input.amount, p_reason: input.reason, p_idempotency_key: input.idempotencyKey, p_requested_by: input.requestedBy });
   if (reservationError || !reserved) throw new Error(reservationError?.message ?? 'Refund could not be reserved');
   if (reserved.status === 'succeeded' || reserved.status === 'failed' || reserved.status === 'cancelled') return reserved;
 
   const { data: originalTransaction } = await admin.from('payment_transactions').select('gateway_transaction_id').eq('id', reserved.transaction_id ?? '').maybeSingle();
   if (!originalTransaction?.gateway_transaction_id) throw new Error('Verified PayMongo payment reference is unavailable');
-  if (reserved.gateway !== 'paymongo') throw new Error(`Unsupported refund gateway: ${reserved.gateway}`);
+  if (reserved.gateway !== 'paymongo') throw new Error('This payment gateway does not support refunds through RaceDeck');
 
   // Transport uncertainty must remain pending: retrying with the same PayMongo
   // idempotency key is safer than recording a failed refund that may have been
