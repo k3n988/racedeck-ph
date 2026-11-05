@@ -41,7 +41,7 @@ export default async function AdminContentPage({ searchParams }: { searchParams?
     <div className="flex gap-3 md:col-span-2"><button className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white">{row ? 'Save changes' : 'Create content'}</button>{row && <Link href="/admin/content-management" className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold">Cancel</Link>}</div>
   </form>;
 
-  return <AdminPage eyebrow="Platform / Content" title="Content Management" description="Create and publish the content blocks used across the public RaceDeck experience.">
+  return <AdminPage eyebrow="Platform / Content" title="Content Management" description="" compactTop>
     {searchParams?.notice === 'saved' && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Content saved.</p>}
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Content could not be loaded. Refresh the page to try again.</p>}
     <section className="grid gap-3 sm:grid-cols-3"><StatCard label="Content blocks" value={total ?? '—'} /><StatCard label="Published" value={published ?? '—'} tone="green" /><StatCard label="Needs publishing" value={Math.max(0, (total ?? 0) - (published ?? 0))} tone="amber" /></section>

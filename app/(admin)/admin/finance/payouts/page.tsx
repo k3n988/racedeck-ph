@@ -45,7 +45,7 @@ export default async function AdminPayoutsPage({ searchParams }: { searchParams?
   const metric = (result: { count: number | null; error: unknown }) => result.error ? '—' : (result.count ?? 0).toLocaleString();
   const date = (value: string | null) => value ? new Date(value).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }) : '—';
 
-  return <AdminPage eyebrow="Finance" title="Organizer payouts" description="Review recorded payouts, settlement status, and reconciliation details.">
+  return <AdminPage eyebrow="Finance" title="Organizer payouts" description="" compactTop>
     <section aria-label="Payout totals" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="All payouts" value={metric(totalCount)} /><StatCard label="Pending" value={metric(pendingCount)} tone="amber" /><StatCard label="Processing" value={metric(processingCount)} /><StatCard label="Paid" value={metric(paidCount)} tone="green" /></section>
     {[totalCount, pendingCount, processingCount, paidCount].some((result) => result.error) && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Some totals could not be loaded. Refresh to try again.</p>}
     <form method="get" className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[minmax(150px,1fr)_minmax(240px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_auto] xl:items-end">

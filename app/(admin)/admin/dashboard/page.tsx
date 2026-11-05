@@ -38,11 +38,7 @@ export default async function AdminDashboardPage() {
   const organizerRows = pendingOrganizers.data ?? [];
   const issueCount = (reconciliationCount.count ?? 0) + (emailCount.count ?? 0);
 
-  return <main className="mx-auto max-w-[1500px] space-y-6 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
-    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
-      <p className="text-sm text-slate-600">Review submissions and monitor the essentials.</p>
-      <Link href="/admin/audit-logs" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-[#071b41] hover:border-orange-300">Audit log</Link>
-    </div>
+  return <main className="mx-auto max-w-[1500px] space-y-5 px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
     {loadFailed && <p role="alert" className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle size={18} aria-hidden="true" /> Some dashboard data could not be loaded. Unavailable counts are shown as a dash; refresh to try again.</p>}
     <section aria-label="Platform metrics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <Metric label="Events awaiting review" value={eventCount.error ? null : eventCount.count} href="/admin/events?review=pending_review" icon={CalendarDays} attention />

@@ -156,7 +156,6 @@ export default function AdminShell({ children, email }: { children: React.ReactN
               {isDetailPage && activeItem && <><Link href={activeItem.href} className="hover:text-orange-600">{activeItem.label}</Link><span className="mx-2">/</span></>}
               <span className="font-semibold text-slate-800">{isDetailPage ? detailLabel : activeItem?.label ?? (pathname.startsWith('/admin/payment-operations') ? 'Payment operations' : 'Dashboard')}</span>
             </nav>
-            <span className="ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#071b41] text-xs font-bold text-white" aria-label="Platform administrator">{initials}</span>
           </div>
         </header>
         {children}
