@@ -2,12 +2,15 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Activity, CalendarClock, Clock3, Pencil, Plus, TicketCheck, Users, X } from 'lucide-react';
+import { isoToManilaDateTime, manilaDateTimeToIso } from '@/lib/events/category-pricing';
 
 type Category = {
   id: string;
   name: string;
   distance_km: number | null;
   registration_fee: number;
+  early_bird_fee: number | null;
+  early_bird_deadline: string | null;
   max_slots: number | null;
   confirmed_count: number;
   held_count: number;
@@ -20,6 +23,9 @@ type CategoryFormState = {
   name: string;
   distance_km: string;
   registration_fee: string;
+  early_bird_enabled: boolean;
+  early_bird_fee: string;
+  early_bird_deadline: string;
   max_slots: string;
   gun_start_time: string;
   cutoff_time: string;
@@ -30,6 +36,9 @@ const blankForm: CategoryFormState = {
   name: '',
   distance_km: '',
   registration_fee: '0',
+  early_bird_enabled: false,
+  early_bird_fee: '',
+  early_bird_deadline: '',
   max_slots: '',
   gun_start_time: '',
   cutoff_time: '',
@@ -101,6 +110,9 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
       name: category.name,
       distance_km: category.distance_km?.toString() ?? '',
       registration_fee: Number(category.registration_fee).toString(),
+      early_bird_enabled: category.early_bird_fee !== null && Boolean(category.early_bird_deadline),
+      early_bird_fee: category.early_bird_fee === null ? '' : Number(category.early_bird_fee).toString(),
+      early_bird_deadline: isoToManilaDateTime(category.early_bird_deadline),
       max_slots: category.max_slots?.toString() ?? '',
       gun_start_time: category.gun_start_time?.slice(0, 5) ?? '',
       cutoff_time: category.cutoff_time?.slice(0, 5) ?? '',
@@ -120,6 +132,8 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
       name: form.name.trim(),
       distance_km: form.distance_km ? Number(form.distance_km) : null,
       registration_fee: Number(form.registration_fee),
+      early_bird_fee: form.early_bird_enabled ? Number(form.early_bird_fee) : null,
+      early_bird_deadline: form.early_bird_enabled ? manilaDateTimeToIso(form.early_bird_deadline) : null,
       max_slots: form.max_slots ? Number(form.max_slots) : null,
       gun_start_time: form.gun_start_time || null,
       cutoff_time: form.cutoff_time || null,
@@ -184,7 +198,7 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
                   <button type="button" onClick={() => open(category)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#0b2a59] transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"><Pencil size={14} aria-hidden="true" />Edit</button>
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
-                  <div><p className="text-xs font-semibold text-slate-500">Registration fee</p><p className="mt-1 font-bold text-slate-900">{peso(category.registration_fee)}</p></div>
+                  <div><p className="text-xs font-semibold text-slate-500">{category.early_bird_fee !== null && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > Date.now() ? 'Early Bird price' : 'Current registration fee'}</p><p className="mt-1 font-bold text-slate-900">{peso(category.early_bird_fee !== null && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > Date.now() ? category.early_bird_fee : category.registration_fee)}</p>{category.early_bird_fee !== null && category.early_bird_deadline && <p className="mt-1 text-xs text-slate-500">Regular price {peso(category.registration_fee)} · deadline {new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(category.early_bird_deadline))} Manila time</p>}</div>
                   <div><p className="text-xs font-semibold text-slate-500">Capacity</p><p className="mt-1 font-bold text-slate-900">{category.max_slots === null ? 'Unlimited' : category.max_slots.toLocaleString()}</p></div>
                 </div>
                 <div className="mt-4">
@@ -210,6 +224,14 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
             <CategoryField label="Category name" name="name" value={form.name} required autoFocus onChange={changeField} />
             <CategoryField label="Distance (km)" name="distance_km" value={form.distance_km} type="number" required min={0.01} step={0.01} hint="Enter the race distance, such as 3 or 21.1 km." onChange={changeField} />
             <CategoryField label="Registration fee (PHP)" name="registration_fee" value={form.registration_fee} type="number" required min={0} step={0.01} onChange={changeField} />
+            <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 sm:col-span-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-[#071b41]"><input type="checkbox" checked={form.early_bird_enabled} onChange={(event) => setForm((current) => ({ ...current, early_bird_enabled: event.target.checked, early_bird_fee: event.target.checked ? current.early_bird_fee : '', early_bird_deadline: event.target.checked ? current.early_bird_deadline : '' }))} className="h-4 w-4 accent-orange-600" />Offer optional Early Bird pricing</label>
+              {form.early_bird_enabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <CategoryField label="Early Bird price (PHP)" name="early_bird_fee" value={form.early_bird_fee} type="number" required min={0} step={0.01} onChange={changeField} />
+                <CategoryField label="Early Bird deadline (Manila time)" name="early_bird_deadline" value={form.early_bird_deadline} type="datetime-local" required onChange={changeField} />
+                <p className="text-xs leading-5 text-slate-600 sm:col-span-2">Early Bird applies until this deadline. At the deadline, checkout automatically switches to the regular registration fee. Early Bird price must be lower than the regular price.</p>
+              </div>}
+            </div>
             <CategoryField label="Category capacity" name="max_slots" value={form.max_slots} type="number" min={1} step={1} hint="Leave blank for unlimited slots." onChange={changeField} />
             <CategoryField label="Gun start" name="gun_start_time" value={form.gun_start_time} type="time" hint="Leave blank to show time as TBA." onChange={changeField} />
             <CategoryField label="Course cut-off" name="cutoff_time" value={form.cutoff_time} type="time" hint="Leave blank to show time as TBA." onChange={changeField} />

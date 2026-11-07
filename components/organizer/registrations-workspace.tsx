@@ -25,7 +25,7 @@ type Payload = { events: EventOption[]; registrations: Registration[]; can_view_
 
 const PAGE_SIZE = 20;
 const registrationStatusLabel: Record<string, string> = {
-  pending_payment: 'Awaiting payment', confirmed: 'Confirmed', cancelled: 'Cancelled', expired: 'Expired', refunded: 'Refunded',
+  pending_payment: 'Awaiting payment', confirmed: 'Confirmed', cancelled: 'Cancelled', transferred: 'Transferred', expired: 'Expired', refunded: 'Refunded',
 };
 const paymentStatusLabel: Record<string, string> = {
   succeeded: 'Paid', pending: 'Pending', processing: 'Processing', failed: 'Failed', expired: 'Expired', partially_refunded: 'Partially refunded', refunded: 'Refunded',
@@ -159,7 +159,7 @@ export default function RegistrationsWorkspace() {
               </label>
               <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Registration status
                 <select value={registrationStatus} onChange={(event) => { setRegistrationStatus(event.target.value); setPage(1); }} className="mt-1.5 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100">
-                  <option value="">All statuses</option><option value="pending_payment">Awaiting payment</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option><option value="refunded">Refunded</option>
+                  <option value="">All statuses</option><option value="pending_payment">Awaiting payment</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="transferred">Transferred</option><option value="expired">Expired</option><option value="refunded">Refunded</option>
                 </select>
               </label>
               <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment status

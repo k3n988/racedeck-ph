@@ -1420,6 +1420,7 @@ export type Database = {
           review_feedback: string | null
           review_status: Database["public"]["Enums"]["event_review_status"]
           slug: string
+          social_links: Json | null
           start_time: string | null
           updated_at: string
           venue: string | null
@@ -1449,6 +1450,7 @@ export type Database = {
           review_feedback?: string | null
           review_status?: Database["public"]["Enums"]["event_review_status"]
           slug: string
+          social_links?: Json | null
           start_time?: string | null
           updated_at?: string
           venue?: string | null
@@ -1478,6 +1480,7 @@ export type Database = {
           review_feedback?: string | null
           review_status?: Database["public"]["Enums"]["event_review_status"]
           slug?: string
+          social_links?: Json | null
           start_time?: string | null
           updated_at?: string
           venue?: string | null
@@ -3129,6 +3132,8 @@ export type Database = {
           created_at: string
           cutoff_time: string | null
           distance_km: number | null
+          early_bird_deadline: string | null
+          early_bird_fee: number | null
           event_id: string
           gun_start_time: string | null
           id: string
@@ -3146,6 +3151,8 @@ export type Database = {
           created_at?: string
           cutoff_time?: string | null
           distance_km?: number | null
+          early_bird_deadline?: string | null
+          early_bird_fee?: number | null
           event_id: string
           gun_start_time?: string | null
           id?: string
@@ -3163,6 +3170,8 @@ export type Database = {
           created_at?: string
           cutoff_time?: string | null
           distance_km?: number | null
+          early_bird_deadline?: string | null
+          early_bird_fee?: number | null
           event_id?: string
           gun_start_time?: string | null
           id?: string
@@ -3669,6 +3678,7 @@ export type Database = {
           email: string
           emergency_contact_name: string | null
           emergency_contact_number: string | null
+          emergency_contact_relationship: string | null
           event_id: string
           first_name: string
           hold_id: string | null
@@ -3693,6 +3703,7 @@ export type Database = {
           email: string
           emergency_contact_name?: string | null
           emergency_contact_number?: string | null
+          emergency_contact_relationship?: string | null
           event_id: string
           first_name: string
           hold_id?: string | null
@@ -3717,6 +3728,7 @@ export type Database = {
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_number?: string | null
+          emergency_contact_relationship?: string | null
           event_id?: string
           first_name?: string
           hold_id?: string | null

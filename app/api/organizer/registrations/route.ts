@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   const events = (allEvents ?? []).filter((event) => !auth.membership.restricted_event_ids || auth.membership.restricted_event_ids.includes(event.id));
   const eventIds = events.filter((event) => !requestedEventId || event.id === requestedEventId).map((event) => event.id);
   if (requestedEventId && !eventIds.length) return NextResponse.json({ error: 'Event is outside your organization scope' }, { status: 403 });
-  const validStatuses = ['pending_payment', 'confirmed', 'cancelled', 'expired', 'refunded'];
+  const validStatuses = ['pending_payment', 'confirmed', 'cancelled', 'transferred', 'expired', 'refunded'];
   if (requestedStatus && !validStatuses.includes(requestedStatus)) return NextResponse.json({ error: 'Invalid registration status' }, { status: 400 });
   const canViewPii = auth.membership.permissions.includes('view_participant_info');
   const { data, error } = eventIds.length ? await fetchAllPages((from, to) => {

@@ -8,6 +8,7 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
+  ArrowUpRight,
   ChevronRight,
   CreditCard,
   Download,
@@ -71,6 +72,10 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
   const sidebarRef = useRef<HTMLElement>(null);
   const initials = (email ?? 'OR').slice(0, 2).toUpperCase();
   const eventList = pathname === '/organizer/events';
+  const eventIdForPreview = pathname.match(/^\/organizer\/events\/([^/]+)/)?.[1];
+  const previewHref = eventIdForPreview && eventIdForPreview !== 'create' && !pathname.endsWith('/preview')
+    ? `/organizer/events/${eventIdForPreview}/preview`
+    : null;
   const settingsActive = settingsItems.some(({ href }) => pathname === href || pathname.startsWith(`${href}/`));
 
   const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
@@ -241,6 +246,8 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
               <Menu aria-hidden="true" size={19} />
             </button>
             <h1 className="shrink-0 text-lg font-bold capitalize text-slate-800">{pageTitle(pathname)}</h1>
+
+            {previewHref && <Link href={previewHref} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">Preview <ArrowUpRight aria-hidden="true" size={15} /></Link>}
 
             {pathname === '/organizer/dashboard' && <Link href="/organizer/events/create" className="ml-auto rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">+ Create event</Link>}
 

@@ -15,13 +15,16 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       .maybeSingle();
     if (eventError) return errorResponse(eventError, 'Checking event asset access');
     if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-    if (event.lifecycle_status !== 'draft' || event.review_status === 'pending_review' || event.review_status === 'approved') {
-      return NextResponse.json({ error: 'Event images are locked during review and after approval.' }, { status: 409 });
-    }
     const form = await request.formData();
     const kind = form.get('kind');
     const file = form.get('file');
     if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map' && kind !== 'content_image' && kind !== 'sponsor_logo' && kind !== 'size_chart' && kind !== 'race_kit_image' && kind !== 'merchandise') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
+    const isSponsorLogo = kind === 'sponsor_logo';
+    const isRaceKitAsset = kind === 'race_kit_image' || kind === 'size_chart';
+    const eventImagesLocked = event.lifecycle_status !== 'draft' || event.review_status === 'pending_review' || event.review_status === 'approved';
+    if ((isSponsorLogo && event.review_status === 'pending_review') || (!isSponsorLogo && !isRaceKitAsset && eventImagesLocked)) {
+      return NextResponse.json({ error: isSponsorLogo ? 'Sponsor logos cannot be changed while this event is under review.' : 'Event images are locked during review and after approval.' }, { status: 409 });
+    }
     // The migration creates this bucket in a fresh project. Creating it here as
     // an idempotent fallback also makes an already-running project recover when
     // the storage migration was not yet applied.

@@ -3,8 +3,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, CalendarDays, Globe2, ImageIcon, Phone, Save, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Globe2, ImageIcon, Phone, Save, ShieldCheck } from 'lucide-react';
 import { ContentEditor } from '@/components/organizer/content-editor';
+import { PartnersManager } from '../partners-manager';
 
 type Event = {
   id: string;
@@ -155,7 +156,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
   return <main className="mx-auto max-w-5xl space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <Link href={`/organizer/events/${event.id}`} className="inline-flex items-center gap-2 text-sm font-bold text-orange-700 hover:text-orange-800"><ArrowLeft size={16} aria-hidden="true" />Event workspace</Link>
-      <div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${statusClass}`}>{lifecycleLabel}</span><Link href={`/organizer/events/${event.id}/preview`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400">Preview<ArrowUpRight size={14} aria-hidden="true" /></Link></div>
+      <div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${statusClass}`}>{lifecycleLabel}</span></div>
     </div>
 
     <header>
@@ -239,5 +240,6 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
         {anyEditable && <button type="submit" disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200 disabled:cursor-wait disabled:opacity-60"><Save size={16} aria-hidden="true" />{busy ? 'Saving changes…' : 'Save event details'}</button>}
       </div>
     </form>
+    <PartnersManager eventId={event.id} disabled={!profileEditable} />
   </main>;
 }

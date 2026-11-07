@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-access';
+import { effectiveAvailability } from '@/lib/public/events';
 const EVENT_FIELDS = 'id,organization_id,slug,name,banner_url,event_date,venue,address,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,is_featured,created_at,updated_at';
 export async function GET(request: Request) {
   const auth = await requireOrganizerPermission('view_events');
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
           : eventCategories.reduce((sum, row) => sum + Number(row.max_slots ?? 0), 0);
         return {
         ...event,
+        registration_availability: effectiveAvailability(event),
         registrations_count: registrations.filter((row) => row.event_id === event.id).length,
         confirmed_count: registrations.filter((row) => row.event_id === event.id && row.status === 'confirmed').length,
         gross_sales: payments

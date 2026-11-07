@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { EMERGENCY_CONTACT_RELATIONSHIPS } from "@/lib/registrations/emergency-contact";
 
 type Option = {
   id: string;
@@ -22,7 +23,11 @@ type Field = {
 type Category = {
   id: string;
   name: string;
+  distance_km: number | null;
   registration_fee: number;
+  regular_registration_fee: number;
+  early_bird_fee: number | null;
+  early_bird_deadline: string | null;
   registration_availability: string;
 };
 type KitItem = { id: string; item_name: string; details: unknown; is_required: boolean; is_active: boolean; display_order: number };
@@ -37,6 +42,7 @@ type RegistrationInfo = {
     venue: string | null;
     address: string | null;
     registration_availability: string;
+    registration_opens_at: string | null;
     registration_closes_at: string | null;
   };
   categories: Category[];
@@ -68,12 +74,83 @@ function kitDetails(details: unknown) {
   return {
     description: typeof value.description === "string" ? value.description : "",
     variants: Array.isArray(value.variants) ? value.variants.filter((variant): variant is string => typeof variant === "string") : [],
-    images: Array.isArray(value.product_image_urls) ? value.product_image_urls.filter((url): url is string => typeof url === "string") : [],
-    sizeChart: typeof value.reference_image_url === "string" ? value.reference_image_url : "",
+    images: [...(Array.isArray(value.product_image_urls) ? value.product_image_urls.filter((url): url is string => typeof url === "string") : []), ...(typeof value.reference_image_url === "string" ? [value.reference_image_url] : [])],
   };
 }
 
+function ProductImageCarousel({ images, label }: { images: string[]; label: string }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isEnlarged, setIsEnlarged] = useState(false);
+  const move = (direction: -1 | 1) => setActiveIndex((current) => (current + direction + images.length) % images.length);
+  useEffect(() => {
+    if (!isEnlarged) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setIsEnlarged(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isEnlarged]);
+  if (images.length === 0) return null;
+
+  return <div className="min-w-0">
+    <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white" role="region" aria-roledescription="carousel" aria-label={`${label} photos`}>
+      <button type="button" onClick={() => setIsEnlarged(true)} aria-label={`Enlarge ${label} photo ${activeIndex + 1} of ${images.length}`} title="Click to enlarge" className="block w-full cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-orange-500">
+        <Image src={images[activeIndex]} alt={`${label} photo ${activeIndex + 1} of ${images.length}`} width={440} height={300} unoptimized className="h-40 w-full object-contain sm:h-44" />
+      </button>
+      {images.length > 1 && <>
+        <button type="button" onClick={() => move(-1)} aria-label={`Previous ${label} photo`} className="absolute left-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-slate-900/65 text-xl font-bold text-white shadow transition hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">&larr;</button>
+        <button type="button" onClick={() => move(1)} aria-label={`Next ${label} photo`} className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-slate-900/65 text-xl font-bold text-white shadow transition hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">&rarr;</button>
+      </>}
+    </div>
+    {images.length > 1 && <div className="mt-2 flex items-center justify-center gap-2" role="group" aria-label={`${label} photo pagination`}>
+      {images.map((_, index) => <button key={`${label}-${index}`} type="button" onClick={() => setActiveIndex(index)} aria-label={`Show ${label} photo ${index + 1}`} aria-pressed={activeIndex === index} className={`h-2.5 w-2.5 rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 ${activeIndex === index ? "bg-orange-600" : "bg-slate-300 hover:bg-slate-400"}`} />)}
+      <span className="sr-only" aria-live="polite">Photo {activeIndex + 1} of {images.length}</span>
+    </div>}
+    <p className="mt-1 text-center text-[11px] text-slate-500">Click image to enlarge</p>
+    {isEnlarged && <div role="dialog" aria-modal="true" aria-label={`${label} image preview`} onClick={() => setIsEnlarged(false)} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4 sm:p-8">
+      <button type="button" autoFocus onClick={() => setIsEnlarged(false)} aria-label="Close enlarged image" className="absolute right-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-white text-2xl font-bold text-slate-900 shadow-lg hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">×</button>
+      {images.length > 1 && <button type="button" onClick={(event) => { event.stopPropagation(); move(-1); }} aria-label={`Previous ${label} photo`} className="absolute left-3 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/95 text-2xl text-slate-900 shadow-lg hover:bg-white sm:left-8">‹</button>}
+      <Image src={images[activeIndex]} alt={`${label} enlarged photo ${activeIndex + 1} of ${images.length}`} width={1600} height={1200} unoptimized onClick={(event) => event.stopPropagation()} className="max-h-[88vh] max-w-[92vw] cursor-zoom-out rounded-lg object-contain shadow-2xl" />
+      {images.length > 1 && <button type="button" onClick={(event) => { event.stopPropagation(); move(1); }} aria-label={`Next ${label} photo`} className="absolute right-3 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/95 text-2xl text-slate-900 shadow-lg hover:bg-white sm:right-8">›</button>}
+      <p aria-live="polite" className="absolute bottom-3 rounded-full bg-slate-900/70 px-3 py-1 text-xs font-medium text-white">{label} · {activeIndex + 1} / {images.length}</p>
+    </div>}
+  </div>;
+}
+
 const peso = (amount: number) => `PHP ${Number(amount).toFixed(2)}`;
+const manilaDateTime = (value: string) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+const manilaShortDate = (value: string) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "2-digit" }).format(new Date(value));
+
+function RegistrationEndsCountdown({ closesAt }: { closesAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  if (!closesAt) return <p className="mt-2 text-xs text-slate-500">Registration closing date to be announced</p>;
+  const remaining = Math.max(0, Date.parse(closesAt) - now);
+  const totalSeconds = Math.floor(remaining / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (remaining === 0) return <p role="status" className="mt-2 text-sm font-semibold text-slate-600">Registration has ended</p>;
+  return <div className="mt-2" aria-label={`Registration ends in ${days} days, ${hours} hours, ${minutes} minutes, and ${seconds} seconds`}>
+    <div className="grid max-w-xs grid-cols-4 gap-1.5 text-center">
+      {[{ value: days, label: "Days" }, { value: hours, label: "Hours" }, { value: minutes, label: "Mins" }, { value: seconds, label: "Secs" }].map((part) => <div key={part.label}><span aria-hidden="true" className="block rounded-md bg-[#0b2b5b] px-2 py-1 text-sm font-bold tabular-nums text-white">{String(part.value).padStart(2, "0")}</span><span aria-hidden="true" className="mt-0.5 block text-[10px] text-slate-500">{part.label}</span></div>)}
+    </div>
+  </div>;
+}
+
+function registrationAvailabilityMessage(event: RegistrationInfo["event"]) {
+  if (event.registration_availability === "not_yet_open") return event.registration_opens_at ? `Registration opens ${manilaDateTime(event.registration_opens_at)} (Manila time).` : "Registration has not opened yet.";
+  if (event.registration_availability === "sold_out") return "All registration slots are currently sold out.";
+  if (event.registration_closes_at && Date.now() >= Date.parse(event.registration_closes_at)) return `Registration closed ${manilaDateTime(event.registration_closes_at)} (Manila time). Contact the organizer if you think the deadline should be extended.`;
+  return "The organizer has closed registration for this event. Please contact them if you need help.";
+}
 
 function FieldInput({
   field,
@@ -201,18 +278,28 @@ function RegistrantFields({
   data,
   registrant,
   index,
+  step,
+  pricingNow,
   onChange,
   onRemove,
 }: {
   data: RegistrationInfo;
   registrant: RegistrantDraft;
   index: number;
+  step: 1 | 2 | 3;
+  pricingNow: number;
   onChange: (value: Partial<RegistrantDraft>) => void;
   onRemove?: () => void;
 }) {
   const categoryKits = data.kits.filter((kit) => kit.category_id === registrant.categoryId);
   const sharedKits = data.kits.filter((kit) => kit.category_id === null);
-  const selectedKits = (categoryKits.length ? categoryKits : sharedKits).flatMap((kit) => kit.race_kit_items ?? []).filter((item) => item.is_active).sort((a, b) => a.display_order - b.display_order);
+  // Shared items apply to every category; category-specific items extend them.
+  // Do not hide the shared kit just because this category has its own config.
+  const selectedKits = [...sharedKits, ...categoryKits].flatMap((kit) => kit.race_kit_items ?? []).filter((item) => {
+    if (!item.is_active) return false;
+    const details = item.details && typeof item.details === "object" && !Array.isArray(item.details) ? item.details as Record<string, unknown> : {};
+    return details.kind !== "text_inclusion";
+  }).sort((a, b) => a.display_order - b.display_order);
   const merchandiseTotal = data.merchandise.reduce((total, item) => total + item.unit_price * (registrant.merchandiseSelections[item.id]?.quantity ?? 0), 0);
   const updateAnswer = (key: string, value: string) => onChange({ answers: { ...registrant.answers, [key]: value } });
   const categoryFirstHint = `category-first-${registrant.id}`;
@@ -227,19 +314,49 @@ function RegistrantFields({
         </div>
       </div>
 
-      <section>
-        <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Select race category <span className="text-orange-600">*</span></h2>
-        {data.categories.length === 0 ? <p role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Registration is currently unavailable for all race categories.</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {data.categories.map((category) => <label key={category.id} className={`cursor-pointer rounded-xl border p-4 transition focus-within:ring-2 focus-within:ring-orange-400 ${registrant.categoryId === category.id ? "border-orange-500 bg-orange-50 ring-1 ring-orange-500" : "border-slate-200 hover:border-orange-300"}`}>
-            <input className="sr-only" type="radio" name={`category-${registrant.id}`} value={category.id} required checked={registrant.categoryId === category.id} onChange={() => onChange({ categoryId: category.id, kitSelections: {} })} />
-            <span className="block font-bold text-slate-900">{category.name}</span><span className="mt-1 block text-sm text-slate-600">{peso(category.registration_fee)}</span>
-          </label>)}
-        </div>}
-      </section>
+      {step === 1 && <section>
+        <fieldset aria-describedby={!registrant.categoryId && data.categories.length > 0 ? categoryFirstHint : undefined}>
+          <legend className="block text-sm font-semibold text-slate-800">Choose your race category <span className="text-orange-600">*</span></legend>
+          {data.categories.length === 0 ? <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Registration is currently unavailable for all race categories.</p> : <div className="mt-3 space-y-3">
+            {data.categories.map((category) => {
+              const selected = registrant.categoryId === category.id;
+              const earlyBirdActive = category.early_bird_fee !== null && category.early_bird_deadline !== null && Date.parse(category.early_bird_deadline) > pricingNow;
+              const price = Number(earlyBirdActive ? category.early_bird_fee : category.regular_registration_fee);
+              const periodEnd = earlyBirdActive ? category.early_bird_deadline : data.event.registration_closes_at;
+              const includedItems = data.kits.filter((kit) => kit.category_id === null || kit.category_id === category.id)
+                .flatMap((kit) => kit.race_kit_items ?? []).filter((item) => item.is_active)
+                .sort((a, b) => a.display_order - b.display_order);
+              return <label key={category.id} className={`block cursor-pointer rounded-xl border p-4 transition focus-within:ring-2 focus-within:ring-orange-200 ${selected ? "border-orange-500 bg-orange-50/60 shadow-sm" : "border-slate-200 bg-slate-50 hover:border-orange-300 hover:bg-white"}`}>
+                <input className="sr-only" type="radio" name={`category-${registrant.id}`} value={category.id} checked={selected} required onChange={() => onChange({ categoryId: category.id, kitSelections: {} })} />
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] sm:gap-6">
+                  <div className="min-w-0">
+                    <div className="flex items-start gap-3">
+                      <span aria-hidden="true" className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${selected ? "border-orange-600" : "border-slate-400"}`}>{selected && <span className="h-2.5 w-2.5 rounded-full bg-orange-600" />}</span>
+                      <div className="min-w-0">
+                        <span className="block font-bold text-[#0b2b5b]">{category.name}{category.distance_km !== null && <span className="font-medium text-slate-600"> · {category.distance_km} km</span>}</span>
+                        <span className="mt-1 block text-sm font-semibold text-orange-700">{peso(price)} <span className="font-normal text-slate-600">({earlyBirdActive ? "Early Bird" : "Reg. Period"}){periodEnd ? ` until ${manilaShortDate(periodEnd)}` : ""}</span></span>
+                      </div>
+                    </div>
+                    <div className="mt-4 pl-8">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Inclusions</p>
+                      {includedItems.length > 0 ? <ul className="mt-1.5 space-y-1 text-sm text-slate-700">{includedItems.map((item) => <li key={item.id} className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />{item.item_name}</li>)}</ul> : <p className="mt-1.5 text-sm text-slate-500">No kit inclusions listed for this category.</p>}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-white/80 p-3 sm:border sm:border-slate-200">
+                    <p className="text-xs font-medium text-slate-600">Registration ends in</p>
+                    <RegistrationEndsCountdown closesAt={data.event.registration_closes_at} />
+                    {periodEnd && <p className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm font-bold text-[#0b2b5b]">{peso(price)} ({earlyBirdActive ? "Early Bird" : "Reg. Period"}) until {manilaShortDate(periodEnd)}</p>}
+                  </div>
+                </div>
+              </label>;
+            })}
+          </div>}
+        </fieldset>
+      </section>}
+      {step === 1 && !registrant.categoryId && data.categories.length > 0 && <p id={categoryFirstHint} role="status" className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">Select a race category above to continue with this participant.</p>}
 
-      {!registrant.categoryId && data.categories.length > 0 && <p id={categoryFirstHint} role="status" className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">Select a race category above to continue with this participant.</p>}
-
-      <fieldset disabled={!registrant.categoryId} aria-describedby={!registrant.categoryId ? categoryFirstHint : undefined} className="min-w-0 space-y-5 disabled:opacity-50">
+      {registrant.categoryId && <fieldset className="min-w-0 space-y-5">
+        {step === 1 && <>
         <section>
           <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Personal information</h2>
           <p className="mt-3 text-xs text-slate-500">Enter details for the person who will take part. Event-specific questions configured by the organizer appear here.</p>
@@ -251,38 +368,38 @@ function RegistrantFields({
             <AnswerInput label="Contact Number" type="tel" value={registrant.answers.contact_number ?? ""} onChange={(value) => updateAnswer("contact_number", value)} required />
             <AnswerInput label="Address" value={registrant.answers.address ?? ""} onChange={(value) => updateAnswer("address", value)} required />
           </div>
-          <label className="mt-4 block text-sm font-semibold text-slate-800">Shirt size <span className="text-xs font-normal text-slate-500">(optional)</span>
-            <select value={registrant.answers.shirt_size ?? ""} onChange={(event) => updateAnswer("shirt_size", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">No shirt size</option>{["XS", "S", "M", "L", "XL", "XXL"].map((size) => <option key={size}>{size}</option>)}</select>
-          </label>
           {data.fields.length > 0 && <div className="mt-5 space-y-4 border-t border-slate-100 pt-4">{data.fields.map((field) => <fieldset key={field.id} className="block text-sm font-semibold text-slate-800"><legend>{field.label}{field.is_required && <span className="text-orange-600"> *</span>}</legend><FieldInput field={field} value={registrant.answers[field.id] ?? ""} onChange={(value) => updateAnswer(field.id, value)} /></fieldset>)}</div>}
         </section>
 
         {selectedKits.length > 0 && <section>
-          <h2 className="text-lg font-bold text-slate-900">Included race kit</h2><p className="mt-1 text-sm text-slate-600">Items configured for this selected category. Choose required sizes or variants below.</p>
+          <h2 className="text-lg font-bold text-slate-900">Included race kit</h2><p className="mt-1 text-sm text-slate-600">Items configured for this selected category. Select a size or option for every item that offers choices.</p>
           <div className="mt-4 space-y-3">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
-              {details.variants.length > 0 && <label className="mt-3 block text-sm font-semibold text-slate-800">Option {item.is_required ? <span className="text-orange-600">*</span> : <span className="text-xs font-normal text-slate-500">(optional)</span>}<select required={item.is_required} value={registrant.kitSelections[item.id] ?? ""} onChange={(event) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: event.target.value } })} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">Select an option</option>{details.variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
-              {details.sizeChart && <a href={details.sizeChart} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-semibold text-orange-700 underline">View size chart</a>}
+              {details.variants.length > 0 && <label className="mt-3 block text-sm font-semibold text-slate-800">{item.item_name.trim().toLowerCase() === "race kit claiming" ? "Claiming place" : "Size / option"} {item.is_required ? <span className="text-orange-600">*</span> : <span className="text-xs font-normal text-slate-500">(optional)</span>}<select required={item.is_required} value={registrant.kitSelections[item.id] ?? ""} onChange={(event) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: event.target.value } })} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">{item.item_name.trim().toLowerCase() === "race kit claiming" ? "Select a claiming place" : "Choose a size or option"}</option>{details.variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
             </div>
-            {details.images.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">{details.images.map((image, imageIndex) => <a key={`${image}-${imageIndex}`} href={image} target="_blank" rel="noreferrer" aria-label={`View ${item.item_name} photo ${imageIndex + 1}`}><Image src={image} alt={`${item.item_name} sample ${imageIndex + 1}`} width={440} height={224} unoptimized className="h-28 w-full rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
+            {details.images.length > 0 && <ProductImageCarousel images={details.images} label={item.item_name} />}
           </article>; })}</div>
         </section>}
 
         {data.merchandise.length > 0 && <section>
           <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-lg font-bold text-slate-900">Optional merchandise</h2><p className="mt-1 text-sm text-slate-600">Optional paid add-ons; they are not part of the included race kit.</p></div><span className="text-sm font-bold text-slate-700">Registrant subtotal: {peso(merchandiseTotal)}</span></div>
-          <div className="mt-4 space-y-3">{data.merchandise.map((item) => { const selection = registrant.merchandiseSelections[item.id] ?? { quantity: 0, variant: "" }; const variants = item.variants ?? []; const images = item.image_urls ?? []; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
+          <div className="mt-4 space-y-3">{data.merchandise.map((item) => { const selection = registrant.merchandiseSelections[item.id] ?? { quantity: 0, variant: "" }; const selected = selection.quantity > 0; const variants = item.variants ?? []; const images = item.image_urls ?? []; const checkboxId = `merch-${registrant.id}-${item.id}`; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.name}</h3><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800">Optional</span></div>{item.description && <p className="mt-1 text-sm text-slate-600">{item.description}</p>}<p className="mt-2 text-sm font-bold text-[#071b41]">{peso(item.unit_price)} each</p>
-              {variants.length > 0 && <label className="mt-3 block text-sm font-semibold text-slate-800">Variant {selection.quantity > 0 && <span className="text-orange-600">*</span>}<select required={selection.quantity > 0} value={selection.variant} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant: event.target.value } } })} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">Select an option</option>{variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
-              <label className="mt-3 block max-w-48 text-sm font-semibold text-slate-800">Quantity<select value={selection.quantity} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: Number(event.target.value) } } })} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal">{[0, 1, 2, 3, 4, 5].map((quantity) => <option key={quantity} value={quantity}>{quantity === 0 ? "Not adding" : quantity}</option>)}</select></label>
+              <label htmlFor={checkboxId} className="mt-3 inline-flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input id={checkboxId} type="checkbox" checked={selected} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { quantity: event.target.checked ? 1 : 0, variant: event.target.checked ? selection.variant : "" } } })} className="h-4 w-4 accent-orange-600" />Add to order</label>
+              {selected && variants.length > 0 && <label className="mt-2 block text-sm font-semibold text-slate-800">Size / variant <span className="text-orange-600">*</span><select required value={selection.variant} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant: event.target.value } } })} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Choose a size or option</option>{variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
+              {selected && <div className="mt-2 flex items-center gap-3"><span className="text-sm text-slate-600">Quantity</span><div className="inline-flex items-center rounded-lg border border-slate-300" aria-label={`Quantity for ${item.name}`}><button type="button" aria-label={`Remove one ${item.name}`} disabled={selection.quantity <= 1} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity - 1 } } })} className="h-9 w-9 rounded-l-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">−</button><span aria-live="polite" className="min-w-8 text-center text-sm font-semibold text-slate-900">{selection.quantity}</span><button type="button" aria-label={`Add one ${item.name}`} disabled={selection.quantity >= 5} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity + 1 } } })} className="h-9 w-9 rounded-r-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">+</button></div><span className="text-sm font-semibold text-slate-700">{peso(item.unit_price * selection.quantity)}</span></div>}
             </div>
-            {images.length > 0 && <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">{images.map((image, imageIndex) => <a key={`${image}-${imageIndex}`} href={image} target="_blank" rel="noreferrer" aria-label={`View ${item.name} photo ${imageIndex + 1}`}><Image src={image} alt={`${item.name} sample ${imageIndex + 1}`} width={440} height={224} unoptimized className="h-28 w-full rounded-lg border border-slate-200 object-cover" /></a>)}</div>}
+            {images.length > 0 && <ProductImageCarousel images={images} label={item.name} />}
           </article>; })}</div>
         </section>}
 
-        <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Emergency contact information</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><AnswerInput label="Emergency contact person" value={registrant.answers.emergency_contact ?? ""} onChange={(value) => updateAnswer("emergency_contact", value)} required /><AnswerInput label="Emergency contact phone" type="tel" value={registrant.answers.emergency_contact_phone ?? ""} onChange={(value) => updateAnswer("emergency_contact_phone", value)} required /></div></section>
+        <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Emergency contact information</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><AnswerInput label="Emergency contact person" value={registrant.answers.emergency_contact ?? ""} onChange={(value) => updateAnswer("emergency_contact", value)} required /><AnswerInput label="Emergency contact phone" type="tel" value={registrant.answers.emergency_contact_phone ?? ""} onChange={(value) => updateAnswer("emergency_contact_phone", value)} required /><label className="block text-sm font-semibold text-slate-800 sm:col-span-2">Relationship to participant <span className="text-orange-600">*</span><select required value={registrant.answers.emergency_contact_relationship ?? ""} onChange={(event) => updateAnswer("emergency_contact_relationship", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"><option value="">Select relationship</option>{EMERGENCY_CONTACT_RELATIONSHIPS.map((relationship) => <option key={relationship} value={relationship}>{relationship}</option>)}</select></label></div></section>
 
-        {data.waiver && <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Event waiver</h2><div className="mt-3 max-h-48 overflow-y-auto rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600"><p className="font-semibold text-slate-900">{data.waiver.title} · Version {data.waiver.version}</p><p className="mt-2 whitespace-pre-wrap">{data.waiver.content ?? "Review the event waiver before continuing."}</p></div><label className="mt-3 flex items-start gap-3 text-sm text-slate-700"><input className="mt-1" required type="checkbox" checked={registrant.acceptWaiver} onChange={(event) => onChange({ acceptWaiver: event.target.checked })} /><span>I have read and accept this event waiver.</span></label></section>}
-      </fieldset>
+        </>}
+
+        {step >= 2 && data.waiver && <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Waiver agreement</h2><div className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600"><p className="font-semibold text-slate-900">{data.waiver.title} · Version {data.waiver.version}</p><p className="mt-2 whitespace-pre-wrap">{data.waiver.content ?? "Review the event waiver before continuing."}</p></div><label className="mt-3 flex items-start gap-3 text-sm text-slate-700"><input className="mt-1" required type="checkbox" checked={registrant.acceptWaiver} onChange={(event) => onChange({ acceptWaiver: event.target.checked })} /><span>I have read and accept this event waiver.</span></label></section>}
+        {step >= 2 && !data.waiver && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No waiver is required for this event.</p>}
+      </fieldset>}
     </article>
   );
 }
@@ -297,10 +414,18 @@ export default function RegisterPage({
   const [promoCode, setPromoCode] = useState("");
   const [message, setMessage] = useState("Loading registration details...");
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [pricingNow, setPricingNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [registrationHref, setRegistrationHref] = useState<string | null>(null);
   const idempotencyKey = useRef<string>("");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setPricingNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     idempotencyKey.current = crypto.randomUUID();
@@ -310,7 +435,7 @@ export default function RegisterPage({
       try {
         const [{ data: auth }, response] = await Promise.all([
           supabase.auth.getUser(),
-          fetch(`/api/events/${params.eventId}/registration-info`),
+          fetch(`/api/events/${params.eventId}/registration-info`, { cache: 'no-store' }),
         ]);
         if (cancelled) return;
         const signedIn = Boolean(auth.user);
@@ -334,7 +459,6 @@ export default function RegisterPage({
                 contact_number: profile.mobile ?? "", address: profile.address ?? "",
                 emergency_contact: profile.emergency_contact_name ?? "",
                 emergency_contact_phone: profile.emergency_contact_number ?? "",
-                shirt_size: profile.default_shirt_size ?? "",
               };
               setRegistrants((current) => current.map((registrant, index) => index === 0
                 ? { ...registrant, answers: Object.fromEntries(Object.entries({ ...prefilled, ...registrant.answers }).filter(([, value]) => Boolean(value))) }
@@ -355,12 +479,23 @@ export default function RegisterPage({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data || busy) return;
+    if (step === 1) {
+      if (!formRef.current?.reportValidity()) return;
+      if (!registrants.every((registrant) => registrant.categoryId)) {
+        setMessage("Choose a race category for each registrant before continuing.");
+        return;
+      }
+      setMessage("");
+      setStep(2);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     if (registrants.some((registrant) => !registrant.categoryId)) {
       setMessage("Choose a race category for each registrant before continuing.");
       return;
     }
     if (data.event.registration_availability !== "open" && data.event.registration_availability !== "closing_soon") {
-      setMessage(data.event.registration_availability === "not_yet_open" ? "Registration has not opened yet." : "Registration is currently closed.");
+      setMessage(registrationAvailabilityMessage(data.event));
       return;
     }
     if (authenticated === false) {
@@ -371,6 +506,7 @@ export default function RegisterPage({
     }
     if (authenticated === null) return;
     setBusy(true);
+    setStep(3);
     setRegistrationHref(null);
     setMessage("Reserving your slot and preparing secure checkout...");
     try {
@@ -425,6 +561,7 @@ export default function RegisterPage({
       setMessage("We could not reach RaceDeck. Your entered details are still here; please try again.");
     } finally {
       setBusy(false);
+      setStep(2);
     }
   }
 
@@ -453,9 +590,9 @@ export default function RegisterPage({
   const selectedTotal = registrants.reduce((total, registrant) => {
     const category = data.categories.find((item) => item.id === registrant.categoryId);
     const merchandise = data.merchandise.reduce((sum, item) => sum + item.unit_price * (registrant.merchandiseSelections[item.id]?.quantity ?? 0), 0);
-    return total + Number(category?.registration_fee ?? 0) + merchandise;
+    const earlyBirdActive = Boolean(category?.early_bird_fee !== null && category?.early_bird_fee !== undefined && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > pricingNow);
+    return total + Number(earlyBirdActive ? category?.early_bird_fee : category?.regular_registration_fee ?? category?.registration_fee ?? 0) + merchandise;
   }, 0);
-  const allCategoriesSelected = registrants.every((registrant) => Boolean(registrant.categoryId));
   const updateRegistrant = (id: string, changes: Partial<RegistrantDraft>) => setRegistrants((current) => current.map((registrant) => registrant.id === id ? { ...registrant, ...changes } : registrant));
   const addRegistrant = () => setRegistrants((current) => current.length >= 10 ? current : [...current, blankRegistrant(crypto.randomUUID())]);
   if (authenticated === false) {
@@ -523,12 +660,28 @@ export default function RegisterPage({
                 "Venue to be announced"}
             </p>
           </header>
-          <div className="mt-4 grid grid-cols-3 overflow-hidden rounded-xl border border-slate-200 bg-white text-center text-[10px] font-bold sm:text-sm">
-            <div className="bg-[#0b2b5b] px-2 py-3 text-white">1 · Choose category</div>
-            <div className="px-2 py-3 text-slate-600">2 · Options &amp; waiver</div>
-            <div className="px-2 py-3 text-slate-600">3 · Secure checkout</div>
+          <div className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-4 sm:px-6">
+            <p className="mb-3 text-right text-xs font-semibold text-slate-500">Step {step} of 3</p>
+            <ol aria-label="Registration progress" className="grid grid-cols-3 gap-2">
+              {(["Category & Information", "Waiver Agreement", "Payment"] as const).map((label, index) => {
+                const itemStep = (index + 1) as 1 | 2 | 3;
+                const isCurrent = step === itemStep;
+                const isComplete = step > itemStep;
+                return (
+                  <li key={label} aria-current={isCurrent ? "step" : undefined} className={`flex min-w-0 items-center gap-1.5 text-[10px] font-semibold sm:gap-2 sm:text-sm ${isCurrent || isComplete ? "text-slate-800" : "text-slate-500"}`}>
+                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white sm:h-6 sm:w-6 sm:text-xs ${isCurrent || isComplete ? "bg-orange-500" : "bg-slate-500"}`}>{isComplete ? "✓" : itemStep}</span>
+                    <span className="leading-tight">{label}</span>
+                  </li>
+                );
+              })}
+            </ol>
+            <div role="progressbar" aria-label="Registration progress" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-orange-500 transition-[width] duration-300" style={{ width: `${(step / 3) * 100}%` }} />
+            </div>
           </div>
+          {!['open', 'closing_soon'].includes(data.event.registration_availability) && <div role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"><p className="font-bold">Registration is unavailable</p><p>{registrationAvailabilityMessage(data.event)}</p></div>}
           <form
+            ref={formRef}
             onSubmit={submit}
             className="mt-4 space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
           >
@@ -539,20 +692,22 @@ export default function RegisterPage({
                   data={data}
                   registrant={registrant}
                   index={index}
+                  step={step}
+                  pricingNow={pricingNow}
                   onChange={(changes) => updateRegistrant(registrant.id, changes)}
                   onRemove={registrants.length > 1 ? () => setRegistrants((current) => current.filter((item) => item.id !== registrant.id)) : undefined}
                 />
               ))}
-              <button
+              {step === 1 && <button
                 type="button"
                 onClick={addRegistrant}
                 disabled={registrants.length >= 10}
                 className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#0b2b5b] px-4 py-2.5 text-sm font-bold text-[#0b2b5b] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 + Add another registrant{registrants.length >= 10 ? " (maximum 10)" : ""}
-              </button>
+              </button>}
             </div>
-            <section>
+            {step === 2 && <section>
               <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Promo code</h2>
               <p className="mt-2 text-sm text-slate-600">One code will be applied to eligible participants in this checkout.</p>
               <input
@@ -563,16 +718,17 @@ export default function RegisterPage({
                 placeholder="Optional promo code"
                 className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
               />
-            </section>
+            </section>}
+            {step === 2 && <button type="button" onClick={() => { setStep(1); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="w-full rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Back to personal information</button>}
             <button
-              disabled={busy || !allCategoriesSelected || authenticated === null || !["open", "closing_soon"].includes(data.event.registration_availability)}
+              disabled={busy || authenticated === null || !["open", "closing_soon"].includes(data.event.registration_availability)}
               className="w-full rounded-lg bg-orange-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {busy
-                ? "Preparing checkout..."
+                ? "Opening secure payment..."
                 : !["open", "closing_soon"].includes(data.event.registration_availability)
                   ? data.event.registration_availability === "not_yet_open" ? "Registration has not opened" : "Registration is closed"
-                  : `Continue to secure checkout · ${peso(selectedTotal)}`}
+                  : step === 1 ? "Continue to waiver agreement" : `Continue to payment · ${peso(selectedTotal)}`}
             </button>
             {message && (
               <p role="status" aria-live="polite" className="text-center text-sm text-slate-600">

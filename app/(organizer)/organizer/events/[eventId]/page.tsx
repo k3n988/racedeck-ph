@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, BarChart3, ClipboardList, FileText, Flag, Megaphone, PackageCheck, Settings2, Shirt, TicketCheck, Users } from 'lucide-react';
+import { ArrowUpRight, BarChart3, CheckCircle2, Circle, ClipboardList, FileText, Flag, Megaphone, PackageCheck, Settings2, Shirt, TicketCheck, Users } from 'lucide-react';
 import { EventWorkspaceOverview, useEventWorkspace } from '@/components/organizer/event-workspace-layout';
 
 type WorkspaceLink = { label: string; href: string; description: string; icon: typeof FileText };
@@ -49,7 +49,7 @@ function WorkspaceGroup({ title, description, links, eventId }: { title: string;
 function pretty(value: string) { return value.replaceAll('_', ' '); }
 
 export default function OrganizerEventWorkspace({ params }: { params: { eventId: string } }) {
-  const { event } = useEventWorkspace();
+  const { event, readiness } = useEventWorkspace();
   const [overview, setOverview] = useState<EventWorkspaceOverview | null>(null);
   const [overviewError, setOverviewError] = useState('');
   const [contentPagesUnavailable, setContentPagesUnavailable] = useState(false);
@@ -72,7 +72,7 @@ export default function OrganizerEventWorkspace({ params }: { params: { eventId:
   if (!event) return <main className="mx-auto max-w-7xl p-6"><p role="status" className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading event overview…</p></main>;
 
   const metricCards = [
-    { label: 'Registration status', value: pretty(event.registration_availability), note: 'Current signup availability', icon: TicketCheck },
+    { label: 'Registration status', value: pretty(event.effective_registration_availability), note: event.registration_availability_reason, icon: TicketCheck },
     { label: 'Registrations', value: overview ? `${overview.confirmed_registrations.toLocaleString()} confirmed` : overviewError ? 'Unavailable' : 'Loading…', note: overview ? `${overview.total_registrations.toLocaleString()} total` : 'Registration metrics', icon: Users },
     { label: 'Capacity', value: event.overall_capacity != null ? event.overall_capacity.toLocaleString() : 'Unlimited', note: 'Event-wide participant limit', icon: ClipboardList },
     { label: 'Gross sales', value: overview ? new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(overview.gross_sales) : overviewError ? 'Unavailable' : 'Loading…', note: 'Recorded successful payments', icon: BarChart3 },
@@ -84,6 +84,20 @@ export default function OrganizerEventWorkspace({ params }: { params: { eventId:
       {contentPagesUnavailable && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Saved event content tabs are unavailable until the Supabase event-content-pages migration is applied.</p>}
       {event.lifecycle_status === 'draft' && event.review_status === 'pending_review' && <p className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">RaceDeck is reviewing this event. You can continue setup and monitor its status here.</p>}
       {event.review_feedback && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><p className="font-bold">RaceDeck review feedback</p><p className="mt-1 whitespace-pre-wrap">{event.review_feedback}</p></section>}
+      {event.lifecycle_status === 'draft' && event.review_status !== 'pending_review' && readiness && <section aria-labelledby="event-readiness-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 id="event-readiness-heading" className="text-lg font-bold text-[#071b41]">Before you submit</h2><p className="mt-1 text-sm text-slate-600">Complete the required checks. Optional setup sections can be finished later.</p></div>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${readiness.can_submit ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>{readiness.can_submit ? 'Ready for review' : `${readiness.checklist.filter((item) => !item.complete).length} items to fix`}</span>
+        </div>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+          {readiness.checklist.map((item) => <li key={item.label}>
+            <Link href={`/organizer/events/${params.eventId}/${item.href}`} className="flex h-full items-start gap-3 rounded-lg border border-slate-200 p-3 transition hover:border-orange-300 hover:bg-orange-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
+              {item.complete ? <CheckCircle2 size={19} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" /> : <Circle size={19} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />}
+              <span><span className="block text-sm font-semibold text-slate-900">{item.label}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{item.detail}</span></span>
+            </Link>
+          </li>)}
+        </ul>
+      </section>}
       <section aria-label="Event performance overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {metricCards.map(({ label, value, note, icon: Icon }) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium text-slate-500">{label}</p><p className="mt-2 text-xl font-extrabold capitalize text-[#071b41]">{value}</p></div><span className="grid h-10 w-10 place-items-center rounded-lg bg-orange-50 text-orange-600"><Icon size={19} aria-hidden="true" /></span></div><p className="mt-2 text-xs text-slate-500">{note}</p></article>)}
       </section>
