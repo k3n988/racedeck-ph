@@ -25,12 +25,12 @@ type Config = {
 };
 type Category = { id: string; name: string };
 
-const emptyItem = (): ItemDraft => ({
+const emptyItem = (kind: 'product' | 'text_inclusion' = 'product'): ItemDraft => ({
   item_code: '',
   item_name: '',
   quantity: 1,
-  details: { description: '', variants: [], product_image_urls: [], reference_image_url: null },
-  is_required: true,
+  details: { kind, description: '', variants: [], product_image_urls: [], reference_image_url: null },
+  is_required: false,
   is_active: true,
   display_order: 0,
 });
@@ -136,16 +136,18 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     setBusy(true);
     setError(false);
     try {
-      const currentImageUrls = productImages.map((image) => image.file ? uploadAsset('race_kit_image', image.file) : Promise.resolve(image.url));
+      const isProduct = item.details.kind !== 'text_inclusion';
+      const currentImageUrls = isProduct ? productImages.map((image) => image.file ? uploadAsset('race_kit_image', image.file) : Promise.resolve(image.url)) : [];
       const imageUrls = await Promise.all(currentImageUrls);
-      const sizeChartUrl = referenceImage?.file ? await uploadAsset('size_chart', referenceImage.file) : referenceImage?.url ?? null;
+      const sizeChartUrl = isProduct ? referenceImage?.file ? await uploadAsset('size_chart', referenceImage.file) : referenceImage?.url ?? null : null;
       const name = item.item_name.trim();
       const itemCode = itemId ? item.item_code : `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'kit-item'}-${crypto.randomUUID().slice(0, 8)}`;
       const payload = {
         ...item,
         item_code: itemCode,
         item_name: name,
-        details: { ...item.details, description: String(item.details.description ?? '').trim() || null, variants, product_image_urls: imageUrls, reference_image_url: sizeChartUrl },
+        details: { ...item.details, kind: isProduct ? 'product' : 'text_inclusion', description: String(item.details.description ?? '').trim() || null, variants: isProduct ? variants : [], product_image_urls: imageUrls, reference_image_url: sizeChartUrl },
+        is_required: isProduct && variants.length > 0 ? item.is_required : false,
       };
       const url = `/api/organizer/events/${params.eventId}/race-kit-config/${currentConfig.id}/items${itemId ? `/${itemId}` : ''}`;
       const response = await fetch(url, { method: itemId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -183,8 +185,9 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     setReferenceImage(typeof details.reference_image_url === 'string' ? { url: details.reference_image_url } : null);
   }
 
-  function addItem(currentConfig: Config) {
+  function addItem(currentConfig: Config, kind: 'product' | 'text_inclusion') {
     resetItemEditor();
+    setItem(emptyItem(kind));
     setEditorConfigId(currentConfig.id);
   }
 
@@ -231,11 +234,13 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     const next = variantDraft.trim();
     if (!next || variants.some((value) => value.toLowerCase() === next.toLowerCase())) return;
     setVariants([...variants, next]);
+    if (!itemId) setItem((current) => ({ ...current, is_required: true }));
     setVariantDraft('');
   }
 
   const inputClass = 'mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100';
   const editItemDescription = typeof item.details.description === 'string' ? item.details.description : '';
+  const isProductItem = item.details.kind !== 'text_inclusion';
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
@@ -285,19 +290,22 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
 
             {editorConfigId === current.id ? <form onSubmit={(event) => void saveItem(event, current)} className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-bold text-[#071b41]">{itemId ? 'Edit included item' : 'Add included item'}</h3><p className="mt-1 text-xs text-slate-600">Matches the race kit fields in Create Event. These items are included, not paid merchandise.</p></div><button type="button" onClick={resetItemEditor} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700">Close</button></div>
+              <label className="block max-w-sm text-sm font-semibold text-slate-700">Item type<select value={isProductItem ? 'product' : 'text_inclusion'} onChange={(event) => { const kind = event.target.value as 'product' | 'text_inclusion'; setItem({ ...item, details: { ...item.details, kind }, is_required: kind === 'product' && variants.length > 0 }); if (kind === 'text_inclusion') { setVariants([]); setProductImages([]); setReferenceImage(null); } }} className={inputClass}><option value="text_inclusion">Simple inclusion (text only)</option><option value="product">Product with choices or images</option></select></label>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-semibold text-slate-700">Product name<input required maxLength={160} value={item.item_name} onChange={(event) => setItem({ ...item, item_name: event.target.value })} placeholder="e.g. Event singlet" className={inputClass} /></label>
+                <label className="block text-sm font-semibold text-slate-700">{isProductItem ? 'Product name' : 'Inclusion name'}<input required maxLength={160} value={item.item_name} onChange={(event) => setItem({ ...item, item_name: event.target.value })} placeholder={isProductItem ? 'e.g. Event singlet' : 'e.g. E-certificate'} className={inputClass} /></label>
                 <label className="block text-sm font-semibold text-slate-700">Quantity included<input required type="number" min="1" max="100" value={item.quantity} onChange={(event) => setItem({ ...item, quantity: Number(event.target.value) })} className={inputClass} /></label>
               </div>
               <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-500">(optional)</span><input maxLength={500} value={editItemDescription} onChange={(event) => setItem({ ...item, details: { ...item.details, description: event.target.value } })} placeholder="e.g. Moisture-wicking event singlet" className={inputClass} /></label>
+              {isProductItem && <>
               <div><label className="block text-sm font-semibold text-slate-700">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Claiming place options' : 'Available variants'} <span className="font-normal text-slate-500">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? '(participant chooses one)' : '(sizes, colors, or other options)'}</span></label><div className="mt-2 flex flex-wrap gap-2">{variants.map((variant) => <span key={variant} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-sm font-semibold text-orange-800">{variant}<button type="button" onClick={() => setVariants(variants.filter((value) => value !== variant))} className="ml-1" aria-label={`Remove ${variant}`}>×</button></span>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addVariant(); } }} placeholder={item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Add a place, e.g. Race-day venue' : 'Add a variant, e.g. Kids Small'} className={`${inputClass} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 bg-white px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-semibold text-slate-700">Product photos <span className="font-normal text-slate-500">(JPG, PNG, WEBP · max 10 MB each)</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const files = Array.from(event.target.files ?? []); setProductImages([...productImages, ...files.map((file) => ({ file, url: URL.createObjectURL(file) }))]); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{productImages.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{productImages.map((image, index) => <div key={`${image.url}-${index}`} className="relative"><Image src={image.url} alt={`Product photo ${index + 1}`} width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" aria-label={`Remove product photo ${index + 1}`} onClick={() => setProductImages(productImages.filter((_, imageIndex) => imageIndex !== index))} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-red-600 text-white">×</button></div>)}</div>}</label>
                 <label className="block text-sm font-semibold text-slate-700">Size chart or reference guide <span className="font-normal text-slate-500">(optional)</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setReferenceImage({ file, url: URL.createObjectURL(file) }); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{referenceImage && <div className="mt-2 flex items-center gap-2"><Image src={referenceImage.url} alt="Size guide preview" width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" onClick={() => setReferenceImage(null)} className="text-sm font-semibold text-red-700">Remove guide</button></div>}</label>
               </div>
               <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={item.is_required} onChange={(event) => setItem({ ...item, is_required: event.target.checked })} className="h-4 w-4 accent-orange-600" />Participant must choose an option when variants are configured</label>
+              </>}
               <div className="flex flex-wrap gap-2"><button disabled={busy || !item.item_name.trim()} className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving…' : itemId ? 'Save item' : 'Add included item'}</button><button type="button" disabled={busy} onClick={resetItemEditor} className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button></div>
-            </form> : <button type="button" disabled={busy} onClick={() => addItem(current)} className="mt-4 rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-bold text-orange-700 disabled:opacity-60">+ Add product or inclusion</button>}
+            </form> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => addItem(current, 'text_inclusion')} className="rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-bold text-orange-700 disabled:opacity-60">+ Add simple inclusion</button><button type="button" disabled={busy} onClick={() => addItem(current, 'product')} className="rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-bold text-orange-700 disabled:opacity-60">+ Add product with choices</button></div>}
           </section>;
         })}
       </div>

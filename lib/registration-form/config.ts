@@ -5,6 +5,7 @@ export const CUSTOM_FIELD_TYPES = [
   'radio',
   'checkbox',
   'yes_no',
+  'multi_select',
 ] as const;
 
 export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
@@ -16,6 +17,7 @@ export const CUSTOM_FIELD_TYPE_LABELS: Record<CustomFieldType, string> = {
   radio: 'Radio',
   checkbox: 'Checkbox',
   yes_no: 'Yes / No',
+  multi_select: 'Multiple choice (select any)',
 };
 
 const SYSTEM_FIELD_LABELS = new Set([

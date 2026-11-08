@@ -1016,6 +1016,7 @@ export type Database = {
           is_active: boolean
           is_required: boolean
           label: string
+          section_key: string
         }
         Insert: {
           created_at?: string
@@ -1026,6 +1027,7 @@ export type Database = {
           is_active?: boolean
           is_required?: boolean
           label: string
+          section_key?: string
         }
         Update: {
           created_at?: string
@@ -1036,6 +1038,7 @@ export type Database = {
           is_active?: boolean
           is_required?: boolean
           label?: string
+          section_key?: string
         }
         Relationships: [
           {
@@ -3140,6 +3143,9 @@ export type Database = {
           max_slots: number | null
           name: string
           registration_availability: Database["public"]["Enums"]["registration_availability_status"]
+          category_group_name: string | null
+          registration_opens_at: string | null
+          registration_closes_at: string | null
           registration_fee: number
           updated_at: string
         }
@@ -3159,6 +3165,9 @@ export type Database = {
           max_slots?: number | null
           name: string
           registration_availability?: Database["public"]["Enums"]["registration_availability_status"]
+          category_group_name?: string | null
+          registration_opens_at?: string | null
+          registration_closes_at?: string | null
           registration_fee?: number
           updated_at?: string
         }
@@ -3178,6 +3187,9 @@ export type Database = {
           max_slots?: number | null
           name?: string
           registration_availability?: Database["public"]["Enums"]["registration_availability_status"]
+          category_group_name?: string | null
+          registration_opens_at?: string | null
+          registration_closes_at?: string | null
           registration_fee?: number
           updated_at?: string
         }
@@ -3681,9 +3693,11 @@ export type Database = {
           emergency_contact_relationship: string | null
           event_id: string
           first_name: string
+          gender: string | null
           hold_id: string | null
           id: string
           last_name: string
+          middle_name: string | null
           mobile: string | null
           promo_code_id: string | null
           registration_number: string
@@ -3706,9 +3720,11 @@ export type Database = {
           emergency_contact_relationship?: string | null
           event_id: string
           first_name: string
+          gender?: string | null
           hold_id?: string | null
           id?: string
           last_name: string
+          middle_name?: string | null
           mobile?: string | null
           promo_code_id?: string | null
           registration_number: string
@@ -3731,9 +3747,11 @@ export type Database = {
           emergency_contact_relationship?: string | null
           event_id?: string
           first_name?: string
+          gender?: string | null
           hold_id?: string | null
           id?: string
           last_name?: string
+          middle_name?: string | null
           mobile?: string | null
           promo_code_id?: string | null
           registration_number?: string
@@ -4276,6 +4294,7 @@ export type Database = {
         | "radio"
         | "checkbox"
         | "yes_no"
+        | "multi_select"
       email_delivery_event_type:
         | "delivered"
         | "failed"
@@ -4619,6 +4638,7 @@ export const Constants = {
         "radio",
         "checkbox",
         "yes_no",
+        "multi_select",
       ],
       email_delivery_event_type: [
         "delivered",

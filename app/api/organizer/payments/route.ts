@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
   const pageSize = Math.min(PAGE_SIZE_MAX, Math.max(1, Number.parseInt(params.get('pageSize') ?? '20', 10) || 20));
   const exportCsv = params.get('export') === 'csv';
-  const canViewParticipantInfo = auth.membership.permissions.includes('view_participant_info');
+  const canViewParticipantInfo = auth.membership.permissions.includes('view_participants');
 
   const { data: allEvents, error: eventError } = await auth.admin
     .from('events').select('id,name').eq('organization_id', auth.membership.organization_id).order('name');

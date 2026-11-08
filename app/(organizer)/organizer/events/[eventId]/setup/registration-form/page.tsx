@@ -4,11 +4,11 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CUSTOM_FIELD_TYPES, CUSTOM_FIELD_TYPE_LABELS, type CustomFieldType } from '@/lib/registration-form/config';
 
 type Option = { id: string; field_id: string; label: string; value: string; display_order: number };
-type Field = { id: string; label: string; field_type: string; is_required: boolean; is_active: boolean; display_order: number; options: Option[] };
-type FieldForm = { label: string; field_type: CustomFieldType; is_required: boolean; is_active: boolean; display_order: number };
+type Field = { id: string; label: string; field_type: string; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number; options: Option[] };
+type FieldForm = { label: string; field_type: CustomFieldType; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number };
 
-const blank: FieldForm = { label: '', field_type: 'short_text', is_required: false, is_active: true, display_order: 0 };
-const DEFAULT_FIELDS = ['First name', 'Last name', 'Birthdate', 'Email', 'Mobile number', 'Address', 'Emergency contact name', 'Emergency contact number', 'Shirt size'];
+const blank: FieldForm = { label: '', field_type: 'short_text', section_key: 'additional', is_required: false, is_active: true, display_order: 0 };
+const DEFAULT_FIELDS = ['First name', 'Middle name (optional)', 'Last name', 'Birthdate', 'Gender (optional)', 'Email', 'Contact number', 'Address', 'Emergency contact person', 'Emergency contact phone', 'Relationship to participant'];
 const controlClass = 'mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100';
 
 export default function RegistrationFormPage({ params }: { params: { eventId: string } }) {
@@ -41,7 +41,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
 
   function open(field?: Field) {
     setEditing(field?.id ?? null);
-    setForm(field ? { label: field.label, field_type: field.field_type as CustomFieldType, is_required: field.is_required, is_active: field.is_active, display_order: field.display_order } : { ...blank, display_order: fields.length });
+    setForm(field ? { label: field.label, field_type: field.field_type as CustomFieldType, section_key: field.section_key ?? 'additional', is_required: field.is_required, is_active: field.is_active, display_order: field.display_order } : { ...blank, display_order: fields.length });
     setModal(true);
     setError('');
     setNotice('');
@@ -133,9 +133,9 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
                         <h3 className="font-bold text-[#101c33]">{field.label}</h3>
                         <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${field.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{field.is_active ? 'Active' : 'Inactive'}</span>
                       </div>
-                      <p className="mt-2 pl-9 text-xs text-slate-500">{CUSTOM_FIELD_TYPE_LABELS[field.field_type as CustomFieldType] ?? field.field_type} <span aria-hidden="true">·</span> {field.is_required ? 'Required' : 'Optional'} <span aria-hidden="true">·</span> Order {field.display_order + 1}</p>
+                      <p className="mt-2 pl-9 text-xs text-slate-500">{field.section_key === 'health' ? 'Health information' : 'Additional information'} <span aria-hidden="true">·</span> {CUSTOM_FIELD_TYPE_LABELS[field.field_type as CustomFieldType] ?? field.field_type} <span aria-hidden="true">·</span> {field.is_required ? 'Required' : 'Optional'} <span aria-hidden="true">·</span> Order {field.display_order + 1}</p>
                       <div className="mt-4 pl-9"><Preview field={field} /></div>
-                      {['dropdown', 'radio', 'checkbox'].includes(field.field_type) && <div className="mt-4 pl-9"><OptionManager eventId={params.eventId} field={field} onChange={load} /></div>}
+                      {['dropdown', 'radio', 'multi_select'].includes(field.field_type) && <div className="mt-4 pl-9"><OptionManager eventId={params.eventId} field={field} onChange={load} /></div>}
                     </div>
                     <div className="flex shrink-0 gap-2 pl-9 sm:pl-0">
                       <button type="button" onClick={() => open(field)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-[#0b2b5b] hover:border-[#0b2b5b] hover:bg-slate-50">Edit</button>
@@ -158,6 +158,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
           </div>
           {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
           <label className="block text-sm font-semibold text-slate-700">Field label<input autoFocus required maxLength={160} value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} placeholder="e.g. What is your running club?" className={controlClass} /></label>
+          <label className="block text-sm font-semibold text-slate-700">Registration section<select value={form.section_key} onChange={(event) => setForm({ ...form, section_key: event.target.value as FieldForm['section_key'] })} className={controlClass}><option value="additional">Additional information</option><option value="health">Health information</option></select></label>
           <label className="block text-sm font-semibold text-slate-700">Answer type<select value={form.field_type} onChange={(event) => setForm({ ...form, field_type: event.target.value as CustomFieldType })} className={controlClass}>{CUSTOM_FIELD_TYPES.map((type) => <option key={type} value={type}>{CUSTOM_FIELD_TYPE_LABELS[type]}</option>)}</select></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={form.is_required} onChange={(event) => setForm({ ...form, is_required: event.target.checked })} className="mt-1 accent-orange-600" /><span><span className="block text-sm font-bold text-[#101c33]">Required</span><span className="text-xs font-normal text-slate-500">Participants must answer</span></span></label>
@@ -176,7 +177,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
 
 function Preview({ field }: { field: Field }) {
   const control = 'mt-1.5 block w-full max-w-2xl rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500';
-  return <div className="max-w-2xl text-sm"><label className="font-medium text-slate-700">{field.label}{field.is_required && <span className="text-orange-600"> *</span>}{field.field_type === 'long_text' ? <textarea disabled rows={2} className={control} /> : field.field_type === 'dropdown' ? <select disabled className={control}><option>Select an option</option></select> : field.field_type === 'checkbox' ? <span className="mt-2 flex items-center gap-2 text-sm text-slate-600"><input disabled type="checkbox" className="accent-orange-600" /> Yes</span> : field.field_type === 'radio' ? <span className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500"><span>◯ Option 1</span><span>◯ Option 2</span></span> : field.field_type === 'yes_no' ? <span className="mt-2 flex gap-4 text-xs text-slate-500"><span>◯ Yes</span><span>◯ No</span></span> : <input disabled className={control} placeholder="Participant response" />}</label></div>;
+  return <div className="max-w-2xl text-sm"><label className="font-medium text-slate-700">{field.label}{field.is_required && <span className="text-orange-600"> *</span>}{field.field_type === 'long_text' ? <textarea disabled rows={2} className={control} /> : field.field_type === 'dropdown' ? <select disabled className={control}><option>Select an option</option></select> : field.field_type === 'multi_select' ? <span className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500"><span>□ Option 1</span><span>□ Option 2</span></span> : field.field_type === 'checkbox' ? <span className="mt-2 flex items-center gap-2 text-sm text-slate-600"><input disabled type="checkbox" className="accent-orange-600" /> Yes</span> : field.field_type === 'radio' ? <span className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500"><span>◯ Option 1</span><span>◯ Option 2</span></span> : field.field_type === 'yes_no' ? <span className="mt-2 flex gap-4 text-xs text-slate-500"><span>◯ Yes</span><span>◯ No</span></span> : <input disabled className={control} placeholder="Participant response" />}</label></div>;
 }
 
 function OptionManager({ eventId, field, onChange }: { eventId: string; field: Field; onChange: () => Promise<void> }) {

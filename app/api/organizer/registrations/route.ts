@@ -33,10 +33,17 @@ export async function GET(request: Request) {
   if (requestedEventId && !eventIds.length) return NextResponse.json({ error: 'Event is outside your organization scope' }, { status: 403 });
   const validStatuses = ['pending_payment', 'confirmed', 'cancelled', 'transferred', 'expired', 'refunded'];
   if (requestedStatus && !validStatuses.includes(requestedStatus)) return NextResponse.json({ error: 'Invalid registration status' }, { status: 400 });
-  const canViewPii = auth.membership.permissions.includes('view_participant_info');
+  // `view_participants` is the permission seeded by RaceDeck. Using the old
+  // `view_participant_info` key silently hid participant details from every
+  // organizer role, even when they were authorized to view registrations.
+  const canViewPii = auth.membership.permissions.includes('view_participants');
   const { data, error } = eventIds.length ? await fetchAllPages((from, to) => {
+    // Keep the base list compatible with older databases: middle_name and
+    // checkout_group_id were added by later migrations and should not make the
+    // entire organizer registration list fail when a project hasn't applied
+    // those optional migrations yet.
     const participantFields = canViewPii ? 'first_name,last_name,email,' : '';
-    let query = auth.admin.from('registrations').select(`id,event_id,registration_number,category_id,checkout_group_id,status,${participantFields}created_at,events(name),race_categories(name)`).in('event_id', eventIds).order('created_at', { ascending: false }).range(from, to);
+    let query = auth.admin.from('registrations').select(`id,event_id,registration_number,category_id,status,${participantFields}created_at,events(name),race_categories(name)`).in('event_id', eventIds).order('created_at', { ascending: false }).range(from, to);
     if (requestedStatus) query = query.eq('status', requestedStatus as never);
     if (Number.isFinite(fromTime)) query = query.gte('created_at', new Date(fromTime).toISOString());
     if (Number.isFinite(toTime)) query = query.lte('created_at', new Date(toTime).toISOString());
@@ -50,10 +57,25 @@ export async function GET(request: Request) {
   // generated select parser cannot infer a single row type for both variants.
   const registrations = (data ?? []) as unknown as Array<{ id: string; [key: string]: unknown }>;
   const registrationIds = registrations.map((registration) => registration.id);
-  const groupIds = Array.from(new Set(registrations.map((registration) => registration.checkout_group_id).filter((id): id is string => typeof id === 'string')));
-  const { data: groupedRegistrations } = groupIds.length
+  const middleNameByRegistration = new Map<string, string | null>();
+  const checkoutGroupByRegistration = new Map<string, string>();
+  // These details improve search and grouped-checkout payment display, but the
+  // main table must still load if either later migration is not installed.
+  if (canViewPii && registrationIds.length) {
+    const { data: middleNames, error: middleNameError } = await auth.admin.from('registrations').select('id,middle_name').in('id', registrationIds);
+    if (middleNameError) console.warn('Organizer registrations: optional middle-name column unavailable', middleNameError.code);
+    for (const row of middleNames ?? []) middleNameByRegistration.set(row.id, row.middle_name);
+  }
+  if (registrationIds.length) {
+    const { data: groupedRows, error: groupError } = await auth.admin.from('registrations').select('id,checkout_group_id').in('id', registrationIds).in('event_id', eventIds);
+    if (groupError) console.warn('Organizer registrations: optional checkout grouping unavailable', groupError.code);
+    for (const row of groupedRows ?? []) if (row.checkout_group_id) checkoutGroupByRegistration.set(row.id, row.checkout_group_id);
+  }
+  const groupIds = Array.from(new Set(checkoutGroupByRegistration.values()));
+  const { data: groupedRegistrations, error: groupedError } = groupIds.length
     ? await auth.admin.from('registrations').select('id,checkout_group_id').in('checkout_group_id', groupIds).in('event_id', eventIds)
-    : { data: [] };
+    : { data: [], error: null };
+  if (groupedError) console.warn('Organizer registrations: grouped payment lookup unavailable', groupedError.code);
   const paymentRegistrationIds = Array.from(new Set([...registrationIds, ...(groupedRegistrations ?? []).map((row) => row.id)]));
   const { data: payments, error: paymentError } = paymentRegistrationIds.length
     ? await auth.admin.from('payments').select('registration_id,status,created_at').in('registration_id', paymentRegistrationIds).order('created_at', { ascending: false })
@@ -73,8 +95,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     events,
     registrations: registrations.map((registration) => {
-      const payment = latestPaymentByRegistration.get(registration.id) ?? (typeof registration.checkout_group_id === 'string' ? latestPaymentByGroup.get(registration.checkout_group_id) : undefined);
-      return { ...registration, payments: payment ? [payment] : [] };
+      const groupId = checkoutGroupByRegistration.get(registration.id);
+      const payment = latestPaymentByRegistration.get(registration.id) ?? (groupId ? latestPaymentByGroup.get(groupId) : undefined);
+      return { ...registration, middle_name: middleNameByRegistration.get(registration.id) ?? null, payments: payment ? [payment] : [] };
     }),
     can_view_pii: canViewPii,
     can_manage_registrations: auth.membership.permissions.includes('manage_registrations'),

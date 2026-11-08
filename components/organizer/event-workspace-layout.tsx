@@ -167,12 +167,13 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
   const statusColor = event?.review_status === 'pending_review' ? 'bg-blue-50 text-blue-800 ring-blue-200' : event?.lifecycle_status === 'published' ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : event?.lifecycle_status === 'cancelled' ? 'bg-red-50 text-red-800 ring-red-200' : 'bg-amber-50 text-amber-900 ring-amber-200';
   const statusLabel = event?.review_status === 'pending_review' ? 'Pending Review' : event ? `${titleCase(event.lifecycle_status)} · ${titleCase(event.review_status)}` : '';
   const context = useMemo(() => ({ event, readiness }), [event, readiness]);
+  const isRegistrationSection = pathname.startsWith(`/organizer/events/${eventId}/registrations`);
 
   if (isPreview) return <>{children}</>;
 
   return (
     <EventWorkspaceContext.Provider value={context}>
-      <div className="border-b border-slate-200 bg-white">
+      {!isRegistrationSection && <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-[1480px] px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
@@ -195,7 +196,7 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
             {groups.map((group) => <WorkspaceMenu key={group.label} eventId={eventId} label={group.label} icon={group.icon} links={group.links} pathname={pathname} />)}
           </nav>
         </div>
-      </div>
+      </div>}
       {children}
     </EventWorkspaceContext.Provider>
   );

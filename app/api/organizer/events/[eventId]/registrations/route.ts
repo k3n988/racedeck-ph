@@ -13,6 +13,7 @@ type ExportRow = {
   id: string;
   registration_number: string | null;
   first_name?: string | null;
+  middle_name?: string | null;
   last_name?: string | null;
   email?: string | null;
   status: string;
@@ -67,19 +68,18 @@ async function authorize(eventId: string) {
   const context = await loadAuthContext();
   if (!context) return { response: NextResponse.json({ error: 'Authentication required' }, { status: 401 }) } as const;
 
-  const membership = context.memberships[0];
-  if (!membership || !(await hasPermission(membership.organization_id, 'manage_registrations', eventId))) {
-    return { response: NextResponse.json({ error: 'Registration management permission required' }, { status: 403 }) } as const;
-  }
-
-  const canViewPii = await hasPermission(membership.organization_id, 'view_participant_info', eventId);
   const supabase = await createClient();
-  const { data: event, error } = await supabase.from('events').select('id,organization_id').eq('id', eventId).eq('organization_id', membership.organization_id).maybeSingle();
+  const { data: event, error } = await supabase.from('events').select('id,organization_id').eq('id', eventId).maybeSingle();
   if (error) {
     console.error('Unable to verify event registration access', error);
     return { response: NextResponse.json({ error: 'Event access could not be verified' }, { status: 500 }) } as const;
   }
   if (!event) return { response: NextResponse.json({ error: 'Event not found' }, { status: 404 }) } as const;
+
+  if (!(await hasPermission(event.organization_id, 'manage_registrations', eventId))) {
+    return { response: NextResponse.json({ error: 'Registration management permission required' }, { status: 403 }) } as const;
+  }
+  const canViewPii = await hasPermission(event.organization_id, 'view_participants', eventId);
 
   return { event, canViewPii } as const;
 }
@@ -127,14 +127,14 @@ export async function GET(request: Request, { params }: { params: { eventId: str
 
   // registrations.bib_id and bibs.registration_id both point at this relationship.
   // Name the FK explicitly so PostgREST does not fail with an ambiguous relationship error.
-  const fields = `id,registration_number,event_id,category_id,checkout_group_id,status,${access.canViewPii ? 'first_name,last_name,email,mobile,' : ''}created_at,race_categories!inner(id,name),payments(status,amount_paid,created_at),bibs!registrations_bib_id_fkey(bib_number,prefix,status),race_kit_claims(claimed_at)`;
+  const fields = `id,registration_number,event_id,category_id,checkout_group_id,status,${access.canViewPii ? 'first_name,middle_name,last_name,email,mobile,' : ''}created_at,race_categories!inner(id,name),payments(status,amount_paid,created_at),bibs!registrations_bib_id_fkey(bib_number,prefix,status),race_kit_claims(claimed_at)`;
   const makeQuery = () => {
     let query = admin.from('registrations').select(fields, { count: 'exact' }).eq('event_id', params.eventId);
     if (status) query = query.eq('status', status as never);
     if (categoryId) query = query.eq('category_id', categoryId);
     if (search) {
       query = access.canViewPii
-        ? query.or(`registration_number.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
+        ? query.or(`registration_number.ilike.%${search}%,first_name.ilike.%${search}%,middle_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
         : query.ilike('registration_number', `%${search}%`);
     }
     return query.order('created_at', { ascending: false });
@@ -166,7 +166,7 @@ export async function GET(request: Request, { params }: { params: { eventId: str
       const claimed = row.race_kit_claims?.some((claim) => claim.claimed_at) ?? false;
       return [
         row.registration_number ?? row.id,
-        ...(access.canViewPii ? [`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(), row.email ?? ''] : []),
+        ...(access.canViewPii ? [[row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' '), row.email ?? ''] : []),
         category?.name ?? '',
         row.status,
         payment?.status ?? 'no_payment',

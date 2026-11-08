@@ -14,6 +14,7 @@ type Registration = {
   category_id: string;
   status: string;
   first_name?: string;
+  middle_name?: string | null;
   last_name?: string;
   email?: string;
   created_at: string;
@@ -86,7 +87,7 @@ export default function RegistrationsWorkspace() {
         if (created >= endExclusive) return false;
       }
       if (!term) return true;
-      const haystack = [row.registration_number, row.first_name, row.last_name, row.email, row.events?.name, row.race_categories?.name].filter(Boolean).join(' ').toLocaleLowerCase();
+      const haystack = [row.registration_number, row.first_name, row.middle_name, row.last_name, row.email, row.events?.name, row.race_categories?.name].filter(Boolean).join(' ').toLocaleLowerCase();
       return haystack.includes(term);
     });
   }, [scopedRows, registrationStatus, paymentStatus, search, fromDate, toDate]);
@@ -107,7 +108,7 @@ export default function RegistrationsWorkspace() {
       ? ['Registration number', 'Participant', 'Email', 'Event', 'Category', 'Payment status', 'Registration status', 'Registered on']
       : ['Registration number', 'Participant', 'Event', 'Category', 'Payment status', 'Registration status', 'Registered on'];
     const rows = visibleRows.map((row) => {
-      const participant = payload?.can_view_pii ? `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() : 'Restricted';
+      const participant = payload?.can_view_pii ? [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') : 'Restricted';
       const values = [row.registration_number, participant, ...(payload?.can_view_pii ? [row.email ?? ''] : []), row.events?.name ?? '', row.race_categories?.name ?? '', paymentLabel(latestPaymentStatus(row)), label(row.status), date(row.created_at)];
       return values.map((value) => {
         const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
@@ -177,11 +178,11 @@ export default function RegistrationsWorkspace() {
           <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Registration / Participant</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Payment</th><th className="px-4 py-3">Registration</th><th className="px-4 py-3">Registered</th><th className="px-4 py-3"><span className="sr-only">Action</span></th></tr></thead>
             <tbody className="divide-y divide-slate-100">{visibleRows.length === 0 ? <tr><td colSpan={7} className="px-4 py-12 text-center"><div className="mx-auto flex max-w-md flex-col items-center"><span className="grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><ClipboardList aria-hidden="true" size={23} /></span><p className="mt-3 text-sm font-semibold text-slate-700">{filtersActive ? 'No matching registrations' : payload?.events.length ? 'No registrations yet' : 'No events to show'}</p><p className="mt-1 text-sm text-slate-500">{filtersActive ? 'Try changing your filters or use Clear filters above to see all registrations.' : payload?.events.length ? 'Participant sign-ups will appear here when someone registers for your events.' : 'Create an event first, then participant registrations will appear here.'}</p>{!filtersActive && !payload?.events.length && <Link href="/organizer/events" className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">Manage events</Link>}</div></td></tr> : pageRows.map((row) => <tr key={row.id} className="transition hover:bg-slate-50/70">
-              <td className="px-4 py-3"><p className="font-bold text-[#0b2348]">{row.registration_number}</p><p className="mt-0.5 text-slate-700">{payload?.can_view_pii ? `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || 'Participant name unavailable' : 'Participant details restricted'}</p>{payload?.can_view_pii && row.email && <p className="text-xs text-slate-500">{row.email}</p>}</td>
+              <td className="px-4 py-3"><p className="font-bold text-[#0b2348]">{row.registration_number}</p><p className="mt-0.5 text-slate-700">{payload?.can_view_pii ? [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || 'Participant name unavailable' : 'Participant details restricted'}</p>{payload?.can_view_pii && row.email && <p className="text-xs text-slate-500">{row.email}</p>}</td>
               <td className="max-w-56 px-4 py-3 text-slate-700">{row.events?.name ?? 'Event unavailable'}</td><td className="px-4 py-3 text-slate-700">{row.race_categories?.name ?? '—'}</td>
               <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${chipClass(latestPaymentStatus(row))}`}>{paymentLabel(latestPaymentStatus(row))}</span></td>
               <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${chipClass(row.status)}`}>{label(row.status)}</span></td><td className="px-4 py-3 text-slate-600">{date(row.created_at)}</td>
-              <td className="px-4 py-3 text-right">{payload?.can_manage_registrations ? <Link href={`/organizer/events/${row.event_id}/registrations/${row.id}`} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#0b2b5b] hover:border-orange-400 hover:text-orange-700">View details</Link> : <span className="text-xs text-slate-400">Details restricted</span>}</td>
+              <td className="px-4 py-3 text-right">{payload?.can_manage_registrations || payload?.can_view_pii ? <Link href={`/organizer/events/${row.event_id}/registrations/${row.id}`} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#0b2b5b] hover:border-orange-400 hover:text-orange-700">View participant</Link> : <span className="text-xs text-slate-400">Details restricted</span>}</td>
             </tr>)}</tbody>
           </table></div>
           {visibleRows.length > 0 && <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3"><p className="text-xs text-slate-500">Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleRows.length)} of {visibleRows.length.toLocaleString()}</p><div className="flex items-center gap-2"><button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Previous</button><span aria-live="polite" className="px-2 text-sm text-slate-600">Page {page} of {totalPages}</span><button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Next</button></div></footer>}

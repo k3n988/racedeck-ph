@@ -7,10 +7,13 @@ import { isoToManilaDateTime, manilaDateTimeToIso } from '@/lib/events/category-
 type Category = {
   id: string;
   name: string;
+  category_group_name: string | null;
   distance_km: number | null;
   registration_fee: number;
   early_bird_fee: number | null;
   early_bird_deadline: string | null;
+  registration_opens_at: string | null;
+  registration_closes_at: string | null;
   max_slots: number | null;
   confirmed_count: number;
   held_count: number;
@@ -21,11 +24,14 @@ type Category = {
 
 type CategoryFormState = {
   name: string;
+  category_group_name: string;
   distance_km: string;
   registration_fee: string;
   early_bird_enabled: boolean;
   early_bird_fee: string;
   early_bird_deadline: string;
+  registration_opens_at: string;
+  registration_closes_at: string;
   max_slots: string;
   gun_start_time: string;
   cutoff_time: string;
@@ -34,11 +40,14 @@ type CategoryFormState = {
 
 const blankForm: CategoryFormState = {
   name: '',
+  category_group_name: '',
   distance_km: '',
   registration_fee: '0',
   early_bird_enabled: false,
   early_bird_fee: '',
   early_bird_deadline: '',
+  registration_opens_at: '',
+  registration_closes_at: '',
   max_slots: '',
   gun_start_time: '',
   cutoff_time: '',
@@ -104,20 +113,23 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function open(category?: Category) {
+  function open(category?: Category, groupName = '') {
     setEditing(category?.id ?? null);
     setForm(category ? {
       name: category.name,
+      category_group_name: category.category_group_name ?? '',
       distance_km: category.distance_km?.toString() ?? '',
       registration_fee: Number(category.registration_fee).toString(),
       early_bird_enabled: category.early_bird_fee !== null && Boolean(category.early_bird_deadline),
       early_bird_fee: category.early_bird_fee === null ? '' : Number(category.early_bird_fee).toString(),
       early_bird_deadline: isoToManilaDateTime(category.early_bird_deadline),
+      registration_opens_at: isoToManilaDateTime(category.registration_opens_at),
+      registration_closes_at: isoToManilaDateTime(category.registration_closes_at),
       max_slots: category.max_slots?.toString() ?? '',
       gun_start_time: category.gun_start_time?.slice(0, 5) ?? '',
       cutoff_time: category.cutoff_time?.slice(0, 5) ?? '',
       registration_availability: category.registration_availability,
-    } : blankForm);
+    } : { ...blankForm, category_group_name: groupName });
     setFormError('');
     setMessage('');
     setModal(true);
@@ -127,13 +139,31 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
     event.preventDefault();
     setBusy(true);
     setFormError('');
+    if (!form.distance_km || !Number.isFinite(Number(form.distance_km)) || Number(form.distance_km) <= 0) {
+      setFormError('Enter a distance greater than 0 km.');
+      setBusy(false);
+      return;
+    }
+    if (Boolean(form.registration_opens_at) !== Boolean(form.registration_closes_at)) {
+      setFormError('Enter both distance registration dates, or leave both blank to use the event schedule.');
+      setBusy(false);
+      return;
+    }
+    if (form.registration_opens_at && form.registration_closes_at && form.registration_opens_at >= form.registration_closes_at) {
+      setFormError('Distance registration must close after it opens.');
+      setBusy(false);
+      return;
+    }
     const body = {
       ...form,
-      name: form.name.trim(),
+      name: `${Number(form.distance_km)}K`,
+      category_group_name: form.category_group_name.trim() || null,
       distance_km: form.distance_km ? Number(form.distance_km) : null,
       registration_fee: Number(form.registration_fee),
       early_bird_fee: form.early_bird_enabled ? Number(form.early_bird_fee) : null,
       early_bird_deadline: form.early_bird_enabled ? manilaDateTimeToIso(form.early_bird_deadline) : null,
+      registration_opens_at: form.registration_opens_at ? manilaDateTimeToIso(form.registration_opens_at) : null,
+      registration_closes_at: form.registration_closes_at ? manilaDateTimeToIso(form.registration_closes_at) : null,
       max_slots: form.max_slots ? Number(form.max_slots) : null,
       gun_start_time: form.gun_start_time || null,
       cutoff_time: form.cutoff_time || null,
@@ -194,8 +224,8 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
               const capacityFill = category.max_slots ? Math.min(100, Math.round((usedSlots / category.max_slots) * 100)) : 0;
               return <article key={category.id} className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words text-lg font-bold text-[#071b41]">{category.name}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset ${availabilityTone(category.registration_availability)}`}>{statusLabel(category.registration_availability)}</span></div><p className="mt-1 text-sm text-slate-500">{category.distance_km === null ? 'Distance not set' : `${category.distance_km} km`}</p></div>
-                  <button type="button" onClick={() => open(category)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#0b2a59] transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"><Pencil size={14} aria-hidden="true" />Edit</button>
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words text-lg font-bold text-[#071b41]">{category.category_group_name ? `${category.category_group_name} · ` : ''}{category.distance_km === null ? category.name : `${category.distance_km}K`}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset ${availabilityTone(category.registration_availability)}`}>{statusLabel(category.registration_availability)}</span></div><p className="mt-1 text-sm text-slate-500">{category.category_group_name ? `Group: ${category.category_group_name} · ` : ''}{category.distance_km === null ? 'Distance not set' : `${category.distance_km} km`}</p>{(category.registration_opens_at || category.registration_closes_at) && <p className="mt-2 text-xs text-slate-500">Registration: {category.registration_opens_at ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(category.registration_opens_at)) : 'event opening'} – {category.registration_closes_at ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(category.registration_closes_at)) : 'event closing'} (Manila)</p>}</div>
+                  <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => open(undefined, category.category_group_name ?? '')} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-bold text-orange-700 transition hover:bg-orange-50"><Plus size={14} aria-hidden="true" />Add distance</button><button type="button" onClick={() => open(category)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#0b2a59] transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"><Pencil size={14} aria-hidden="true" />Edit</button></div>
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
                   <div><p className="text-xs font-semibold text-slate-500">{category.early_bird_fee !== null && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > Date.now() ? 'Early Bird price' : 'Current registration fee'}</p><p className="mt-1 font-bold text-slate-900">{peso(category.early_bird_fee !== null && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > Date.now() ? category.early_bird_fee : category.registration_fee)}</p>{category.early_bird_fee !== null && category.early_bird_deadline && <p className="mt-1 text-xs text-slate-500">Regular price {peso(category.registration_fee)} · deadline {new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(category.early_bird_deadline))} Manila time</p>}</div>
@@ -221,9 +251,12 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
         </div>
         <form onSubmit={save} className="space-y-5 p-5 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2">
-            <CategoryField label="Category name" name="name" value={form.name} required autoFocus onChange={changeField} />
+            <CategoryField label="Category group name (optional)" name="category_group_name" value={form.category_group_name} autoFocus hint="For example Regular or Early Bird. Leave blank to list distances without a group." onChange={changeField} />
             <CategoryField label="Distance (km)" name="distance_km" value={form.distance_km} type="number" required min={0.01} step={0.01} hint="Enter the race distance, such as 3 or 21.1 km." onChange={changeField} />
             <CategoryField label="Registration fee (PHP)" name="registration_fee" value={form.registration_fee} type="number" required min={0} step={0.01} onChange={changeField} />
+            <CategoryField label="Distance registration opens (Manila time, optional)" name="registration_opens_at" value={form.registration_opens_at} type="datetime-local" onChange={changeField} />
+            <CategoryField label="Distance registration closes (Manila time, optional)" name="registration_closes_at" value={form.registration_closes_at} type="datetime-local" onChange={changeField} />
+            <p className="-mt-2 text-xs leading-5 text-slate-500 sm:col-span-2">Set both dates to override the event registration window for this distance. Leave both blank to inherit the event schedule.</p>
             <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 sm:col-span-2">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-[#071b41]"><input type="checkbox" checked={form.early_bird_enabled} onChange={(event) => setForm((current) => ({ ...current, early_bird_enabled: event.target.checked, early_bird_fee: event.target.checked ? current.early_bird_fee : '', early_bird_deadline: event.target.checked ? current.early_bird_deadline : '' }))} className="h-4 w-4 accent-orange-600" />Offer optional Early Bird pricing</label>
               {form.early_bird_enabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">

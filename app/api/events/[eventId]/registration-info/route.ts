@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { effectiveAvailability } from '@/lib/public/events';
 import { getCategoryPricing } from '@/lib/events/category-pricing';
 import { getRaceCategoryRows } from '@/lib/events/race-category-query';
+import { categoryRegistrationAvailabilityReason, effectiveCategoryAvailability } from '@/lib/events/registration-availability';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -21,9 +22,34 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     return jsonNoStore({ error: 'Event registration details could not be loaded. Please try again.' }, { status: 500 });
   }
   if (!event) return jsonNoStore({ error: 'Event not found' }, { status: 404 });
+  const readRegistrationFields = async () => {
+    const fields = await admin.from('event_registration_fields')
+      .select('id,label,field_type,section_key,is_required,display_order,event_registration_field_options(id,label,value,display_order)')
+      .eq('event_id', params.eventId)
+      .eq('is_active', true)
+      .order('display_order');
+
+    // Older deployed schemas predate question sections. Keep their existing
+    // questions usable (as Additional Information) while the migration rolls
+    // out; newer schemas preserve the organizer's Health/Additional choice.
+    if (fields.error?.code === '42703' && fields.error.message.includes('section_key')) {
+      const legacyFields = await admin.from('event_registration_fields')
+        .select('id,label,field_type,is_required,display_order,event_registration_field_options(id,label,value,display_order)')
+        .eq('event_id', params.eventId)
+        .eq('is_active', true)
+        .order('display_order');
+      return {
+        ...legacyFields,
+        data: legacyFields.data?.map((field) => ({ ...field, section_key: 'additional' as const })) ?? null,
+      };
+    }
+
+    return fields;
+  };
+
   const [{ data: categories, error: categoriesError }, { data: fields, error: fieldsError }, { data: waiver, error: waiverError }, { data: kitConfigs, error: kitConfigsError }, { data: merchandise, error: merchandiseError }] = await Promise.all([
     getRaceCategoryRows(admin, params.eventId),
-    admin.from('event_registration_fields').select('id,label,field_type,is_required,display_order,event_registration_field_options(id,label,value,display_order)').eq('event_id', params.eventId).eq('is_active', true).order('display_order'),
+    readRegistrationFields(),
     admin.from('event_waivers').select('id,title,version,content,content_storage_reference,effective_at').eq('event_id', params.eventId).eq('status', 'published').maybeSingle(),
     // Read kit configs and items separately. This avoids depending on a cached
     // PostgREST embedded relationship and preserves the category_id linkage.
@@ -36,7 +62,15 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     : { data: [], error: null };
   if (categoriesError || fieldsError || waiverError || kitConfigsError || kitItemsError || merchandiseError) {
     console.error('Unable to load registration options', { categoriesError, fieldsError, waiverError, kitConfigsError, kitItemsError, merchandiseError });
-    return jsonNoStore({ error: 'Registration options could not be loaded. Please try again.' }, { status: 500 });
+    const diagnostics = process.env.NODE_ENV === 'development' ? {
+      categories: categoriesError ? { code: categoriesError.code, message: categoriesError.message } : null,
+      fields: fieldsError ? { code: fieldsError.code, message: fieldsError.message } : null,
+      waiver: waiverError ? { code: waiverError.code, message: waiverError.message } : null,
+      kitConfigs: kitConfigsError ? { code: kitConfigsError.code, message: kitConfigsError.message } : null,
+      kitItems: kitItemsError ? { code: kitItemsError.code, message: kitItemsError.message } : null,
+      merchandise: merchandiseError ? { code: merchandiseError.code, message: merchandiseError.message } : null,
+    } : undefined;
+    return jsonNoStore({ error: 'Registration options could not be loaded. Please try again.', ...(diagnostics ? { diagnostics } : {}) }, { status: 500 });
   }
   type RegistrationKitItem = { id: string; config_id: string; item_name: string; details: unknown; is_required: boolean; is_active: boolean; display_order: number };
   const itemsByConfig = new Map<string, RegistrationKitItem[]>();
@@ -49,13 +83,25 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
   const availability = effectiveAvailability(event);
   const confirmedCategorySlots = (categories ?? []).reduce((sum, category) => sum + (category.confirmed_count ?? 0), 0);
   const overallCapacityReached = event.overall_capacity !== null && confirmedCategorySlots >= event.overall_capacity;
-  const availableCategories = (categories ?? []).filter((category) => {
-    if (category.registration_availability === 'closed' || category.registration_availability === 'sold_out') return false;
-    if (overallCapacityReached || (availability !== 'open' && availability !== 'closing_soon')) return false;
-    return category.max_slots === null || category.confirmed_count < category.max_slots;
-  }).map((category) => {
+  const publicCategories = (categories ?? []).map((category) => {
     const pricing = getCategoryPricing(category);
-    return { id: category.id, name: category.name, distance_km: category.distance_km, registration_fee: pricing.amount, regular_registration_fee: pricing.regularFee, early_bird_fee: pricing.earlyBirdFee, early_bird_deadline: pricing.earlyBirdDeadline, registration_availability: 'open' };
+    const categoryAvailability = overallCapacityReached ? 'sold_out' : effectiveCategoryAvailability(category, event);
+    return {
+      id: category.id,
+      name: category.name,
+      category_group_name: category.category_group_name,
+      distance_km: category.distance_km,
+      registration_fee: pricing.amount,
+      regular_registration_fee: pricing.regularFee,
+      early_bird_fee: pricing.earlyBirdFee,
+      early_bird_deadline: pricing.earlyBirdDeadline,
+      registration_opens_at: category.registration_opens_at,
+      registration_closes_at: category.registration_closes_at,
+      registration_availability: categoryAvailability,
+      availability_reason: overallCapacityReached ? 'Event capacity has been reached.' : categoryRegistrationAvailabilityReason(category, event),
+      max_slots: category.max_slots,
+      confirmed_count: category.confirmed_count,
+    };
   });
-  return jsonNoStore({ event: { ...event, registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: availableCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
+  return jsonNoStore({ event: { ...event, registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
 }

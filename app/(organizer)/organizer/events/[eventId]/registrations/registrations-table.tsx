@@ -245,7 +245,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
                       <td className="px-4 py-3.5">{bib?.bib_number != null ? `${bib.prefix ?? ''}${bib.bib_number}` : 'Not assigned'}</td>
                       <td className="px-4 py-3.5">{row.race_kit_claims?.some((claim) => claim.claimed_at) ? 'Claimed' : 'Not claimed'}</td>
                       <td className="px-4 py-3.5 whitespace-nowrap">{formatDate(row.created_at)}</td>
-                      <td className="px-4 py-3.5 text-right"><Link className="font-semibold text-orange-700 hover:text-orange-800 hover:underline" href={`/organizer/events/${eventId}/registrations/${row.id}`}>View details<span className="sr-only"> for registration {row.registration_number ?? row.id}</span></Link></td>
+                      <td className="px-4 py-3.5 text-right"><Link className="font-semibold text-orange-700 hover:text-orange-800 hover:underline" href={`/organizer/events/${eventId}/registrations/${row.id}`}>View participant<span className="sr-only"> profile for registration {row.registration_number ?? row.id}</span></Link></td>
                     </tr>
                   );
                 })}

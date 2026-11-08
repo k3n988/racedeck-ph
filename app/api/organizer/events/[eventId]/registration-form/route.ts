@@ -4,7 +4,7 @@ import { hasPermission, loadAuthContext } from '@/lib/auth/permissions';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { CUSTOM_FIELD_TYPES, isSystemRegistrationFieldLabel } from '@/lib/registration-form/config';
-const fieldSchema = z.object({label:z.string().trim().min(1).max(160),field_type:z.enum(CUSTOM_FIELD_TYPES),is_required:z.boolean(),is_active:z.boolean(),display_order:z.number().int().nonnegative()});
+const fieldSchema = z.object({label:z.string().trim().min(1).max(160),field_type:z.enum(CUSTOM_FIELD_TYPES),section_key:z.enum(['additional','health']).default('additional'),is_required:z.boolean(),is_active:z.boolean(),display_order:z.number().int().nonnegative()});
 async function access(eventId:string, write=false){
   const context=await loadAuthContext();
   if(!context)return{response:NextResponse.json({error:'Authentication required'},{status:401})}as const;
@@ -24,7 +24,7 @@ export async function GET(_r:Request,{params}:{params:{eventId:string}}){
   // client for this scoped read so organizer visibility isn't limited by the
   // public-only active-field RLS policy.
   const admin=createAdminClient();
-  const{data:fields,error}=await admin.from('event_registration_fields').select('id,event_id,label,field_type,is_required,is_active,display_order,created_at').eq('event_id',params.eventId).order('display_order').order('created_at');
+  const{data:fields,error}=await admin.from('event_registration_fields').select('id,event_id,label,field_type,section_key,is_required,is_active,display_order,created_at').eq('event_id',params.eventId).order('display_order').order('created_at');
   if(error){console.error('Unable to load registration form fields',{code:error.code,message:error.message});return NextResponse.json({error:'Registration form could not be loaded'},{status:500})}
   const ids=(fields??[]).map(f=>f.id);
   const{data:options,error:optionsError}=ids.length?await admin.from('event_registration_field_options').select('id,field_id,label,value,display_order').in('field_id',ids).order('display_order'): {data:[],error:null};
