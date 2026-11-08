@@ -6,4 +6,5 @@ supabase/.branches
 supabase/.temp
 node_modules/
 .env.local
+.env.test
 .next/

@@ -1016,6 +1016,7 @@ export type Database = {
           is_active: boolean
           is_required: boolean
           label: string
+          section_key: string
         }
         Insert: {
           created_at?: string
@@ -1026,6 +1027,7 @@ export type Database = {
           is_active?: boolean
           is_required?: boolean
           label: string
+          section_key?: string
         }
         Update: {
           created_at?: string
@@ -1036,6 +1038,7 @@ export type Database = {
           is_active?: boolean
           is_required?: boolean
           label?: string
+          section_key?: string
         }
         Relationships: [
           {
@@ -1420,6 +1423,7 @@ export type Database = {
           review_feedback: string | null
           review_status: Database["public"]["Enums"]["event_review_status"]
           slug: string
+          social_links: Json | null
           start_time: string | null
           updated_at: string
           venue: string | null
@@ -1449,6 +1453,7 @@ export type Database = {
           review_feedback?: string | null
           review_status?: Database["public"]["Enums"]["event_review_status"]
           slug: string
+          social_links?: Json | null
           start_time?: string | null
           updated_at?: string
           venue?: string | null
@@ -1478,6 +1483,7 @@ export type Database = {
           review_feedback?: string | null
           review_status?: Database["public"]["Enums"]["event_review_status"]
           slug?: string
+          social_links?: Json | null
           start_time?: string | null
           updated_at?: string
           venue?: string | null
@@ -2037,44 +2043,80 @@ export type Database = {
       }
       organization_payout_accounts: {
         Row: {
+          account_holder_name: string | null
           account_label: string | null
           account_reference: string
+          address_line1: string | null
+          address_line2: string | null
+          bank_address: string | null
+          bank_name: string | null
+          city: string | null
           created_at: string
           created_by: string | null
+          contact_phone: string | null
+          country_code: string
           currency: string
           id: string
           is_active: boolean
           is_default: boolean
+          notification_emails: string[]
           organization_id: string
+          postal_code: string | null
           provider: string
+          state_province: string | null
+          swift_bic: string | null
           updated_at: string
           verified_at: string | null
         }
         Insert: {
+          account_holder_name?: string | null
           account_label?: string | null
           account_reference: string
+          address_line1?: string | null
+          address_line2?: string | null
+          bank_address?: string | null
+          bank_name?: string | null
+          city?: string | null
           created_at?: string
           created_by?: string | null
+          contact_phone?: string | null
+          country_code?: string
           currency?: string
           id?: string
           is_active?: boolean
           is_default?: boolean
+          notification_emails?: string[]
           organization_id: string
+          postal_code?: string | null
           provider: string
+          state_province?: string | null
+          swift_bic?: string | null
           updated_at?: string
           verified_at?: string | null
         }
         Update: {
+          account_holder_name?: string | null
           account_label?: string | null
           account_reference?: string
+          address_line1?: string | null
+          address_line2?: string | null
+          bank_address?: string | null
+          bank_name?: string | null
+          city?: string | null
           created_at?: string
           created_by?: string | null
+          contact_phone?: string | null
+          country_code?: string
           currency?: string
           id?: string
           is_active?: boolean
           is_default?: boolean
+          notification_emails?: string[]
           organization_id?: string
+          postal_code?: string | null
           provider?: string
+          state_province?: string | null
+          swift_bic?: string | null
           updated_at?: string
           verified_at?: string | null
         }
@@ -2113,19 +2155,26 @@ export type Database = {
         Row: {
           account_status: Database["public"]["Enums"]["organization_account_status"]
           address: string | null
+          city: string | null
           contact_email: string | null
           contact_person: string | null
           contact_phone: string | null
+          contact_phone_extension: string | null
+          country_code: string
           created_at: string
           created_by: string | null
           description: string | null
           id: string
           invoice_mode: Database["public"]["Enums"]["organization_invoice_mode"]
+          is_nonprofit: boolean
           logo_url: string | null
           name: string
           payout_account: Json | null
+          postal_code: string | null
           slug: string
           social_links: Json | null
+          state_province: string | null
+          timezone: string
           updated_at: string
           verification_documents: Json | null
           verification_status: Database["public"]["Enums"]["organization_verification_status"]
@@ -2134,19 +2183,26 @@ export type Database = {
         Insert: {
           account_status?: Database["public"]["Enums"]["organization_account_status"]
           address?: string | null
+          city?: string | null
           contact_email?: string | null
           contact_person?: string | null
           contact_phone?: string | null
+          contact_phone_extension?: string | null
+          country_code?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           invoice_mode?: Database["public"]["Enums"]["organization_invoice_mode"]
+          is_nonprofit?: boolean
           logo_url?: string | null
           name: string
           payout_account?: Json | null
+          postal_code?: string | null
           slug: string
           social_links?: Json | null
+          state_province?: string | null
+          timezone?: string
           updated_at?: string
           verification_documents?: Json | null
           verification_status?: Database["public"]["Enums"]["organization_verification_status"]
@@ -2155,19 +2211,26 @@ export type Database = {
         Update: {
           account_status?: Database["public"]["Enums"]["organization_account_status"]
           address?: string | null
+          city?: string | null
           contact_email?: string | null
           contact_person?: string | null
           contact_phone?: string | null
+          contact_phone_extension?: string | null
+          country_code?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           invoice_mode?: Database["public"]["Enums"]["organization_invoice_mode"]
+          is_nonprofit?: boolean
           logo_url?: string | null
           name?: string
           payout_account?: Json | null
+          postal_code?: string | null
           slug?: string
           social_links?: Json | null
+          state_province?: string | null
+          timezone?: string
           updated_at?: string
           verification_documents?: Json | null
           verification_status?: Database["public"]["Enums"]["organization_verification_status"]
@@ -3072,12 +3135,17 @@ export type Database = {
           created_at: string
           cutoff_time: string | null
           distance_km: number | null
+          early_bird_deadline: string | null
+          early_bird_fee: number | null
           event_id: string
           gun_start_time: string | null
           id: string
           max_slots: number | null
           name: string
           registration_availability: Database["public"]["Enums"]["registration_availability_status"]
+          category_group_name: string | null
+          registration_opens_at: string | null
+          registration_closes_at: string | null
           registration_fee: number
           updated_at: string
         }
@@ -3089,12 +3157,17 @@ export type Database = {
           created_at?: string
           cutoff_time?: string | null
           distance_km?: number | null
+          early_bird_deadline?: string | null
+          early_bird_fee?: number | null
           event_id: string
           gun_start_time?: string | null
           id?: string
           max_slots?: number | null
           name: string
           registration_availability?: Database["public"]["Enums"]["registration_availability_status"]
+          category_group_name?: string | null
+          registration_opens_at?: string | null
+          registration_closes_at?: string | null
           registration_fee?: number
           updated_at?: string
         }
@@ -3106,12 +3179,17 @@ export type Database = {
           created_at?: string
           cutoff_time?: string | null
           distance_km?: number | null
+          early_bird_deadline?: string | null
+          early_bird_fee?: number | null
           event_id?: string
           gun_start_time?: string | null
           id?: string
           max_slots?: number | null
           name?: string
           registration_availability?: Database["public"]["Enums"]["registration_availability_status"]
+          category_group_name?: string | null
+          registration_opens_at?: string | null
+          registration_closes_at?: string | null
           registration_fee?: number
           updated_at?: string
         }
@@ -3606,16 +3684,20 @@ export type Database = {
           bib_id: string | null
           birthdate: string | null
           category_id: string
+          checkout_group_id: string | null
           competition_classification: string | null
           created_at: string
           email: string
           emergency_contact_name: string | null
           emergency_contact_number: string | null
+          emergency_contact_relationship: string | null
           event_id: string
           first_name: string
+          gender: string | null
           hold_id: string | null
           id: string
           last_name: string
+          middle_name: string | null
           mobile: string | null
           promo_code_id: string | null
           registration_number: string
@@ -3629,16 +3711,20 @@ export type Database = {
           bib_id?: string | null
           birthdate?: string | null
           category_id: string
+          checkout_group_id?: string | null
           competition_classification?: string | null
           created_at?: string
           email: string
           emergency_contact_name?: string | null
           emergency_contact_number?: string | null
+          emergency_contact_relationship?: string | null
           event_id: string
           first_name: string
+          gender?: string | null
           hold_id?: string | null
           id?: string
           last_name: string
+          middle_name?: string | null
           mobile?: string | null
           promo_code_id?: string | null
           registration_number: string
@@ -3652,16 +3738,20 @@ export type Database = {
           bib_id?: string | null
           birthdate?: string | null
           category_id?: string
+          checkout_group_id?: string | null
           competition_classification?: string | null
           created_at?: string
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_number?: string | null
+          emergency_contact_relationship?: string | null
           event_id?: string
           first_name?: string
+          gender?: string | null
           hold_id?: string | null
           id?: string
           last_name?: string
+          middle_name?: string | null
           mobile?: string | null
           promo_code_id?: string | null
           registration_number?: string
@@ -4122,6 +4212,7 @@ export type Database = {
         Returns: boolean
       }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
+      publish_event: { Args: { p_event_id: string }; Returns: string }
       redeem_promo_code: {
         Args: {
           p_category_id: string
@@ -4142,6 +4233,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      review_event: {
+        Args: {
+          p_event_id: string
+          p_decision: Database["public"]["Enums"]["event_review_status"]
+          p_feedback?: string | null
+        }
+        Returns: string
+      }
       reserve_registration_slot: {
         Args: {
           p_category_id: string
@@ -4156,6 +4255,7 @@ export type Database = {
         Args: { p_payment_id: string; p_registration_id: string }
         Returns: boolean
       }
+      submit_event_for_review: { Args: { p_event_id: string }; Returns: string }
       verify_certificate: {
         Args: { p_verification_token: string }
         Returns: {
@@ -4194,6 +4294,7 @@ export type Database = {
         | "radio"
         | "checkbox"
         | "yes_no"
+        | "multi_select"
       email_delivery_event_type:
         | "delivered"
         | "failed"
@@ -4537,6 +4638,7 @@ export const Constants = {
         "radio",
         "checkbox",
         "yes_no",
+        "multi_select",
       ],
       email_delivery_event_type: [
         "delivered",

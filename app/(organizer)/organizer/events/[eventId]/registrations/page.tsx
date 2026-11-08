@@ -1,2 +1,9 @@
 import RegistrationsTable from './registrations-table';
-export default function OrganizerRegistrationsPage({ params }: { params: { eventId: string } }) { return <main className="mx-auto max-w-7xl space-y-6 p-6"><header><h1 className="text-2xl font-semibold">Registrations</h1><p className="text-sm text-gray-600">Manage registrations for this event.</p></header><RegistrationsTable eventId={params.eventId} /></main>; }
+
+export default function OrganizerRegistrationsPage({ params }: { params: { eventId: string } }) {
+  return (
+    <main className="mx-auto max-w-7xl p-6">
+      <RegistrationsTable eventId={params.eventId} />
+    </main>
+  );
+}

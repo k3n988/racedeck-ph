@@ -1,0 +1,57 @@
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { requireOrganizerPermission } from '@/lib/auth/organizer-access';
+
+const schema = z.object({
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(1000).nullable(),
+  unit_price: z.number().positive().max(1000000),
+  variants: z.array(z.string().trim().min(1).max(80)).max(40),
+  image_urls: z.array(z.string().url()).max(8),
+  display_order: z.number().int().nonnegative(),
+});
+
+export async function POST(request: Request, { params }: { params: { eventId: string } }) {
+  const auth = await requireOrganizerPermission('edit_events', params.eventId);
+  if ('response' in auth) return auth.response;
+  const parsed = schema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: 'Check the additional merchandise details and try again.' }, { status: 400 });
+
+  const { data: event, error: eventError } = await auth.admin.from('events')
+    .select('id,organization_id,lifecycle_status,review_status')
+    .eq('id', params.eventId)
+    .eq('organization_id', auth.membership.organization_id)
+    .maybeSingle();
+  if (eventError) return NextResponse.json({ error: 'Event could not be checked.' }, { status: 500 });
+  if (!event) return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
+  if (event.lifecycle_status !== 'draft' || ['pending_review', 'approved'].includes(event.review_status)) return NextResponse.json({ error: 'Merchandise is locked after event submission.' }, { status: 409 });
+
+  const db = auth.admin as unknown as SupabaseClient;
+  const { data, error } = await db.from('event_merchandise').insert({
+    ...parsed.data,
+    event_id: event.id,
+    organization_id: event.organization_id,
+  }).select('id').single();
+  if (error || !data) {
+    console.error('Unable to save event merchandise', error);
+    return NextResponse.json({ error: 'Additional merchandise could not be saved. Apply the event merchandise database migration, then try again.' }, { status: 500 });
+  }
+  return NextResponse.json({ id: data.id }, { status: 201 });
+}
+
+export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
+  const auth = await requireOrganizerPermission('view_events', params.eventId);
+  if ('response' in auth) return auth.response;
+  const db = auth.admin as unknown as SupabaseClient;
+  const { data, error } = await db.from('event_merchandise')
+    .select('id,name,description,unit_price,variants,image_urls,is_active,display_order,created_at,updated_at')
+    .eq('event_id', params.eventId)
+    .eq('organization_id', auth.membership.organization_id)
+    .order('display_order');
+  if (error) {
+    console.error('Unable to load event merchandise', error);
+    return NextResponse.json({ error: 'Merchandise could not be loaded.' }, { status: 500 });
+  }
+  return NextResponse.json({ merchandise: data ?? [] });
+}
