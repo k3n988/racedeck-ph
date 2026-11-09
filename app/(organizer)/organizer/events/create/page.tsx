@@ -296,6 +296,7 @@ export default function CreateEventPage() {
     website: "",
     description: "",
     eventDate: "",
+    assemblyTime: "",
     registrationOpen: "",
     registrationClose: "",
     venue: "",
@@ -762,6 +763,7 @@ export default function CreateEventPage() {
           slug: form.slug || `event-${form.eventDate}-${Date.now()}`,
           description: null,
           event_date: form.eventDate,
+          assembly_time: form.assemblyTime || null,
           venue: form.venue.trim() || null,
           address: form.address.trim() || null,
           social_links: {
@@ -1124,6 +1126,12 @@ export default function CreateEventPage() {
                   min={manilaToday}
                   required
                   error={attemptedSteps[1] && !form.eventDate ? "Event date is required." : attemptedSteps[1] && form.eventDate < manilaToday ? "Choose today or a future date (Manila time)." : undefined}
+                />
+                <TextField
+                  label="Assembly time (optional)"
+                  type="time"
+                  value={form.assemblyTime}
+                  onChange={(value) => update("assemblyTime", value)}
                 />
                 <TextField
                   label="Registration open"

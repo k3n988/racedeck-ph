@@ -24,6 +24,7 @@ const schema = z.object({
   registrants: z.array(participantSchema).min(1).max(10),
   promo_code: z.string().trim().min(3).max(64).optional(),
   idempotency_key: z.string().trim().min(16).max(120),
+  accept_platform_terms: z.boolean().default(false),
 });
 type RpcClient = { rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }> };
 const registrationNumber = () => `REG-${new Date().getUTCFullYear()}-${crypto.randomInt(100000, 999999)}`;
@@ -36,7 +37,9 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   const userId = auth.user?.id ?? null;
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Check the participant details and try again.' }, { status: 400 });
-  const { registrants, promo_code: rawPromoCode, idempotency_key: idempotencyKey } = parsed.data;
+  const { registrants, promo_code: rawPromoCode, idempotency_key: idempotencyKey, accept_platform_terms: acceptPlatformTerms } = parsed.data;
+  if (!acceptPlatformTerms) return NextResponse.json({ error: 'You must accept the Platform Disclaimer and Terms and Conditions before continuing.' }, { status: 400 });
+  if (registrants.some((registrant) => !registrant.accept_waiver)) return NextResponse.json({ error: 'Each participant must accept the Participant Waiver before continuing.' }, { status: 400 });
   const admin = createAdminClient();
   const db = admin as unknown as SupabaseClient;
 
@@ -58,12 +61,11 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   if (unavailableCategory) return NextResponse.json({ error: categoryRegistrationAvailabilityReason(unavailableCategory, event, now) }, { status: 409 });
 
   const [{ data: waiver, error: waiverError }, { data: fields, error: fieldsError }, { data: kits, error: kitsError }] = await Promise.all([
-    admin.from('event_waivers').select('id').eq('event_id', event.id).eq('organization_id', event.organization_id).eq('status', 'published').maybeSingle(),
+    admin.from('event_waivers').select('id,version,title').eq('event_id', event.id).eq('organization_id', event.organization_id).eq('status', 'published').maybeSingle(),
     admin.from('event_registration_fields').select('id,label,field_type,is_required,event_registration_field_options(value,label)').eq('event_id', event.id).eq('is_active', true),
     admin.from('race_kit_configs').select('id,category_id,race_kit_items(id,item_name,details,is_required,is_active)').eq('event_id', event.id).eq('status', 'active'),
   ]);
   if (waiverError || fieldsError || kitsError) return NextResponse.json({ error: 'Event registration requirements could not be checked' }, { status: 500 });
-  if (waiver && registrants.some((row) => !row.accept_waiver)) return NextResponse.json({ error: 'Each registrant must accept the current event waiver' }, { status: 400 });
 
   for (let index = 0; index < registrants.length; index += 1) {
     const registrant = registrants[index];
@@ -198,14 +200,21 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   for (let index = 0; index < registrants.length; index += 1) {
     const registrant = registrants[index];
     const registration = registrations[index];
+    const waiverAcceptedAt = new Date().toISOString();
     if (waiver) {
-      const { error } = await admin.from('event_waiver_acceptances').insert({ event_waiver_id: waiver.id, organization_id: event.organization_id, event_id: event.id, registration_id: registration.id, participant_id: userId, source_context: 'participant_registration' });
+      const { error } = await admin.from('event_waiver_acceptances').insert({ event_waiver_id: waiver.id, organization_id: event.organization_id, event_id: event.id, registration_id: registration.id, participant_id: userId, accepted_at: waiverAcceptedAt, source_context: 'participant_registration' });
       if (error) { await rollback(); return NextResponse.json({ error: `Registrant ${index + 1}: waiver acceptance could not be recorded` }, { status: 500 }); }
     }
     const categoryKits = (kits ?? []).filter((kit) => kit.category_id === registrant.category_id || kit.category_id === null);
     const kitItemNames = new Map(categoryKits.flatMap((kit) => kit.race_kit_items ?? []).map((kitItem) => [kitItem.id, kitItem.item_name]));
     const selectedKits = Object.entries(registrant.race_kit_selections).map(([itemId, variant]) => ({ item_id: itemId, item_name: kitItemNames.get(itemId) ?? null, variant: String(variant) }));
-    const { error: activityError } = await admin.from('registration_activity').insert({ registration_id: registration.id, action: 'created', actor: userId, metadata: { checkout_group_id: groupId, registrant_number: index + 1, race_kit_selections: selectedKits } });
+    const { error: activityError } = await admin.from('registration_activity').insert({ registration_id: registration.id, action: 'created', actor: userId, metadata: {
+      checkout_group_id: groupId,
+      registrant_number: index + 1,
+      race_kit_selections: selectedKits,
+      participant_waiver_acceptance: { accepted: true, event_id: event.id, registration_id: registration.id, waiver_id: waiver?.id ?? null, waiver_version: waiver?.version ?? 1, accepted_at: waiverAcceptedAt },
+      platform_terms_acceptance: { accepted: true, event_id: event.id, registration_id: registration.id, accepted_at: waiverAcceptedAt },
+    } });
     const fieldIds = new Set((fields ?? []).map((field) => field.id));
     const answers = Object.entries(registrant.answers).filter(([fieldId]) => fieldIds.has(fieldId)).map(([field_id, value]) => ({ registration_id: registration.id, field_id, value: String(value) }));
     const { error: answerError } = answers.length ? await admin.from('registration_responses').insert(answers) : { error: null };

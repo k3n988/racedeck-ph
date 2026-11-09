@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { CalendarDays, Clock3, LockKeyhole, MapPin, Pencil, PhoneCall, ShoppingCart, Tag, Users, Zap } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EMERGENCY_CONTACT_RELATIONSHIPS } from "@/lib/registrations/emergency-contact";
 
@@ -46,8 +47,10 @@ type RegistrationInfo = {
     name: string;
     banner_url: string | null;
     event_date: string;
+    assembly_time: string | null;
     venue: string | null;
     address: string | null;
+    organizer_name: string;
     registration_availability: string;
     registration_opens_at: string | null;
     registration_closes_at: string | null;
@@ -130,6 +133,12 @@ function ProductImageCarousel({ images, label }: { images: string[]; label: stri
 const peso = (amount: number) => `PHP ${Number(amount).toFixed(2)}`;
 const manilaDateTime = (value: string) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 const manilaShortDate = (value: string) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "2-digit" }).format(new Date(value));
+const manilaClockTime = (value: string | null) => {
+  if (!value) return "To be announced";
+  const [hours, minutes] = value.split(":").map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return value;
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours >= 12 ? "PM" : "AM"}`;
+};
 
 function RegistrationEndsCountdown({ closesAt }: { closesAt: string | null }) {
   const [now, setNow] = useState(() => Date.now());
@@ -317,6 +326,7 @@ function RegistrantFields({
   onChange: (value: Partial<RegistrantDraft>) => void;
   onRemove?: () => void;
 }) {
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const categoryKits = data.kits.filter((kit) => kit.category_id === registrant.categoryId);
   const sharedKits = data.kits.filter((kit) => kit.category_id === null);
   // Shared items apply to every category; category-specific items extend them.
@@ -340,7 +350,7 @@ function RegistrantFields({
       .sort((a, b) => a.display_order - b.display_order);
     const distanceLabel = category.distance_km === null ? category.name : `${category.distance_km}K`;
     return <label key={category.id} className={`block rounded-xl border p-4 transition focus-within:ring-2 focus-within:ring-orange-200 ${available ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'} ${selected ? 'border-orange-500 bg-orange-50/60 shadow-sm' : 'border-slate-200 bg-slate-50 hover:border-orange-300 hover:bg-white'}`}>
-      <input className="sr-only" type="radio" name={`category-${registrant.id}`} value={category.id} checked={selected} disabled={!available} required onChange={() => onChange({ categoryId: category.id, kitSelections: {} })} />
+      <input className="sr-only" type="radio" name={`category-${registrant.id}`} value={category.id} checked={selected} disabled={!available} required onChange={() => { onChange({ categoryId: category.id, kitSelections: {} }); setCategoryPickerOpen(false); }} />
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] sm:gap-6">
         <div className="min-w-0">
           <div className="flex items-start gap-3">
@@ -386,9 +396,13 @@ function RegistrantFields({
       {step === 1 && <section>
         <fieldset aria-describedby={!registrant.categoryId && data.categories.length > 0 ? categoryFirstHint : undefined}>
           <legend className="sr-only">Choose your race category (required)</legend>
-          {data.categories.length === 0 ? <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No race distances have been configured for this event yet.</p> : <div className="mt-3 space-y-3">
+          {data.categories.length === 0 ? <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No race distances have been configured for this event yet.</p> : registrant.categoryId && !categoryPickerOpen ? <div className="mt-3 space-y-3">
+            <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-700">Selected category</p><button type="button" onClick={() => setCategoryPickerOpen(true)} className="min-h-9 rounded-lg border border-[#0b2b5b] px-3 text-sm font-semibold text-[#0b2b5b] transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">Change</button></div>
+            {data.categories.find((category) => category.id === registrant.categoryId) && renderCategoryCard(data.categories.find((category) => category.id === registrant.categoryId)!)}
+          </div> : <div className="mt-3 space-y-3">
+            {registrant.categoryId && <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-700">Choose a category or distance</p><button type="button" onClick={() => setCategoryPickerOpen(false)} className="min-h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">Keep current category</button></div>}
             {standaloneCategories.map(renderCategoryCard)}
-            {groupedCategories.map(([groupName, categories]) => <details key={groupName} open={categories.some((category) => category.id === registrant.categoryId)} className="group rounded-xl border border-slate-200 bg-white">
+            {groupedCategories.map(([groupName, categories]) => <details key={groupName} open={categoryPickerOpen || categories.some((category) => category.id === registrant.categoryId)} className="group rounded-xl border border-slate-200 bg-white">
               <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-100 px-4 py-3 font-bold text-[#0b2b5b] marker:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500">
                 <span>{groupName}<span className="ml-2 text-sm font-normal text-slate-600">Choose a distance</span></span>
                 <span className="text-sm font-semibold text-slate-600">{categories.length} {categories.length === 1 ? 'distance' : 'distances'} <span aria-hidden="true" className="ml-1 inline-block transition group-open:rotate-180">v</span></span>
@@ -447,14 +461,14 @@ function RegistrantFields({
         </section>}
 
         {data.merchandise.length > 0 && <section>
-          <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-lg font-bold text-slate-900">Optional merchandise</h2><p className="mt-1 text-sm text-slate-600">Optional paid add-ons; they are not part of the included race kit.</p></div><span className="text-sm font-bold text-slate-700">Registrant subtotal: {peso(merchandiseTotal)}</span></div>
+          <div className="flex flex-wrap items-end justify-between gap-2"><h2 className="text-lg font-bold text-slate-900">Optional merchandise</h2><span className="text-sm font-bold text-slate-700">Registrant subtotal: {peso(merchandiseTotal)}</span></div>
           <div className="mt-4 space-y-3">{data.merchandise.map((item) => { const selection = registrant.merchandiseSelections[item.id] ?? { quantity: 0, variant: "" }; const selected = selection.quantity > 0; const variants = item.variants ?? []; const images = item.image_urls ?? []; const checkboxId = `merch-${registrant.id}-${item.id}`; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.name}</h3><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800">Optional</span></div>{item.description && <p className="mt-1 text-sm text-slate-600">{item.description}</p>}<p className="mt-2 text-sm font-bold text-[#071b41]">{peso(item.unit_price)} each</p>
               <label htmlFor={checkboxId} className="mt-3 inline-flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input id={checkboxId} type="checkbox" checked={selected} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { quantity: event.target.checked ? 1 : 0, variant: event.target.checked ? selection.variant : "" } } })} className="h-4 w-4 accent-orange-600" />Add to order</label>
               {selected && variants.length > 0 && <label className="mt-2 block text-sm font-semibold text-slate-800">Size / variant <span className="text-orange-600">*</span><select required value={selection.variant} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant: event.target.value } } })} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Choose a size or option</option>{variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
               {selected && <div className="mt-2 flex items-center gap-3"><span className="text-sm text-slate-600">Quantity</span><div className="inline-flex items-center rounded-lg border border-slate-300" aria-label={`Quantity for ${item.name}`}><button type="button" aria-label={`Remove one ${item.name}`} disabled={selection.quantity <= 1} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity - 1 } } })} className="h-9 w-9 rounded-l-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">−</button><span aria-live="polite" className="min-w-8 text-center text-sm font-semibold text-slate-900">{selection.quantity}</span><button type="button" aria-label={`Add one ${item.name}`} disabled={selection.quantity >= 5} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity + 1 } } })} className="h-9 w-9 rounded-r-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">+</button></div><span className="text-sm font-semibold text-slate-700">{peso(item.unit_price * selection.quantity)}</span></div>}
             </div>
-            {images.length > 0 && <ProductImageCarousel images={images} label={item.name} />}
+            {images[0] && <Image src={images[0]} alt={`${item.name} product`} width={480} height={480} unoptimized className="h-auto max-h-64 w-full max-w-[200px] justify-self-center object-contain sm:justify-self-end" />}
           </article>; })}</div>
         </section>}
 
@@ -462,8 +476,6 @@ function RegistrantFields({
 
         </>}
 
-        {step >= 2 && data.waiver && <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Waiver agreement</h2><div className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600"><p className="font-semibold text-slate-900">{data.waiver.title} · Version {data.waiver.version}</p><p className="mt-2 whitespace-pre-wrap">{data.waiver.content ?? "Review the event waiver before continuing."}</p></div><label className="mt-3 flex items-start gap-3 text-sm text-slate-700"><input className="mt-1" required type="checkbox" checked={registrant.acceptWaiver} onChange={(event) => onChange({ acceptWaiver: event.target.checked })} /><span>I have read and accept this event waiver.</span></label></section>}
-        {step >= 2 && !data.waiver && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No waiver is required for this event.</p>}
       </fieldset>}
     </article>
   );
@@ -477,6 +489,8 @@ export default function RegisterPage({
   const [data, setData] = useState<RegistrationInfo | null>(null);
   const [registrants, setRegistrants] = useState<RegistrantDraft[]>(() => [blankRegistrant("registrant-1")]);
   const [promoCode, setPromoCode] = useState("");
+  const [promoStatus, setPromoStatus] = useState("");
+  const [acceptPlatformTerms, setAcceptPlatformTerms] = useState(false);
   const [message, setMessage] = useState("Loading registration details...");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -485,6 +499,7 @@ export default function RegisterPage({
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [registrationHref, setRegistrationHref] = useState<string | null>(null);
   const [registrationReference, setRegistrationReference] = useState<string | null>(null);
+  const [registrationSaved, setRegistrationSaved] = useState(false);
   const idempotencyKey = useRef<string>("");
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -555,6 +570,20 @@ export default function RegisterPage({
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
+    if (step === 2) {
+      if (!allWaiversAccepted) {
+        setMessage("Please check I Agree to accept the Participant Waiver for all participants.");
+        return;
+      }
+      if (!acceptPlatformTerms) {
+        setMessage("Please accept the Platform Disclaimer and Terms and Conditions to continue.");
+        return;
+      }
+      setMessage("");
+      setStep(3);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     if (registrants.some((registrant) => !registrant.categoryId)) {
       setMessage("Choose a race category for each registrant before continuing.");
       return;
@@ -565,8 +594,9 @@ export default function RegisterPage({
       return;
     }
     setBusy(true);
-    setStep(3);
     setRegistrationHref(null);
+    setRegistrationReference(null);
+    setRegistrationSaved(false);
     setMessage("Saving your registration and preparing the next step...");
     try {
       const response = await fetch(`/api/events/${params.eventId}/register/group`, {
@@ -582,6 +612,7 @@ export default function RegisterPage({
           })),
           promo_code: promoCode.trim() || undefined,
           idempotency_key: idempotencyKey.current,
+            accept_platform_terms: acceptPlatformTerms,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -592,6 +623,7 @@ export default function RegisterPage({
         setMessage(body.error ?? "Registration could not be started. Please try again.");
         return;
       }
+      setRegistrationSaved(true);
       const nextRegistrationHref = authenticated && typeof body.registration_id === "string"
         ? `/my-races/${encodeURIComponent(body.registration_id)}`
         : null;
@@ -628,7 +660,6 @@ export default function RegisterPage({
       setMessage("We could not reach RaceDeck. Your entered details are still here; please try again.");
     } finally {
       setBusy(false);
-      setStep(2);
     }
   }
 
@@ -662,19 +693,36 @@ export default function RegisterPage({
   }, 0);
   const selectedCategories = registrants.map((registrant) => data.categories.find((category) => category.id === registrant.categoryId));
   const selectedCategoriesAvailable = selectedCategories.length > 0 && selectedCategories.every((category) => category && ['open', 'closing_soon'].includes(category.registration_availability));
+  const allWaiversAccepted = registrants.length > 0 && registrants.every((registrant) => registrant.acceptWaiver);
+  const canReviewPayment = allWaiversAccepted && acceptPlatformTerms;
   const anyCategoryAvailable = data.categories.some((category) => ['open', 'closing_soon'].includes(category.registration_availability));
   const updateRegistrant = (id: string, changes: Partial<RegistrantDraft>) => setRegistrants((current) => current.map((registrant) => registrant.id === id ? { ...registrant, ...changes } : registrant));
   const addRegistrant = () => setRegistrants((current) => current.length >= 10 ? current : [...current, blankRegistrant(crypto.randomUUID())]);
+  const participantWaiverSections = [
+    { title: "1. Voluntary Participation & Physical Fitness", content: `I voluntarily choose to participate in ${data.event.name}, organized by ${data.event.organizer_name}. I confirm that I am physically able to take part and will seek medical advice if I have concerns about my fitness or health.` },
+    { title: "2. Assumption of Risk", content: "I understand that running and event activities involve inherent risks, including falls, collisions, traffic, uneven surfaces, weather, heat, dehydration, illness, and other physical injury. I knowingly accept these inherent risks and will stop if I feel unwell or unsafe." },
+    { title: "3. Release of Liability & Waiver", content: `To the extent permitted by Philippine law, I release ${data.event.organizer_name}, its event staff, volunteers, and service providers from claims arising from the inherent risks of participation or my own acts or omissions. This does not waive liability that cannot legally be excluded, including liability for fraud, willful misconduct, or gross negligence.` },
+    { title: "4. Medical Consent", content: "If I become ill or injured, I authorize event personnel to seek reasonable emergency assistance for me when they consider it necessary. I understand that medical care and transport may involve costs for which I may be responsible, subject to applicable law." },
+    { title: "5. Event Rules & Safety", content: `I will follow the event rules, route instructions, safety notices, and directions of ${data.event.organizer_name}'s staff, marshals, and authorities. I will not participate while impaired or behave in a way that endangers others.` },
+    { title: "6. Personal Responsibility", content: "I am responsible for pacing myself, carrying any personal medication or supplies I need, and promptly telling event staff if I need help. I understand that event staff may remove me from the course for safety reasons." },
+    { title: "7. Event Changes & Cancellation", content: `${data.event.organizer_name} may change the schedule, route, venue, or event arrangements, postpone, or cancel the event when needed for safety, weather, permits, public-authority directions, or circumstances beyond reasonable control. Refunds or credits will follow the event's published policy and applicable law.` },
+    { title: "8. Registration Accuracy", content: "I confirm that the information submitted for this registration is accurate and belongs to the participant. I will promptly correct any material error and will not transfer a race number or registration unless the organizer permits it." },
+    { title: "9. Personal Belongings", content: `${data.event.organizer_name} is not responsible for personal belongings that are lost, stolen, or damaged, except to the extent responsibility cannot legally be excluded.` },
+    { title: "10. Photography & Media", content: "The event may be photographed or recorded for event documentation. Any optional use of an identifiable participant's image for promotional or marketing purposes requires the separate optional consent below and is not a condition of registration." },
+    { title: "11. Data Privacy", content: `${data.event.organizer_name} and RaceDeck PH use registration information to administer the event, communicate essential updates, support safety, and process payment and registration records. Information will be handled under applicable Philippine data-protection law and the published Privacy Notice.` },
+    { title: "12. Minor Participants & Guardian Consent", content: "A participant who will be under 18 on the event date may take part only with authorization from a parent or legal guardian. The guardian must provide their details and separately confirm authorization below for each minor participant." },
+    { title: "13. Electronic Agreement", content: "By selecting “I Agree,” I confirm that I have read and understood this Participant Waiver and agree to it electronically for the participant(s) listed in this registration. The acceptance is recorded with this event registration." },
+  ];
   return (
-    <main className="min-h-screen bg-slate-100 px-3 py-5 sm:px-6 sm:py-8">
+    <main className="min-h-screen bg-slate-100 px-3 pb-5 pt-2 sm:px-6 sm:pb-8 sm:pt-5">
       <div className="mx-auto max-w-6xl">
       <Link
         href={`/events/${params.eventId}`}
-        className="text-sm font-semibold text-orange-600 hover:text-orange-700"
+        className="relative -top-1 text-sm font-semibold text-orange-600 hover:text-orange-700"
       >
         ← Back to event details
       </Link>
-      <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="relative h-32 bg-slate-100 sm:h-44">
           {data.event.banner_url ? (
             <Image
@@ -705,7 +753,6 @@ export default function RegisterPage({
                 data.event.address ??
                 "Venue to be announced"}
             </p>
-            <p className="mt-2 text-sm font-medium text-slate-600">No RaceDeck account required. Enter the participant details to register.</p>
           </header>
           <div className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-4 sm:px-6">
             <p className="mb-3 text-right text-xs font-semibold text-slate-500">Step {step} of 3</p>
@@ -733,7 +780,7 @@ export default function RegisterPage({
             className="mt-4 space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
           >
             <div className="space-y-5">
-              {registrants.map((registrant, index) => (
+              {step === 1 && registrants.map((registrant, index) => (
                 <RegistrantFields
                   key={registrant.id}
                   data={data}
@@ -746,20 +793,108 @@ export default function RegisterPage({
                 />
               ))}
             </div>
-            {step === 2 && <section>
-              <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Promo code</h2>
-              <p className="mt-2 text-sm text-slate-600">One code will be applied to eligible participants in this checkout.</p>
-              <input
-                value={promoCode}
-                onChange={(event) => setPromoCode(event.target.value.toUpperCase())}
-                maxLength={64}
-                autoComplete="off"
-                placeholder="Optional promo code"
-                className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
-              />
+            {step === 2 && <section aria-labelledby="participant-waiver-heading" className="space-y-4">
+              <div>
+                <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div>
+                    <h2 id="participant-waiver-heading" className="text-lg font-bold text-[#071b41]">Participant waiver</h2>
+                  </div>
+                  <span className="inline-flex w-fit shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Version {data.waiver?.version ?? 1}</span>
+                </div>
+                <div role="region" aria-label="Complete participant waiver" tabIndex={0} className="mx-auto h-[min(32vh,250px)] w-full max-w-5xl overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-7 text-slate-700 break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500 sm:h-[min(38vh,340px)] sm:p-5">
+                  <div className="mx-auto max-w-[78ch] space-y-5">
+                    {participantWaiverSections.map((section) => <section key={section.title}>
+                      <h3 className="font-bold text-slate-900">{section.title}</h3>
+                      <p className="mt-1">{section.content}{section.title.startsWith("11.") && <> <Link href="/legal/privacy" target="_blank" rel="noreferrer" className="font-semibold text-orange-700 underline underline-offset-2">Read the Privacy Notice</Link>.</>}</p>
+                    </section>)}
+                    {data.waiver?.content?.trim() && <section>
+                      <h3 className="font-bold text-slate-900">Additional Event-Specific Terms · {data.waiver.title}</h3>
+                      <p className="mt-1 whitespace-pre-wrap">{data.waiver.content}</p>
+                    </section>}
+                  </div>
+                </div>
+              </div>
+
+              <fieldset className="mx-auto w-full max-w-5xl space-y-3">
+                <legend className="sr-only">Required agreements</legend>
+                <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
+                  <input type="checkbox" checked={allWaiversAccepted} onChange={(event) => setRegistrants((current) => current.map((registrant) => ({ ...registrant, acceptWaiver: event.target.checked })))} className="h-5 w-5 shrink-0 accent-slate-500" />
+                  <span>I Agree</span>
+                </label>
+                <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
+                  <input type="checkbox" checked={acceptPlatformTerms} onChange={(event) => setAcceptPlatformTerms(event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-500" />
+                  <span>I agree to the <Link href="/legal/terms" target="_blank" rel="noreferrer" className="text-indigo-500 underline underline-offset-2">Platform Disclaimer and Terms and Conditions</Link>.</span>
+                </label>
+              </fieldset>
+
             </section>}
-            {step === 2 && <button type="button" onClick={() => { setStep(1); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="w-full rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Back to personal information</button>}
-            <div className="flex flex-wrap items-center justify-center gap-3">
+            {step === 3 && <section aria-labelledby="payment-review-heading" className="mx-auto grid w-full max-w-7xl items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] lg:gap-6">
+              <div className="min-w-0 space-y-4">
+                <header className="px-1 pb-1">
+                  <h2 id="payment-review-heading" className="text-xl font-extrabold text-[#071b41] sm:text-2xl">Review your registration</h2>
+                  <p className="mt-1 text-sm text-slate-600">Please review your details below before proceeding with payment.</p>
+                </header>
+
+                <section aria-labelledby="review-category-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-3"><h3 id="review-category-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><Zap className="h-5 w-5" aria-hidden="true" />Selected Category</h3><button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button></div>
+                  <div className="mt-3 space-y-3">
+                    {registrants.map((registrant, index) => {
+                      const category = data.categories.find((item) => item.id === registrant.categoryId);
+                      const earlyBird = Boolean(category?.early_bird_fee !== null && category?.early_bird_fee !== undefined && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > pricingNow);
+                      const amount = Number(earlyBird ? category?.early_bird_fee : category?.regular_registration_fee ?? category?.registration_fee ?? 0);
+                      const includedItems = data.kits
+                        .filter((kitConfig) => kitConfig.category_id === null || kitConfig.category_id === category?.id)
+                        .flatMap((kitConfig) => kitConfig.race_kit_items ?? [])
+                        .filter((item) => item.is_active)
+                        .sort((a, b) => a.display_order - b.display_order);
+                      const label = category?.distance_km ? `${category.distance_km}K` : category?.name ?? "Race category";
+                      return <article key={registrant.id} className="grid gap-3 rounded-xl border border-orange-200 bg-orange-50/40 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                        <div className="min-w-0"><p className="font-bold text-slate-900">{registrants.length > 1 ? `Participant ${index + 1} · ` : ""}{label}</p><p className="mt-1 text-sm font-semibold text-orange-700">{peso(amount)}{earlyBird ? " · Early bird" : ""}</p><div className="mt-3 text-xs text-slate-600"><p className="font-semibold">INCLUSIONS</p>{includedItems.length > 0 ? <ul className="mt-1 list-inside list-disc">{includedItems.map((item) => <li key={item.id}>{item.item_name}</li>)}</ul> : <p className="mt-1">No kit inclusions listed for this category.</p>}</div></div>
+                        <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm sm:min-w-40"><p className="flex items-center gap-2 font-semibold text-[#071b41]"><CalendarDays className="h-4 w-4" aria-hidden="true" />Race Schedule</p><p className="mt-2 font-semibold text-slate-800">{manilaShortDate(data.event.event_date)}</p><p className="mt-1 text-xs text-slate-500">Event date</p><p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />Assembly: {manilaClockTime(data.event.assembly_time)}</p></div>
+                      </article>;
+                    })}
+                  </div>
+                </section>
+
+                <section aria-labelledby="review-participant-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-3"><h3 id="review-participant-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><Users className="h-5 w-5" aria-hidden="true" />Registrant Information</h3><button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button></div>
+                  <div className="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{registrants.map((registrant, index) => <div key={registrant.id} className="contents">
+                    {registrants.length > 1 && <p className="col-span-full border-t border-slate-100 pt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Participant {index + 1}</p>}
+                    {[ ["First name", "first_name"], ["Middle name", "middle_name"], ["Last name", "last_name"], ["Birthdate", "birthdate"], ["Gender", "gender"], ["Email", "email"], ["Contact number", "contact_number"], ["Address", "address"] ].map(([label, key]) => <div key={key} className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-medium text-slate-800">{registrant.answers[key] || "—"}</p></div>)}
+                  </div>)}</div>
+                </section>
+
+                {registrants.some((registrant) => Object.values(registrant.merchandiseSelections).some((selection) => selection.quantity > 0)) && <section aria-labelledby="review-merch-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-3"><h3 id="review-merch-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><ShoppingCart className="h-5 w-5" aria-hidden="true" />Optional Merchandise</h3><button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button></div>
+                  <div className="mt-3 divide-y divide-slate-100">{registrants.map((registrant) => data.merchandise.filter((item) => (registrant.merchandiseSelections[item.id]?.quantity ?? 0) > 0).map((item) => { const selection = registrant.merchandiseSelections[item.id]; return <div key={`${registrant.id}-${item.id}`} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3">{item.image_urls[0] && <Image src={item.image_urls[0]} alt="" width={56} height={56} unoptimized className="h-14 w-14 shrink-0 rounded-lg object-cover" />}<div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-800">{item.name}{selection.variant ? ` · ${selection.variant}` : ""}</p><p className="text-xs text-slate-500">Qty {selection.quantity} · {peso(item.unit_price)} each</p></div></div><strong className="shrink-0 text-sm text-slate-800">{peso(item.unit_price * selection.quantity)}</strong></div>; }))}</div>
+                </section>}
+
+                <section aria-labelledby="review-emergency-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-3"><h3 id="review-emergency-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><PhoneCall className="h-5 w-5" aria-hidden="true" />Emergency Contact</h3><button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button></div>
+                  <div className="mt-3 space-y-2">{registrants.map((registrant, index) => <p key={registrant.id} className="break-words text-sm leading-6 text-slate-700">{registrants.length > 1 && <strong className="text-slate-900">Participant {index + 1}: </strong>}<strong className="font-semibold text-slate-900">{registrant.answers.emergency_contact || "—"}</strong><span> · {registrant.answers.emergency_contact_phone || "—"} · {registrant.answers.emergency_contact_relationship || "—"}</span></p>)}</div>
+                </section>
+
+                {registrationSaved && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><p className="font-bold">Registration details saved</p><p>{message}</p>{registrationReference && <p className="mt-1">Reference: <strong>{registrationReference}</strong></p>}{registrationHref && <Link href={registrationHref} className="mt-2 inline-block font-semibold text-orange-800 underline underline-offset-2">Open My Races</Link>}</div>}
+              </div>
+
+              <aside aria-labelledby="order-summary-heading" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-6">
+                <h3 id="order-summary-heading" className="flex items-center gap-2 border-b border-slate-100 pb-3 text-lg font-bold text-[#071b41]"><ShoppingCart className="h-5 w-5" aria-hidden="true" />Order Summary</h3>
+                <div className="mt-4 flex gap-3">{data.event.banner_url && <Image src={data.event.banner_url} alt={`${data.event.name} event banner`} width={100} height={100} unoptimized className="h-20 w-20 shrink-0 rounded-lg object-cover" />}<div className="min-w-0"><p className="break-words font-bold leading-5 text-[#071b41]">{data.event.name}</p><p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600"><CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{manilaShortDate(data.event.event_date)}</p><p className="mt-1 flex items-start gap-1.5 text-xs text-slate-600"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{data.event.venue ?? data.event.address ?? "Venue to be announced"}</span></p></div></div>
+                <div className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-[#0b2b5b]"><Users className="h-4 w-4" aria-hidden="true" />{registrants.length} Participant{registrants.length === 1 ? "" : "s"}</div>
+                <div className="mt-3 rounded-lg border border-slate-200 p-3"><p className="text-xs font-medium text-slate-500">Registration ends in</p><RegistrationEndsCountdown closesAt={selectedCategories.map((category) => category?.registration_closes_at).filter((value): value is string => Boolean(value)).sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? data.event.registration_closes_at} /></div>
+                <div className="mt-4 space-y-2 border-b border-slate-100 pb-4">{registrants.map((registrant, index) => { const category = data.categories.find((item) => item.id === registrant.categoryId); const earlyBird = Boolean(category?.early_bird_fee !== null && category?.early_bird_fee !== undefined && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > pricingNow); const categoryAmount = Number(earlyBird ? category?.early_bird_fee : category?.regular_registration_fee ?? category?.registration_fee ?? 0); const categoryName = category?.distance_km ? `${category.distance_km}K Registration` : `${category?.name ?? "Registration"}`; return <Fragment key={registrant.id}><div className="flex justify-between gap-3 text-sm"><span className="min-w-0 break-words">{registrants.length > 1 ? `Participant ${index + 1} · ` : ""}{categoryName}{earlyBird ? " · Early bird" : ""}</span><span className="shrink-0">{peso(categoryAmount)}</span></div>{data.merchandise.filter((item) => (registrant.merchandiseSelections[item.id]?.quantity ?? 0) > 0).map((item) => <div key={item.id} className="flex justify-between gap-3 text-sm text-slate-600"><span className="min-w-0 break-words">{item.name} × {registrant.merchandiseSelections[item.id].quantity}</span><span className="shrink-0">{peso(item.unit_price * registrant.merchandiseSelections[item.id].quantity)}</span></div>)}</Fragment>; })}</div>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-orange-50 px-3 py-3 text-base font-extrabold text-orange-700"><span>Total</span><span>{peso(selectedTotal)}</span></div>
+                <div className="mt-3 flex gap-2"><label className="sr-only" htmlFor="registration-promo-code">Promo code</label><div className="relative min-w-0 flex-1"><Tag className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input id="registration-promo-code" value={promoCode} onChange={(event) => { setPromoCode(event.target.value.toUpperCase()); setPromoStatus(""); }} maxLength={64} autoComplete="off" placeholder="Enter promo code" className="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></div><button type="button" onClick={() => setPromoStatus(promoCode.trim() ? "This code will be checked when secure checkout starts." : "Enter a promo code first.")} className="min-h-10 rounded-lg border border-[#0b2b5b] px-3 text-sm font-semibold text-[#0b2b5b] hover:bg-blue-50">Apply</button></div>
+                {promoStatus && <p role="status" className="mt-1 text-xs leading-5 text-slate-500">{promoStatus}</p>}
+                <p className="mt-2 text-xs leading-5 text-slate-500">Promo codes are validated when checkout starts. Eligible discounts will be reflected in the payment amount.</p>
+                <div className="mt-4 space-y-2"><button type="submit" disabled={busy || registrationSaved || !selectedCategoriesAvailable || !canReviewPayment} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole className="h-4 w-4" aria-hidden="true" />{busy ? "Preparing secure checkout..." : "Pay & Complete Registration"}</button><button type="button" onClick={() => { setStep(2); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} disabled={busy || registrationSaved} className="min-h-11 w-full rounded-lg border border-[#0b2b5b] bg-white px-4 py-2.5 text-sm font-semibold text-[#0b2b5b] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">← Back to waiver</button></div>
+                <p className="mt-3 text-center text-xs leading-5 text-slate-500">You’ll continue to PayMongo. RaceDeck does not collect your card details.</p>
+              </aside>
+            </section>}
+            {step === 2 ? <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-start gap-3">
+              <button type="button" onClick={() => { setStep(1); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-600"><span aria-hidden="true">←</span> Back</button>
+              <button disabled={busy || !selectedCategoriesAvailable || !canReviewPayment} className="inline-flex min-h-11 min-w-[220px] items-center justify-center gap-2 rounded-lg bg-[#ed3b36] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#d92f2b] disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? "Opening secure payment..." : <>Review &amp; Payment <span aria-hidden="true">›</span></>}</button>
+            </div> : step === 3 ? null : <div className="flex flex-wrap items-center justify-end gap-3">
               {step === 1 && <button
                 type="button"
                 onClick={addRegistrant}
@@ -780,8 +915,8 @@ export default function RegisterPage({
                       ? "Selected race distance unavailable"
                       : step === 1 ? "Continue" : `Continue to payment · ${peso(selectedTotal)}`}
               </button>
-            </div>
-            {message && (
+            </div>}
+            {message && !(step === 3 && registrationSaved) && (
               <p role="status" aria-live="polite" className="text-center text-sm text-slate-600">
                 {message}
                 {registrationHref && <> <Link href={registrationHref} className="font-semibold text-orange-700 underline underline-offset-2">Open My Races</Link></>}

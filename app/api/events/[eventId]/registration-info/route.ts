@@ -16,12 +16,14 @@ const jsonNoStore = (body: unknown, init?: ResponseInit) => NextResponse.json(bo
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const admin = createAdminClient() as unknown as SupabaseClient;
-  const { data: event, error: eventError } = await admin.from('events').select('id,name,banner_url,event_date,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity').eq('id', params.eventId).eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
+  const { data: event, error: eventError } = await admin.from('events').select('id,organization_id,name,banner_url,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity').eq('id', params.eventId).eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
   if (eventError) {
     console.error('Unable to load public event for registration', eventError);
     return jsonNoStore({ error: 'Event registration details could not be loaded. Please try again.' }, { status: 500 });
   }
   if (!event) return jsonNoStore({ error: 'Event not found' }, { status: 404 });
+  const { data: organization, error: organizationError } = await admin.from('organizations').select('name').eq('id', event.organization_id).maybeSingle();
+  if (organizationError) return jsonNoStore({ error: 'Event organizer details could not be loaded. Please try again.' }, { status: 500 });
   const readRegistrationFields = async () => {
     const fields = await admin.from('event_registration_fields')
       .select('id,label,field_type,section_key,is_required,display_order,event_registration_field_options(id,label,value,display_order)')
@@ -103,5 +105,5 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
       confirmed_count: category.confirmed_count,
     };
   });
-  return jsonNoStore({ event: { ...event, registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
+  return jsonNoStore({ event: { ...event, organizer_name: organization?.name ?? 'the event organizer', registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
 }
