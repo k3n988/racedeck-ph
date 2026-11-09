@@ -272,7 +272,16 @@ function AnswerInput({
   type?: string;
   required?: boolean;
 }) {
-  const autoComplete = label === "First Name" ? "given-name" : label === "Last Name" ? "family-name" : label === "Birthdate" ? "bday" : label === "Address" ? "street-address" : type === "email" ? "email" : type === "tel" ? "tel" : undefined;
+  const autofillFields: Record<string, { name: string; autoComplete: string }> = {
+    "First Name": { name: "first_name", autoComplete: "given-name" },
+    "Middle Name (optional)": { name: "middle_name", autoComplete: "additional-name" },
+    "Last Name": { name: "last_name", autoComplete: "family-name" },
+    Birthdate: { name: "birthdate", autoComplete: "bday" },
+    Email: { name: "email", autoComplete: "email" },
+    "Contact Number": { name: "contact_number", autoComplete: "tel" },
+    Address: { name: "address", autoComplete: "street-address" },
+  };
+  const autofill = autofillFields[label];
   return (
     <label className="block text-sm font-semibold text-slate-800">
       {label}
@@ -280,7 +289,8 @@ function AnswerInput({
       <input
         required={required}
         type={type}
-        autoComplete={autoComplete}
+        name={autofill?.name}
+        autoComplete={autofill?.autoComplete}
         max={type === "date" ? new Date().toISOString().slice(0, 10) : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -403,7 +413,7 @@ function RegistrantFields({
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <AnswerInput label="Birthdate" type="date" value={registrant.answers.birthdate ?? ""} onChange={(value) => updateAnswer("birthdate", value)} required />
             <label className="block min-w-0 text-sm font-semibold text-slate-800">Gender
-              <select value={registrant.answers.gender ?? ""} onChange={(event) => updateAnswer("gender", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
+              <select name="gender" autoComplete="sex" value={registrant.answers.gender ?? ""} onChange={(event) => updateAnswer("gender", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
                 <option value="">Select gender (optional)</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>

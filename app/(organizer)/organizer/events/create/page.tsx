@@ -311,6 +311,8 @@ export default function CreateEventPage() {
   const [kitClaimingLocationDraft, setKitClaimingLocationDraft] = useState("");
   const [merchandise, setMerchandise] = useState<MerchandiseItem[]>([]);
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
+  const [waiverTitle, setWaiverTitle] = useState("");
+  const [waiverContent, setWaiverContent] = useState("");
   const [posters, setPosters] = useState<UploadValue[]>([]);
   const [eventPages, setEventPages] = useState<EventPage[]>([
     {
@@ -585,6 +587,9 @@ export default function CreateEventPage() {
     }
     if (stepIndex === 4) {
       const errors: string[] = [];
+      if (Boolean(waiverTitle.trim()) !== Boolean(waiverContent.trim())) errors.push("Complete both the event waiver title and content, or leave both blank to skip the waiver.");
+      if (waiverTitle.trim().length > 240) errors.push("Event waiver title must be 240 characters or fewer.");
+      if (waiverContent.length > 50000) errors.push("Event waiver content must be 50,000 characters or fewer.");
       if (registrationQuestions.length > 30) errors.push("Add no more than 30 registration questions.");
       registrationQuestions.forEach((question, index) => {
         const number = index + 1;
@@ -779,6 +784,23 @@ export default function CreateEventPage() {
       const eventId = body.event.id as string;
       createdEventId = eventId;
       setDraftEventId(eventId);
+      if (waiverTitle.trim() && waiverContent.trim()) {
+        setMessage("Saving event waiver...");
+        const waiverResponse = await fetch(`/api/organizer/events/${eventId}/waiver`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: waiverTitle.trim(), content: waiverContent.trim() }),
+        });
+        const waiver = await waiverResponse.json().catch(() => ({}));
+        if (!waiverResponse.ok || !waiver.id) throw new Error(waiver.error ?? "Event waiver could not be saved.");
+        const publishResponse = await fetch(`/api/organizer/events/${eventId}/waiver`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: waiver.id, action: "publish" }),
+        });
+        const publishedWaiver = await publishResponse.json().catch(() => ({}));
+        if (!publishResponse.ok || publishedWaiver.status !== "published") throw new Error(publishedWaiver.error ?? "Event waiver could not be activated.");
+      }
       setMessage("Saving event logo and banner...");
       // Save primary artwork immediately after the draft exists. Later setup
       // failures must not prevent the event logo or banner reaching storage.
@@ -1525,6 +1547,14 @@ export default function CreateEventPage() {
           )}
           {step === 4 && (
             <div className="mt-6 flex-1 space-y-5">
+              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#071b41]">Event Participant Waiver <span className="font-normal normal-case text-slate-500">(optional)</span></div>
+                <div className="space-y-4 p-4 sm:p-5">
+                  <p className="text-sm text-slate-600">Add event-specific waiver wording for participants to read and accept during registration. This is separate from RaceDeck’s Terms and Conditions. Leave both fields blank if this event has no waiver.</p>
+                  <label className="block text-sm font-semibold text-slate-700">Waiver title<input maxLength={240} value={waiverTitle} onChange={(event) => setWaiverTitle(event.target.value)} placeholder="e.g. Event Participation Waiver" className={input} /></label>
+                  <label className="block text-sm font-semibold text-slate-700">Waiver content<textarea maxLength={50000} rows={8} value={waiverContent} onChange={(event) => setWaiverContent(event.target.value)} placeholder="Enter the waiver participants must review and accept." className={input} /></label>
+                </div>
+              </section>
               <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#071b41]">Personal Information</div>
                 <div className="p-4 sm:p-5">
