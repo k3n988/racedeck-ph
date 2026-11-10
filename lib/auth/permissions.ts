@@ -24,6 +24,25 @@ export type AuthContext = {
   internalRoles: InternalRole[];
 };
 
+/**
+ * Organization owners are the organization-level authority and receive every
+ * organizer permission by design (see the default role_permissions seed).
+ * Keep event restrictions in force for delegated or explicitly scoped access.
+ */
+export function membershipHasPermission(
+  membership: OrganizationMembership,
+  permission: PermissionKey,
+  eventId?: string,
+) {
+  // Any active organization member may read the organization's event list.
+  // The API still scopes queries to this organization and applies event-level
+  // restrictions below. Mutations and financial access remain permission-gated.
+  const isOrganizationEventRead = permission === 'view_events';
+
+  if (membership.role !== 'owner' && !isOrganizationEventRead && !membership.permissions.includes(permission)) return false;
+  return !eventId || !membership.restricted_event_ids || membership.restricted_event_ids.includes(eventId);
+}
+
 export async function getCurrentUser() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
@@ -102,10 +121,9 @@ export async function hasPermission(
   const context = await loadAuthContext();
   if (!context) return false;
   if (context.internalRoles.includes('admin') || context.internalRoles.includes('super_admin')) return true;
-  return context.memberships.some((membership) => {
-    if (membership.organization_id !== organizationId || !membership.permissions.includes(permission)) return false;
-    return !eventId || !membership.restricted_event_ids || membership.restricted_event_ids.includes(eventId);
-  });
+  return context.memberships.some((membership) =>
+    membership.organization_id === organizationId && membershipHasPermission(membership, permission, eventId)
+  );
 }
 
 export async function hasInternalRole(role: InternalRole) {

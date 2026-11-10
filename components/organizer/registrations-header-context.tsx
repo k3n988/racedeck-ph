@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 
 export type RegistrationHeaderActions = {
   onExport: () => void;
@@ -16,6 +17,8 @@ export type RegistrationsHeaderContextValue = {
   setToDate: (value: string) => void;
   actions: RegistrationHeaderActions | null;
   setActions: (actions: RegistrationHeaderActions | null) => void;
+  dashboardControls: ReactNode | null;
+  setDashboardControls: (controls: ReactNode | null) => void;
 };
 
 export const RegistrationsHeaderContext = createContext<RegistrationsHeaderContextValue | null>(null);

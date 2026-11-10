@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-access';
 import { effectiveAvailability } from '@/lib/public/events';
+import { parseEventSocialLinks } from '@/lib/events/event-social-links';
 const EVENT_FIELDS = 'id,organization_id,slug,name,banner_url,event_date,venue,address,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,is_featured,created_at,updated_at';
 export async function GET(request: Request) {
   const auth = await requireOrganizerPermission('view_events');
@@ -85,25 +86,8 @@ export async function POST(request: Request) {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const slug = typeof body.slug === 'string' ? body.slug.trim().toLowerCase() : '';
     const eventDate = typeof body.event_date === 'string' ? body.event_date : '';
-    const socialLinks = body.social_links && typeof body.social_links === 'object' && !Array.isArray(body.social_links) ? body.social_links : {};
-    for (const field of ['facebook', 'website'] as const) {
-      const value = socialLinks[field];
-      if (typeof value === 'string' && value.trim()) {
-        if (value.trim().length > 2048) return NextResponse.json({ error: `${field === 'facebook' ? 'Facebook' : 'Website'} URL is too long` }, { status: 400 });
-        try {
-          const url = new URL(value.trim());
-          if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol');
-        } catch {
-          return NextResponse.json({ error: `${field === 'facebook' ? 'Facebook' : 'Website'} must be a valid HTTP or HTTPS URL` }, { status: 400 });
-        }
-      } else if (value != null && typeof value !== 'string') {
-        return NextResponse.json({ error: `Invalid ${field} URL` }, { status: 400 });
-      }
-    }
-    const phone = socialLinks.phone;
-    if (typeof phone === 'string' && phone.trim() && (phone.trim().length > 24 || !/^[+\d().\s-]+$/.test(phone.trim()) || phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15)) {
-      return NextResponse.json({ error: 'Phone number must contain 7 to 15 digits' }, { status: 400 });
-    }
+    const { links: socialLinks, error: socialLinksError } = parseEventSocialLinks(body.social_links);
+    if (socialLinksError) return NextResponse.json({ error: socialLinksError }, { status: 400 });
 
     const parsedDay = /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? new Date(`${eventDate}T00:00:00Z`) : null;
     if (!name || name.length > 160 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 180 ||
@@ -141,11 +125,7 @@ export async function POST(request: Request) {
       address: typeof body.address === 'string' ? body.address.trim() || null : null,
       description: typeof body.description === 'string' ? body.description.trim() || null : null,
       start_time: typeof body.start_time === 'string' ? body.start_time || null : null,
-      social_links: {
-        facebook: typeof socialLinks.facebook === 'string' ? socialLinks.facebook.trim() : '',
-        phone: typeof socialLinks.phone === 'string' ? socialLinks.phone.trim() : '',
-        website: typeof socialLinks.website === 'string' ? socialLinks.website.trim() : '',
-      } as never,
+      social_links: socialLinks as never,
       registration_opens_at: typeof body.registration_opens_at === 'string' ? body.registration_opens_at : null,
       registration_closes_at: typeof body.registration_closes_at === 'string' ? body.registration_closes_at : null,
       assembly_time: typeof body.assembly_time === 'string' ? body.assembly_time || null : null,

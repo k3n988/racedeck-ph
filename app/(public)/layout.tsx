@@ -4,17 +4,16 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
   return (
     <div className="min-h-screen bg-[#f7f8fb] text-slate-900">
       <header className="sticky top-0 z-30 border-b border-slate-200/90 bg-white/95 backdrop-blur">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <nav className="mx-auto flex max-w-7xl items-center justify-start gap-4 px-4 py-4 sm:px-6">
           <Link href="/" className="group flex shrink-0 items-center gap-3">
             <span className="relative grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-[#0a2957] text-lg font-black text-white shadow-sm"><span className="relative z-10">R</span><span className="absolute -bottom-3 -right-3 h-8 w-8 rotate-45 bg-orange-500" /></span>
             <span className="text-xl font-black tracking-tight">RACEDECK<span className="ml-1 text-xs font-black text-orange-600">PH</span></span>
           </Link>
-          <div className="hidden items-center gap-7 text-sm font-bold lg:flex">
+          <div className="ml-auto hidden items-center gap-7 text-sm font-bold lg:flex">
             <Link href="/#home-events" className="transition hover:text-orange-600">Events</Link>
             <Link href="/results" className="transition hover:text-orange-600">Results</Link>
             <Link href="/contact" className="transition hover:text-orange-600">Contact Us</Link>
           </div>
-          <Link href="/login" className="shrink-0 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-orange-700 sm:px-5">Login</Link>
         </nav>
       </header>
       {children}

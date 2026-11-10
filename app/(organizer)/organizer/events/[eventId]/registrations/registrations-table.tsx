@@ -15,7 +15,7 @@ type Registration = {
   created_at: string;
   race_categories: { id: string; name: string } | Array<{ id: string; name: string }> | null;
   payments: Array<{ status: string }> | { status: string } | null;
-  bibs: Array<{ bib_number: number | null; prefix: string | null; status: string }> | { bib_number: number | null; prefix: string | null; status: string } | null;
+  bibs: Array<{ bib_number: number | null; bib_code: string | null; prefix: string | null; status: string }> | { bib_number: number | null; bib_code: string | null; prefix: string | null; status: string } | null;
   race_kit_claims: Array<{ claimed_at: string | null }> | null;
 };
 type PageData = {
@@ -211,7 +211,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
                   <th scope="col" className="px-4 py-3">Category</th>
                   <th scope="col" className="px-4 py-3">Registration</th>
                   <th scope="col" className="px-4 py-3">Payment</th>
-                  <th scope="col" className="px-4 py-3">Bib</th>
+                  <th scope="col" className="px-4 py-3">Bib number</th>
                   <th scope="col" className="px-4 py-3">Race kit</th>
                   <th scope="col" className="px-4 py-3">Registered</th>
                   <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
@@ -242,7 +242,13 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
                       <td className="px-4 py-3.5">{first(row.race_categories)?.name ?? '—'}</td>
                       <td className="px-4 py-3.5"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{statusLabel(row.status)}</span></td>
                       <td className="px-4 py-3.5">{payment?.status ? statusLabel(payment.status) : 'No payment'}</td>
-                      <td className="px-4 py-3.5">{bib?.bib_number != null ? `${bib.prefix ?? ''}${bib.bib_number}` : 'Not assigned'}</td>
+                      <td className="px-4 py-3.5">
+                        {bib?.status === 'active' && (bib.bib_code || bib.bib_number != null) ? (
+                          <span className="inline-flex rounded-full bg-orange-50 px-2.5 py-1 font-mono text-xs font-bold text-orange-800">
+                            {bib.bib_code ?? `${bib.prefix ?? ''}${bib.bib_number}`}
+                          </span>
+                        ) : <span className="text-slate-500">Not assigned</span>}
+                      </td>
                       <td className="px-4 py-3.5">{row.race_kit_claims?.some((claim) => claim.claimed_at) ? 'Claimed' : 'Not claimed'}</td>
                       <td className="px-4 py-3.5 whitespace-nowrap">{formatDate(row.created_at)}</td>
                       <td className="px-4 py-3.5 text-right"><Link className="font-semibold text-orange-700 hover:text-orange-800 hover:underline" href={`/organizer/events/${eventId}/registrations/${row.id}`}>View participant<span className="sr-only"> profile for registration {row.registration_number ?? row.id}</span></Link></td>

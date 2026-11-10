@@ -94,13 +94,14 @@ function WorkspaceMenu({ eventId, label, icon: Icon, links, pathname }: {
   const activeItem = links.find(([, path]) => pathname === `${base}${path ? `/${path}` : ''}`);
   const isActive = Boolean(activeItem);
   return (
-    <details className="group relative shrink-0">
-      <summary aria-current={isActive ? 'page' : undefined} className={`flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 [&::-webkit-details-marker]:hidden ${isActive ? 'bg-[#0b2b5b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+    <details name="event-workspace-sections" className="group relative shrink-0">
+      <summary aria-label={isActive ? `${label}, current section: ${activeItem?.[0]}` : label} className={`flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 [&::-webkit-details-marker]:hidden ${isActive ? 'bg-[#0b2b5b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
         <Icon size={16} aria-hidden="true" />
-        <span>{activeItem?.[0] ?? label}</span>
+        <span>{label}</span>
+        {isActive && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-orange-400" />}
         <ChevronDown size={14} aria-hidden="true" className="transition-transform group-open:rotate-180" />
       </summary>
-      <div className={`absolute ${label === 'Results & Reports' ? 'right-0' : 'left-0'} top-full z-50 mt-2 min-w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl`}>
+      <div className={`absolute ${label === 'Results & Reports' ? 'right-0' : 'left-0'} top-full z-50 mt-2 min-w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl`}>
         {links.map(([linkLabel, path]) => {
           const href = `${base}${path ? `/${path}` : ''}`;
           const active = pathname === href;
@@ -174,11 +175,11 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
   return (
     <EventWorkspaceContext.Provider value={context}>
       {!isRegistrationSection && <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1480px] px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
               <Link href="/organizer/events" className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-orange-700 hover:text-orange-800"><ArrowLeft size={14} aria-hidden="true" /> All events</Link>
-              <h2 className="min-w-0 flex-1 truncate text-lg font-extrabold text-[#071b41] sm:text-xl">{event?.name ?? (loadMessage ? 'Event workspace' : 'Loading event…')}</h2>
+              <h2 className="min-w-0 flex-1 basis-48 truncate text-lg font-extrabold text-[#071b41] sm:text-xl">{event?.name ?? (loadMessage ? 'Event workspace' : 'Loading event…')}</h2>
               {event && <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${statusColor}`}>{statusLabel}</span>}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -187,7 +188,7 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
             </div>
           </div>
           {(notice || loadMessage) && <p role={notice ? 'status' : 'alert'} className={`mt-3 rounded-lg border px-3 py-2 text-sm ${notice ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{notice || loadMessage}</p>}
-          <nav aria-label="Event workspace" className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+          <nav aria-label="Event workspace sections" className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
             {directLinks.map(({ label, path, icon: Icon }) => {
               const href = `/organizer/events/${eventId}${path ? `/${path}` : ''}`;
               const active = pathname === href;

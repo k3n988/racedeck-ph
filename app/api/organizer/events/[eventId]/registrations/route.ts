@@ -20,7 +20,7 @@ type ExportRow = {
   created_at: string;
   race_categories: ExportRelation<{ name: string }>;
   payments: ExportRelation<{ status: string }>;
-  bibs: ExportRelation<{ bib_number: number | null; prefix: string | null }>;
+  bibs: ExportRelation<{ bib_number: number | null; bib_code: string | null; prefix: string | null; status?: string }>;
   race_kit_claims: Array<{ claimed_at: string | null }> | null;
 };
 
@@ -127,7 +127,7 @@ export async function GET(request: Request, { params }: { params: { eventId: str
 
   // registrations.bib_id and bibs.registration_id both point at this relationship.
   // Name the FK explicitly so PostgREST does not fail with an ambiguous relationship error.
-  const fields = `id,registration_number,event_id,category_id,checkout_group_id,status,${access.canViewPii ? 'first_name,middle_name,last_name,email,mobile,' : ''}created_at,race_categories!inner(id,name),payments(status,amount_paid,created_at),bibs!registrations_bib_id_fkey(bib_number,prefix,status),race_kit_claims(claimed_at)`;
+  const fields = `id,registration_number,event_id,category_id,checkout_group_id,status,${access.canViewPii ? 'first_name,middle_name,last_name,email,mobile,' : ''}created_at,race_categories!inner(id,name),payments(status,amount_paid,created_at),bibs!registrations_bib_id_fkey(bib_number,bib_code,prefix,status),race_kit_claims(claimed_at)`;
   const makeQuery = () => {
     let query = admin.from('registrations').select(fields, { count: 'exact' }).eq('event_id', params.eventId);
     if (status) query = query.eq('status', status as never);
@@ -170,7 +170,7 @@ export async function GET(request: Request, { params }: { params: { eventId: str
         category?.name ?? '',
         row.status,
         payment?.status ?? 'no_payment',
-        bib?.bib_number == null ? '' : `${bib.prefix ?? ''}${bib.bib_number}`,
+        bib?.status === 'active' ? (bib.bib_code ?? (bib.bib_number == null ? '' : `${bib.prefix ?? ''}${bib.bib_number}`)) : '',
         claimed ? 'claimed' : 'not_claimed',
         row.created_at,
       ];

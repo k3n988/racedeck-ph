@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
 import type { HomepagePublicEventsResult, PublicEventCard } from '@/lib/public/events';
+import { publicRegistrationPath } from '@/lib/public/event-paths';
 import { RetryButton } from '@/components/public/retry-button';
+import { bannerFrameStyle } from '@/lib/events/banner-frame';
 
 function formatEventDate(value: string) {
   const date = new Date(`${value.slice(0, 10)}T00:00:00+08:00`);
@@ -23,7 +25,7 @@ function EventActions({ event }: { event: PublicEventCard }) {
   if (!event.registration_enabled) {
     return <Link href={detailsHref} className={primaryActionClass}>View Details <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
   }
-  return <Link href={`/events/${event.id}/register`} className={primaryActionClass}>Register Now <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
+  return <Link href={publicRegistrationPath(event)} className={primaryActionClass}>Register Now <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
 }
 
 function EventCard({ event }: { event: PublicEventCard }) {
@@ -35,7 +37,7 @@ function EventCard({ event }: { event: PublicEventCard }) {
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2">
       <div className="relative aspect-[16/9] overflow-hidden rounded-t-2xl bg-gradient-to-br from-[#09204a] via-[#163c70] to-orange-700">
-        {event.banner_url ? <img src={event.banner_url} alt={`${event.name} event poster`} loading="lazy" className={`h-full w-full ${event.poster_fallback ? 'object-contain p-2' : 'object-cover transition duration-300 group-hover:scale-[1.02]'}`} /> : <div aria-label="RaceDeck event poster placeholder" className="grid h-full place-items-center bg-[radial-gradient(circle_at_82%_18%,rgba(249,115,22,.38),transparent_28%),linear-gradient(125deg,#071b41,#173d71_72%,#a9441b)]"><span className="text-xs font-bold uppercase tracking-[0.18em] text-orange-100">RaceDeck PH</span></div>}
+        {event.banner_url ? <img src={event.banner_url} alt={`${event.name} event poster`} loading="lazy" className={`h-full w-full ${event.poster_fallback ? 'object-contain p-2' : 'object-cover transition duration-300 group-hover:scale-[1.02]'}`} style={event.poster_fallback ? undefined : bannerFrameStyle({ x: event.banner_position_x, y: event.banner_position_y, zoom: event.banner_zoom })} /> : <div aria-label="RaceDeck event poster placeholder" className="grid h-full place-items-center bg-[radial-gradient(circle_at_82%_18%,rgba(249,115,22,.38),transparent_28%),linear-gradient(125deg,#071b41,#173d71_72%,#a9441b)]"><span className="text-xs font-bold uppercase tracking-[0.18em] text-orange-100">RaceDeck PH</span></div>}
       </div>
       <div className="flex flex-1 flex-col p-5">
         <h3 className="break-words text-lg font-bold leading-tight text-[#0a234b]"><Link href={`/events/${event.slug}`} className="line-clamp-2 rounded-sm transition hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500">{event.name}</Link></h3>

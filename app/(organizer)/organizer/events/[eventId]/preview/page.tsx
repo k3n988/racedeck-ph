@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { PublicEventDetails } from '@/lib/public/events';
 import { ContentEditor } from '@/components/organizer/content-editor';
+import { bannerFrameStyle } from '@/lib/events/banner-frame';
 
-type Event = { id: string; name: string; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; logo_url: string | null; banner_url: string | null; registration_availability: string; lifecycle_status: string; poster_fallback?: boolean; review_status: string };
+type Event = { id: string; name: string; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; logo_url: string | null; banner_url: string | null; banner_position_x?: number | null; banner_position_y?: number | null; banner_zoom?: number | null; registration_availability: string; lifecycle_status: string; poster_fallback?: boolean; review_status: string };
 type Tab = string;
 type PreviewPage = { id: string; title: string; type: 'system' | 'custom'; content: string; visible: boolean; display_order?: number };
 function splitContent(description: string | null) {
@@ -92,7 +93,7 @@ export default function OrganizerEventPreview({ params }: { params: { eventId: s
       <article className="mx-auto max-w-6xl overflow-hidden bg-white shadow-sm">
         <section className="relative aspect-[4/1] min-h-[180px] max-h-[320px] w-full overflow-hidden bg-[#071b41]">
           {heroImage ? (
-            <img src={heroImage} alt={`${event.name} event banner`} className={`h-full w-full ${heroUsesPosterFallback ? 'object-contain p-2' : 'object-cover object-center'}`} />
+            <img src={heroImage} alt={`${event.name} event banner`} className={`h-full w-full ${heroUsesPosterFallback ? 'object-contain p-2' : 'object-cover object-center'}`} style={heroUsesPosterFallback ? undefined : bannerFrameStyle({ x: event.banner_position_x, y: event.banner_position_y, zoom: event.banner_zoom })} />
           ) : (
             <div className="grid h-full place-items-center bg-gradient-to-br from-[#071b41] to-orange-700 px-6 text-center text-2xl font-black text-white">{event.name}</div>
           )}

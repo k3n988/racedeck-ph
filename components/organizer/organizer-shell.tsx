@@ -54,7 +54,9 @@ function pageTitle(pathname: string) {
   const organizerIndex = segments.indexOf('organizer');
   const routeSegments = organizerIndex >= 0 ? segments.slice(organizerIndex + 1) : segments;
   if (routeSegments[0] === 'events' && routeSegments[1] && routeSegments[1] !== 'create') {
-    return routeLabels[routeSegments[2]] ?? 'Event Workspace';
+    if (routeSegments[2] === 'preview') return 'Preview';
+    if (routeSegments[2] === 'registrations') return 'Registrations';
+    return 'Event Workspace';
   }
   const segment = routeSegments.at(-1) ?? 'dashboard';
   return routeLabels[segment] ?? segment.replaceAll('-', ' ');
@@ -64,7 +66,7 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { fromDate, toDate, setFromDate, setToDate, actions } = useRegistrationsHeader();
+  const { fromDate, toDate, setFromDate, setToDate, actions, dashboardControls } = useRegistrationsHeader();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -249,7 +251,7 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
 
             {previewHref && <Link href={previewHref} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">Preview <ArrowUpRight aria-hidden="true" size={15} /></Link>}
 
-            {pathname === '/organizer/dashboard' && <Link href="/organizer/events/create" className="ml-auto rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500">+ Create event</Link>}
+            {pathname === '/organizer/dashboard' && dashboardControls}
 
             {eventList && <>
               <input defaultValue={searchParams.get('search') ?? ''} onChange={(event) => updateEventFilters('search', event.target.value)} placeholder="Search event name..." aria-label="Search event name" className="ml-auto min-w-40 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100 md:max-w-md" />
@@ -262,6 +264,16 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
             {pathname === '/organizer/registrations' && <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 xl:w-auto">
               <label className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-600"><span className="whitespace-nowrap">Registered from</span><CalendarDays aria-hidden="true" size={15} /><input aria-label="Registered from" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} className="w-[132px] bg-transparent text-sm font-medium text-slate-800 outline-none" /></label>
               <label className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-600"><span className="whitespace-nowrap">Registered to</span><CalendarDays aria-hidden="true" size={15} /><input aria-label="Registered to" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} className="w-[132px] bg-transparent text-sm font-medium text-slate-800 outline-none" /></label>
+              <button type="button" onClick={() => actions?.onExport()} disabled={!actions || actions.exportDisabled} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download aria-hidden="true" size={16} />Export CSV</button>
+              <button type="button" onClick={() => actions ? actions.onRefresh() : router.refresh()} disabled={actions?.refreshing ?? false} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw aria-hidden="true" size={15} className={actions?.refreshing ? 'animate-spin' : ''} />{actions?.refreshing ? 'Refreshing…' : 'Refresh'}</button>
+            </div>}
+
+            {pathname === '/organizer/payments' && <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+              <button type="button" onClick={() => actions?.onExport()} disabled={!actions || actions.exportDisabled} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download aria-hidden="true" size={16} />Export CSV</button>
+              <button type="button" onClick={() => actions ? actions.onRefresh() : router.refresh()} disabled={actions?.refreshing ?? false} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw aria-hidden="true" size={15} className={actions?.refreshing ? 'animate-spin' : ''} />{actions?.refreshing ? 'Refreshing…' : 'Refresh'}</button>
+            </div>}
+
+            {pathname === '/organizer/payouts' && <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
               <button type="button" onClick={() => actions?.onExport()} disabled={!actions || actions.exportDisabled} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download aria-hidden="true" size={16} />Export CSV</button>
               <button type="button" onClick={() => actions ? actions.onRefresh() : router.refresh()} disabled={actions?.refreshing ?? false} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw aria-hidden="true" size={15} className={actions?.refreshing ? 'animate-spin' : ''} />{actions?.refreshing ? 'Refreshing…' : 'Refresh'}</button>
             </div>}
@@ -282,8 +294,9 @@ export default function OrganizerShell({ children, email }: { children: React.Re
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [actions, setActions] = useState<RegistrationHeaderActions | null>(null);
+  const [dashboardControls, setDashboardControls] = useState<React.ReactNode | null>(null);
   return (
-    <RegistrationsHeaderContext.Provider value={{ fromDate, toDate, setFromDate, setToDate, actions, setActions }}>
+    <RegistrationsHeaderContext.Provider value={{ fromDate, toDate, setFromDate, setToDate, actions, setActions, dashboardControls, setDashboardControls }}>
       <OrganizerShellContent email={email}>{children}</OrganizerShellContent>
     </RegistrationsHeaderContext.Provider>
   );

@@ -6,6 +6,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronRight, Clock3, LockKeyhole, Pencil, PhoneCall, ShoppingCart, Tag, Users, Zap } from "lucide-react";
 import { EMERGENCY_CONTACT_RELATIONSHIPS } from "@/lib/registrations/emergency-contact";
 import { parseVariantOptions } from "@/lib/events/variant-options";
+import { bannerFrameStyle } from "@/lib/events/banner-frame";
 import type { CheckoutPaymentMethod } from "@/lib/payments/gateway.interface";
 
 type Option = {
@@ -52,6 +53,9 @@ type RegistrationInfo = {
     id: string;
     name: string;
     banner_url: string | null;
+    banner_position_x: number | null;
+    banner_position_y: number | null;
+    banner_zoom: number | null;
     poster_fallback: boolean;
     event_date: string;
     assembly_time: string | null;
@@ -765,6 +769,7 @@ export default function RegisterPage({
               unoptimized
               sizes="(max-width: 768px) 100vw, 938px"
               className={data.event.poster_fallback ? "object-contain object-center p-2" : "object-cover object-center"}
+              style={data.event.poster_fallback ? undefined : bannerFrameStyle({ x: data.event.banner_position_x, y: data.event.banner_position_y, zoom: data.event.banner_zoom })}
             />
           ) : (
             <div className="absolute inset-0 grid place-items-center px-5 text-center text-xl font-bold text-white sm:text-2xl">{data.event.name}</div>

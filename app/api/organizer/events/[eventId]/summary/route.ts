@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-access';
 import { effectiveRegistrationAvailability, registrationAvailabilityReason } from '@/lib/events/registration-availability';
+import { eventPlatformLinkIsValid, eventPhoneIsValid, type EventSocialLinks } from '@/lib/events/event-social-links';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SUMMARY_FIELDS = 'id,organization_id,name,description,address,event_date,start_time,venue,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,review_feedback';
+const SUMMARY_FIELDS = 'id,organization_id,name,description,address,event_date,start_time,venue,social_links,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,review_feedback';
 
 function manilaToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -43,9 +44,12 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     ));
     const organizationReady = organization?.verification_status === 'approved' && organization.account_status === 'active';
     const eventDetailsReady = Boolean(event.name.trim() && plainDescription && event.venue?.trim() && event.address?.trim());
+    const contact = (event.social_links ?? {}) as EventSocialLinks;
+    const contactReady = Boolean(contact.phone?.trim() && eventPlatformLinkIsValid('facebook', contact.facebook ?? '') && eventPhoneIsValid(contact.phone ?? ''));
     const upcoming = Boolean(event.event_date && event.event_date >= manilaToday());
     const checklist = [
       { label: 'Event details', href: 'setup/details', complete: eventDetailsReady, detail: eventDetailsReady ? 'Name, description, venue, and address are set.' : 'Add the event name, description, venue, and complete address.' },
+      { label: 'Event contact', href: 'setup/details', complete: contactReady, detail: contactReady ? 'Facebook and phone number are set.' : 'Add a valid Facebook URL and phone number.' },
       { label: 'Event date and registration schedule', href: 'settings', complete: upcoming && validSchedule, detail: !upcoming ? 'The event date must be today or later (Philippine time).' : !validSchedule ? 'Set opening and closing dates in order, ending by the event day.' : 'Dates are valid and use Philippine time.' },
       { label: 'At least one complete category', href: 'setup/categories-pricing', complete: completeCategories, detail: completeCategories ? `${categories?.length ?? 0} complete race ${categories?.length === 1 ? 'category' : 'categories'}.` : 'Add a category with a name, distance, fee, and valid capacity.' },
       { label: 'Organizer approved and active', href: 'settings', complete: organizationReady, detail: organizationReady ? 'The organization can submit events for review.' : 'The organization must be approved and active before event submission.' },

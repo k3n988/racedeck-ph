@@ -3,11 +3,12 @@ import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-
 import type { Database } from '@/types/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { effectiveRegistrationAvailability, registrationAvailabilityReason } from '@/lib/events/registration-availability';
+import { parseEventSocialLinks } from '@/lib/events/event-social-links';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
+const FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
 const jsonNoStore = (body: unknown, init?: ResponseInit) => NextResponse.json(body, {
   ...init,
   headers: { 'Cache-Control': 'no-store, max-age=0', ...init?.headers },
@@ -96,7 +97,7 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if (current.review_status === 'pending_review') {
       return NextResponse.json({ error: 'Event details cannot be changed while RaceDeck is reviewing the event.' }, { status: 409 });
     }
-    const allowed = ['name', 'slug', 'description', 'banner_url', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability'];
+    const allowed = ['name', 'slug', 'description', 'banner_url', 'banner_position_x', 'banner_position_y', 'banner_zoom', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability'];
     const keys = Object.keys(body).filter((key) => allowed.includes(key));
     if (!keys.length) return NextResponse.json({ error: 'No event changes provided' }, { status: 400 });
     for (const key of ['registration_opens_at', 'registration_closes_at']) {
@@ -111,6 +112,14 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if (keys.includes('registration_availability') && !['not_yet_open', 'open', 'closed', 'sold_out'].includes(body.registration_availability)) {
       return NextResponse.json({ error: 'Invalid registration availability' }, { status: 400 });
     }
+    for (const key of ['banner_position_x', 'banner_position_y'] as const) {
+      if (key in body && (!Number.isInteger(body[key]) || body[key] < 0 || body[key] > 100)) {
+        return NextResponse.json({ error: 'Banner framing position must be between 0 and 100.' }, { status: 400 });
+      }
+    }
+    if ('banner_zoom' in body && (typeof body.banner_zoom !== 'number' || !Number.isFinite(body.banner_zoom) || body.banner_zoom < 1 || body.banner_zoom > 2)) {
+      return NextResponse.json({ error: 'Banner zoom must be between 100% and 200%.' }, { status: 400 });
+    }
     const update = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)).map(([key, value]) => {
       if (typeof value === 'string' && value.trim() === '') return [key, null];
       if (['registration_opens_at', 'registration_closes_at'].includes(key) && typeof value === 'string') return [key, new Date(value).toISOString()];
@@ -118,12 +127,9 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
       return [key, value];
     })) as Database['public']['Tables']['events']['Update'];
     if ('social_links' in update) {
-      const socialLinks = body.social_links && typeof body.social_links === 'object' && !Array.isArray(body.social_links) ? body.social_links : {};
-      update.social_links = {
-        facebook: typeof socialLinks.facebook === 'string' ? socialLinks.facebook.trim() : '',
-        phone: typeof socialLinks.phone === 'string' ? socialLinks.phone.trim() : '',
-        website: typeof socialLinks.website === 'string' ? socialLinks.website.trim() : '',
-      };
+      const { links, error: socialLinksError } = parseEventSocialLinks(body.social_links);
+      if (socialLinksError) return NextResponse.json({ error: socialLinksError }, { status: 400 });
+      update.social_links = links;
     }
     if ('name' in update && !update.name) return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
     if ('slug' in update && (!update.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(update.slug))) return NextResponse.json({ error: 'Use lowercase letters, numbers, and hyphens for the event slug' }, { status: 400 });

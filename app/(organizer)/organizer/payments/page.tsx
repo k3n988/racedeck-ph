@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BadgeCheck, CalendarDays, Check, CircleDollarSign, ClipboardList, CreditCard, Download, Mail, RotateCw, Search, UsersRound, Wallet, X } from 'lucide-react';
+import { BadgeCheck, CalendarDays, Check, CircleDollarSign, ClipboardList, CreditCard, Mail, Search, UsersRound, Wallet, X } from 'lucide-react';
+import { useRegistrationsHeader } from '@/components/organizer/registrations-header-context';
 
 type EventOption = { id: string; name: string };
 type Refund = { id: string; status: string; amount: number; currency: string; gateway_refund_id?: string | null; processed_at?: string | null; created_at: string };
@@ -52,6 +53,7 @@ const methodLabel = (value: string | null | undefined) => {
 };
 
 export default function PaymentsPage() {
+  const { setActions } = useRegistrationsHeader();
   const [payload, setPayload] = useState<PaymentsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -133,7 +135,7 @@ export default function PaymentsPage() {
     { title: 'Pending payments', value: (summary?.pending_payments ?? 0).toLocaleString(), note: 'Awaiting gateway confirmation', Icon: CreditCard },
   ], [summary]);
 
-  const exportCsv = async () => {
+  const exportCsv = useCallback(async () => {
     setExporting(true);
     const params = new URLSearchParams({ export: 'csv' });
     if (eventId) params.set('eventId', eventId);
@@ -159,7 +161,22 @@ export default function PaymentsPage() {
       notify('Payment CSV exported.');
     } catch (cause) { notify(cause instanceof Error ? cause.message : 'CSV export failed.'); }
     finally { setExporting(false); }
-  };
+  }, [eventId, status, from, to, search, notify]);
+
+  const refreshPayments = useCallback(() => {
+    setReloadToken((value) => value + 1);
+    notify('Refreshing payment records…');
+  }, [notify]);
+
+  useEffect(() => {
+    setActions({
+      onExport: () => void exportCsv(),
+      onRefresh: refreshPayments,
+      exportDisabled: loading || exporting || !payload?.pagination.total,
+      refreshing: loading,
+    });
+    return () => setActions(null);
+  }, [setActions, exportCsv, refreshPayments, loading, exporting, payload?.pagination.total]);
 
   const copyReference = async () => {
     if (!selected) return;
@@ -170,14 +187,6 @@ export default function PaymentsPage() {
 
   return (
     <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">Review participant payments and organizer revenue across your events.</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={exportCsv} disabled={loading || exporting || !payload?.pagination.total} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download size={16} aria-hidden="true" />{exporting ? 'Exporting…' : 'Export CSV'}</button>
-          <button type="button" onClick={() => { setReloadToken((value) => value + 1); notify('Refreshing payment records…'); }} disabled={loading} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RotateCw size={15} aria-hidden="true" className={loading ? 'animate-spin' : ''} />Refresh</button>
-        </div>
-      </div>
-
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReloadToken((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div>}
 
       <section aria-label="Payment summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

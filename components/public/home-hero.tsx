@@ -4,6 +4,8 @@ import { useEffect, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FeaturedPublicEvent } from '@/lib/public/events';
+import { publicRegistrationPath } from '@/lib/public/event-paths';
+import { bannerFrameStyle } from '@/lib/events/banner-frame';
 
 export function HomeHero({ events, browseHref = '#home-events' }: { events: FeaturedPublicEvent[]; browseHref?: string }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -76,11 +78,11 @@ export function HomeHero({ events, browseHref = '#home-events' }: { events: Feat
       className="home-hero group relative min-h-[260px] overflow-hidden rounded-2xl bg-white shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 sm:h-[290px] sm:min-h-0"
     >
       {event.banner_url && <div key={event.id} className="motion-safe:animate-[heroFade_220ms_ease-out] absolute inset-0 bg-white">
-        <img src={event.banner_url} alt={`${event.name} event banner`} className={`h-full w-full ${event.poster_fallback ? 'object-contain p-2' : 'object-cover object-center sm:object-[center_42%]'}`} />
+        <img src={event.banner_url} alt={`${event.name} event banner`} className={`h-full w-full ${event.poster_fallback ? 'object-contain p-2' : 'object-cover object-center sm:object-[center_42%]'}`} style={event.poster_fallback ? undefined : bannerFrameStyle({ x: event.banner_position_x, y: event.banner_position_y, zoom: event.banner_zoom })} />
       </div>}
       <div key={`${event.id}-content`} className="motion-safe:animate-[heroFade_220ms_ease-out] absolute bottom-3 left-3 z-10 sm:bottom-5 sm:left-5">
         {event.registration_enabled ? (
-          <Link href={`/events/${event.id}/register`} aria-label={`Register for ${event.name}`} className="inline-flex min-h-11 items-center rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-orange-600">
+          <Link href={publicRegistrationPath(event)} aria-label={`Register for ${event.name}`} className="inline-flex min-h-11 items-center rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-orange-600">
             Register Now
           </Link>
         ) : (

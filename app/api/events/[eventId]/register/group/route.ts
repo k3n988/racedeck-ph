@@ -40,17 +40,19 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   if (registrants.some((registrant) => !registrant.accept_waiver)) return NextResponse.json({ error: 'Each participant must accept the Participant Waiver before continuing.' }, { status: 400 });
   const admin = createAdminClient();
   const db = admin as unknown as SupabaseClient;
+  const isEventId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.eventId);
+  const eventLookup = admin.from('events').select('id,organization_id,name,event_date,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at');
+  const { data: event } = await (isEventId ? eventLookup.eq('id', params.eventId) : eventLookup.eq('slug', params.eventId)).maybeSingle();
+  const now = Date.now();
+  if (!event || event.lifecycle_status !== 'published' || event.review_status !== 'approved') return NextResponse.json({ error: 'This event is not currently available for registration.' }, { status: 409 });
 
   const { data: existing } = await admin.from('payments').select('id,registration_id,gateway,checkout_url,status,amount_due,currency,registrations!inner(user_id,event_id,registration_number)').in('gateway', ['paymongo', 'pending_setup']).eq('idempotency_key', idempotencyKey).maybeSingle();
   if (existing) {
     const owner = Array.isArray(existing.registrations) ? existing.registrations[0] : existing.registrations;
-    if ((owner?.user_id ?? null) !== userId || owner.event_id !== params.eventId) return NextResponse.json({ error: 'Registration request is not available' }, { status: 409 });
+    if ((owner?.user_id ?? null) !== userId || owner.event_id !== event.id) return NextResponse.json({ error: 'Registration request is not available' }, { status: 409 });
     return NextResponse.json({ payment_id: existing.id, registration_id: existing.registration_id, registration_numbers: owner?.registration_number ? [owner.registration_number] : [], checkout_url: existing.checkout_url, status: existing.status, payment_setup_pending: existing.gateway === 'pending_setup' });
   }
 
-  const { data: event } = await admin.from('events').select('id,organization_id,name,event_date,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at').eq('id', params.eventId).maybeSingle();
-  const now = Date.now();
-  if (!event || event.lifecycle_status !== 'published' || event.review_status !== 'approved') return NextResponse.json({ error: 'This event is not currently available for registration.' }, { status: 409 });
   const categoryIds = Array.from(new Set(registrants.map((row) => row.category_id)));
   const { data: categories, error: categoryError } = await getRaceCategoryRows(admin, event.id, categoryIds);
   if (categoryError) return NextResponse.json({ error: 'Race categories could not be checked' }, { status: 500 });

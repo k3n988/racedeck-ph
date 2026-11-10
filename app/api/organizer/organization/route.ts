@@ -32,7 +32,7 @@ const profileSchema = z.object({
   contact_email: z.string().trim().email().max(320),
 });
 
-const profileFields = 'id,name,logo_url,contact_person,contact_email,contact_phone,contact_phone_extension,address,website,social_links,country_code,state_province,city,postal_code,timezone,is_nonprofit,account_status,verification_status';
+const profileFields = 'id,name,slug,logo_url,contact_person,contact_email,contact_phone,contact_phone_extension,address,website,social_links,country_code,state_province,city,postal_code,timezone,is_nonprofit,account_status,verification_status';
 
 export async function GET() {
   const { membership } = await requireOrganizationContext();

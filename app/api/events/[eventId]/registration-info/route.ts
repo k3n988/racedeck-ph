@@ -18,16 +18,21 @@ const jsonNoStore = (body: unknown, init?: ResponseInit) => NextResponse.json(bo
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const admin = createAdminClient() as unknown as SupabaseClient;
-  const { data: event, error: eventError } = await admin.from('events').select('id,organization_id,name,banner_url,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity').eq('id', params.eventId).eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
+  const eventColumns = 'id,organization_id,name,banner_url,banner_position_x,banner_position_y,banner_zoom,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity';
+  const isEventId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.eventId);
+  const eventLookup = admin.from('events').select(eventColumns);
+  const { data: event, error: eventError } = await (isEventId ? eventLookup.eq('id', params.eventId) : eventLookup.eq('slug', params.eventId))
+    .eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
   if (eventError) {
     console.error('Unable to load public event for registration', eventError);
     return jsonNoStore({ error: 'Event registration details could not be loaded. Please try again.' }, { status: 500 });
   }
   if (!event) return jsonNoStore({ error: 'Event not found' }, { status: 404 });
+  const eventId = event.id;
   const readRegistrationFields = async () => {
     const fields = await admin.from('event_registration_fields')
       .select('id,label,field_type,section_key,is_required,display_order,event_registration_field_options(id,label,value,display_order)')
-      .eq('event_id', params.eventId)
+      .eq('event_id', eventId)
       .eq('is_active', true)
       .order('display_order');
 
@@ -37,7 +42,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     if (fields.error?.code === '42703' && fields.error.message.includes('section_key')) {
       const legacyFields = await admin.from('event_registration_fields')
         .select('id,label,field_type,is_required,display_order,event_registration_field_options(id,label,value,display_order)')
-        .eq('event_id', params.eventId)
+        .eq('event_id', eventId)
         .eq('is_active', true)
         .order('display_order');
       return {
@@ -49,7 +54,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     return fields;
   };
   const readKits = async () => {
-    const configs = await admin.from('race_kit_configs').select('id,event_id,category_id,name,status').eq('event_id', params.eventId).eq('status', 'active').order('created_at');
+    const configs = await admin.from('race_kit_configs').select('id,event_id,category_id,name,status').eq('event_id', eventId).eq('status', 'active').order('created_at');
     if (configs.error || !configs.data?.length) return { data: configs.data, error: configs.error, items: [], itemsError: null };
     const items = await admin.from('race_kit_items').select('id,config_id,item_name,quantity,details,is_required,is_active,display_order').in('config_id', configs.data.map((config) => config.id)).eq('is_active', true).order('display_order');
     return { data: configs.data, error: configs.error, items: items.data, itemsError: items.error };
@@ -57,13 +62,13 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
 
   const [{ data: organization, error: organizationError }, { data: categories, error: categoriesError }, { data: fields, error: fieldsError }, { data: waiver, error: waiverError }, kitsResult, { data: merchandise, error: merchandiseError }] = await Promise.all([
     admin.from('organizations').select('name').eq('id', event.organization_id).maybeSingle(),
-    getRaceCategoryRows(admin, params.eventId),
+    getRaceCategoryRows(admin, eventId),
     readRegistrationFields(),
-    admin.from('event_waivers').select('id,title,version,content,content_storage_reference,effective_at').eq('event_id', params.eventId).eq('status', 'published').maybeSingle(),
+    admin.from('event_waivers').select('id,title,version,content,content_storage_reference,effective_at').eq('event_id', eventId).eq('status', 'published').maybeSingle(),
     // Read kit configs and items together as one promise so item loading overlaps
     // with the other event registration queries.
     readKits(),
-    admin.from('event_merchandise').select('id,name,description,unit_price,variants,image_urls,display_order').eq('event_id', params.eventId).eq('is_active', true).order('display_order'),
+    admin.from('event_merchandise').select('id,name,description,unit_price,variants,image_urls,display_order').eq('event_id', eventId).eq('is_active', true).order('display_order'),
   ]);
   if (organizationError) return jsonNoStore({ error: 'Event organizer details could not be loaded. Please try again.' }, { status: 500 });
   const kitConfigs = kitsResult.data;
@@ -117,7 +122,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
   if (!bannerUrl) {
     const { data: poster } = await admin.from('event_content_images')
       .select('image_url')
-      .eq('event_id', params.eventId)
+      .eq('event_id', eventId)
       .order('display_order')
       .order('created_at')
       .limit(1)
@@ -126,7 +131,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
   }
   let variantUsage;
   try {
-    variantUsage = await loadVariantUsage(admin, params.eventId);
+    variantUsage = await loadVariantUsage(admin, eventId);
   } catch (inventoryError) {
     console.error('Unable to load size availability', inventoryError);
     return jsonNoStore({ error: 'Registration availability could not be checked. Please try again.' }, { status: 500 });

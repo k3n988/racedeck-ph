@@ -3,8 +3,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, CalendarDays, Globe2, ImageIcon, Phone, Save, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Globe2, ImageIcon, Save, ShieldCheck } from 'lucide-react';
 import { ContentEditor } from '@/components/organizer/content-editor';
+import { OptionalEventLinks } from '@/components/organizer/optional-event-links';
+import { type EventSocialLinks, type OptionalEventLinkPlatform } from '@/lib/events/event-social-links';
+import { BannerFrameEditor, type BannerFrame } from '@/components/organizer/banner-frame-editor';
 import { PartnersManager } from '../partners-manager';
 
 type Event = {
@@ -17,6 +20,9 @@ type Event = {
   venue: string | null;
   address: string | null;
   banner_url: string | null;
+  banner_position_x: number | null;
+  banner_position_y: number | null;
+  banner_zoom: number | null;
   registration_opens_at: string | null;
   registration_closes_at: string | null;
   assembly_time: string | null;
@@ -27,7 +33,7 @@ type Event = {
   registration_availability: string;
   review_status: string;
   review_feedback: string | null;
-  social_links: { facebook?: string; phone?: string; website?: string } | null;
+  social_links: EventSocialLinks | null;
 };
 
 const controlClass = 'mt-1.5 block w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500';
@@ -71,10 +77,6 @@ function Section({ title, description, icon: Icon, children }: { title: string; 
   </section>;
 }
 
-function FacebookMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-current"><path d="M14 8h3V4h-3c-3.31 0-5 1.98-5 5v3H6v4h3v8h4v-8h3.5l.5-4H13V9c0-.67.33-1 1-1Z" /></svg>;
-}
-
 export default function EventDetailsSetup({ params }: { params: { eventId: string } }) {
   const [event, setEvent] = useState<Event | null>(null);
   const [message, setMessage] = useState('Loading event details…');
@@ -82,6 +84,8 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewFailed, setPreviewFailed] = useState(false);
   const [description, setDescription] = useState('');
+  const [optionalLinks, setOptionalLinks] = useState<Partial<Record<OptionalEventLinkPlatform, string>>>({});
+  const [bannerFrame, setBannerFrame] = useState<BannerFrame>({ x: 50, y: 50, zoom: 1 });
 
   const load = useCallback(async () => {
     setMessage('Loading event details…');
@@ -91,7 +95,9 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
       if (!response.ok) throw new Error(body.error ?? 'Event could not be loaded.');
       setEvent(body.event);
       setPreviewUrl(body.event.banner_url ?? '');
+      setBannerFrame({ x: body.event.banner_position_x ?? 50, y: body.event.banner_position_y ?? 50, zoom: body.event.banner_zoom ?? 1 });
       setDescription(body.event.description ?? '');
+      setOptionalLinks(Object.fromEntries((['website', 'instagram', 'tiktok', 'youtube', 'x'] as const).filter((key) => body.event.social_links?.[key]).map((key) => [key, body.event.social_links[key]])));
       setPreviewFailed(false);
       setMessage('');
     } catch (error) {
@@ -110,15 +116,17 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
     setBusy(true);
     setMessage('');
     const values: Record<string, unknown> = Object.fromEntries(new FormData(form).entries());
+    values.banner_position_x = bannerFrame.x;
+    values.banner_position_y = bannerFrame.y;
+    values.banner_zoom = bannerFrame.zoom;
     if (profileEditable) {
       values.social_links = {
         facebook: typeof values.facebook === 'string' ? values.facebook : '',
         phone: typeof values.phone === 'string' ? values.phone : '',
-        website: typeof values.website === 'string' ? values.website : '',
+        ...optionalLinks,
       };
       delete values.facebook;
       delete values.phone;
-      delete values.website;
     }
     try {
       const response = await fetch(`/api/organizer/events/${params.eventId}`, {
@@ -130,6 +138,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
       if (!response.ok) throw new Error(result.error ?? 'Event changes could not be saved.');
       setEvent((current) => current ? { ...current, ...result.event } : result.event);
       setPreviewUrl(result.event.banner_url ?? '');
+      setBannerFrame({ x: result.event.banner_position_x ?? bannerFrame.x, y: result.event.banner_position_y ?? bannerFrame.y, zoom: result.event.banner_zoom ?? bannerFrame.zoom });
       setDescription(result.event.description ?? '');
       setPreviewFailed(false);
       setMessage('Event details saved.');
@@ -150,21 +159,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
   </main>;
 
   const reviewLabel = event.review_status.replaceAll('_', ' ');
-  const lifecycleLabel = event.lifecycle_status.replaceAll('_', ' ');
-  const statusClass = event.lifecycle_status === 'published' ? 'bg-emerald-100 text-emerald-800' : event.lifecycle_status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900';
-
   return <main className="mx-auto max-w-5xl space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <Link href={`/organizer/events/${event.id}`} className="inline-flex items-center gap-2 text-sm font-bold text-orange-700 hover:text-orange-800"><ArrowLeft size={16} aria-hidden="true" />Event workspace</Link>
-      <div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${statusClass}`}>{lifecycleLabel}</span></div>
-    </div>
-
-    <header>
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Manage event</p>
-      <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071b41] sm:text-3xl">Event details</h1>
-      <p className="mt-2 text-sm text-slate-600">Update the information participants see and manage the event schedule.</p>
-    </header>
-
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
       <span className="font-semibold text-slate-700">Review status</span>
       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize text-slate-700">{reviewLabel}</span>
@@ -188,13 +183,12 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
         </div>
       </Section>
 
-      <Section title="Contact links" description="Add the Facebook page, contact number, and website participants can use." icon={Globe2}>
+      <Section title="Contact links" description="Add the required Facebook page and contact number. Choose any additional links below." icon={Globe2}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Facebook page URL" name="facebook" type="url" defaultValue={event.social_links?.facebook ?? ''} disabled={!profileEditable} hint="Link to the event or organizer Facebook page." />
-          <Field label="Phone number" name="phone" type="tel" defaultValue={event.social_links?.phone ?? ''} disabled={!profileEditable} hint="Participants can tap this number to call." />
-          <Field label="Website URL" name="website" type="url" defaultValue={event.social_links?.website ?? ''} disabled={!profileEditable} hint="Link to your official event or organizer website." />
+          <Field label="Facebook page URL" name="facebook" type="url" defaultValue={event.social_links?.facebook ?? ''} disabled={!profileEditable} required hint="Link to the event or organizer Facebook page." />
+          <Field label="Phone number" name="phone" type="tel" defaultValue={event.social_links?.phone ?? ''} disabled={!profileEditable} required hint="Participants can tap this number to call." />
         </div>
-        <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-600"><span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5"><FacebookMark />Facebook</span><span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5"><Phone size={14} aria-hidden="true" />Phone</span><span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5"><Globe2 size={14} aria-hidden="true" />Website</span></div>
+        <div className="mt-5"><OptionalEventLinks links={optionalLinks} onChange={setOptionalLinks} disabled={!profileEditable} /></div>
       </Section>
 
       <Section title="Date, time & location" description="Set the event schedule and the venue participants should travel to." icon={CalendarDays}>
@@ -233,6 +227,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
             <Image src={previewUrl} alt={`${event.name} banner preview`} fill unoptimized sizes="(max-width: 1024px) 100vw, 900px" className="object-contain" onError={() => setPreviewFailed(true)} />
           </div> : <div className="grid aspect-[16/7] place-items-center px-4 text-center text-sm text-slate-500">{previewUrl ? 'Banner preview could not be loaded.' : 'No event banner uploaded yet.'}</div>}
         </div>
+        {previewUrl && !previewFailed && <BannerFrameEditor src={previewUrl} value={bannerFrame} onChange={setBannerFrame} disabled={!profileEditable} />}
       </Section>
 
       <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">

@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { ContentEditor } from "@/components/organizer/content-editor";
-import { Check } from "lucide-react";
+import { OptionalEventLinks } from "@/components/organizer/optional-event-links";
+import { eventPlatformLinkIsValid, eventPhoneIsValid, type OptionalEventLinkPlatform } from "@/lib/events/event-social-links";
+import { Check, Maximize2, X } from "lucide-react";
+import { BannerFrameEditor, type BannerFrame } from "@/components/organizer/banner-frame-editor";
 import { manilaDateTimeToIso } from "@/lib/events/category-pricing";
 import { variantOptionsPayload } from "@/lib/events/variant-options";
 import { DEFAULT_PARTICIPANT_WAIVER_CONTENT, DEFAULT_PARTICIPANT_WAIVER_TITLE, EVENT_NAME_TOKEN, eventWaiverContentForTitle } from "@/lib/events/default-participant-waiver";
@@ -104,14 +107,7 @@ const hasValidOptionalVariantSlots = (variants: string[], variantSlots: Record<s
 });
 const hasRichContent = (value: string) => Boolean(value.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim());
 const toEventSlug = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const isOptionalWebUrlValid = (value: string) => {
-  if (!value.trim()) return true;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch { return false; }
-};
-const isOptionalPhoneValid = (value: string) => !value.trim() || (/^[+\d().\s-]+$/.test(value.trim()) && value.replace(/\D/g, "").length >= 7 && value.replace(/\D/g, "").length <= 15);
+const isOptionalPhoneValid = eventPhoneIsValid;
 const previewPeso = (value: string) => value.trim() && Number.isFinite(Number(value))
   ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(value))
   : "Set a price";
@@ -192,6 +188,9 @@ function Upload({
   wide = false,
   multiple = false,
   onRemove,
+  frame,
+  onFrameChange,
+  profilePreview = false,
 }: {
   label: string;
   value: UploadValue | UploadValue[];
@@ -199,8 +198,18 @@ function Upload({
   wide?: boolean;
   multiple?: boolean;
   onRemove?: (index: number) => void;
+  frame?: BannerFrame;
+  onFrameChange?: (value: BannerFrame) => void;
+  profilePreview?: boolean;
 }) {
   const [uploadError, setUploadError] = useState("");
+  const [originalOpen, setOriginalOpen] = useState(false);
+  useEffect(() => {
+    if (!originalOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOriginalOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [originalOpen]);
   const previews = Array.isArray(value) ? value : [value];
   const containPreview = /chart|guide|logo/i.test(label);
   return (
@@ -229,9 +238,14 @@ function Upload({
       </label>
       <p className="mt-1 text-xs text-slate-500">JPG, PNG, or WEBP · up to 10 MB{label.toLowerCase().includes("banner") ? " · landscape images work best" : label.toLowerCase().includes("logo") ? " · shown without cropping" : ""}</p>
       {uploadError && <p role="alert" className="mt-1 text-xs font-medium text-red-700">{uploadError}</p>}
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className={`mt-2 flex flex-wrap gap-2 ${profilePreview ? "items-center justify-center" : ""}`}>
+        {profilePreview && previews[0]?.url && <button type="button" onClick={() => setOriginalOpen(true)} aria-label="View original event logo" className="group relative rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200">
+          <Image src={previews[0].url} alt={`${label} circular thumbnail`} width={112} height={112} unoptimized className="h-24 w-24 rounded-full border-2 border-white object-cover shadow-md ring-1 ring-slate-200 transition group-hover:brightness-90" />
+          <span className="absolute inset-0 grid place-items-center rounded-full bg-slate-950/0 text-white transition group-hover:bg-slate-950/35"><Maximize2 size={18} className="opacity-0 group-hover:opacity-100" aria-hidden="true" /></span>
+        </button>}
         {previews
           .filter((item) => item.url)
+          .filter((_, index) => (!profilePreview || index > 0) && !(wide && /banner/i.test(label) && frame && onFrameChange && index === 0))
           .map((item, index) => (
             <div key={`${item.url}-${index}`} className="relative">
               <Image src={item.url} alt={`${label} preview ${index + 1}`} width={wide ? 1200 : 96} height={wide ? 400 : 96} unoptimized className={`rounded-lg border ${containPreview ? "bg-slate-50 object-contain" : "object-cover"} ${wide ? "aspect-[3/1] w-full" : "h-24 w-24"}`} />
@@ -239,6 +253,13 @@ function Upload({
             </div>
           ))}
       </div>
+      {profilePreview && originalOpen && previews[0]?.url && <div role="dialog" aria-modal="true" aria-label="Original event logo" className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/85 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setOriginalOpen(false); }}>
+        <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-3 shadow-2xl sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3"><h2 className="font-bold text-[#071b41]">Original event logo</h2><button type="button" autoFocus onClick={() => setOriginalOpen(false)} aria-label="Close original logo" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-700 hover:bg-slate-100"><X size={18} /></button></div>
+          <div className="grid min-h-0 flex-1 place-items-center overflow-auto rounded-lg bg-slate-100 p-2"><Image src={previews[0].url} alt="Original uploaded event logo" width={1600} height={1200} unoptimized className="max-h-[78vh] max-w-full object-contain" /></div>
+        </div>
+      </div>}
+      {wide && /banner/i.test(label) && previews[0]?.url && frame && onFrameChange && <BannerFrameEditor src={previews[0].url} value={frame} onChange={onFrameChange} />}
     </div>
   );
 }
@@ -293,13 +314,13 @@ export default function CreateEventPage() {
   const [busy, setBusy] = useState(false);
   const [draftEventId, setDraftEventId] = useState<string | null>(null);
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [organizationSlug, setOrganizationSlug] = useState("");
   const [form, setForm] = useState({
     name: "",
     slug: "",
     tagline: "",
     facebook: "",
     phone: "",
-    website: "",
     description: "",
     eventDate: "",
     assemblyTime: "",
@@ -311,6 +332,8 @@ export default function CreateEventPage() {
     logo: emptyUpload(),
     banner: emptyUpload(),
   });
+  const [optionalLinks, setOptionalLinks] = useState<Partial<Record<OptionalEventLinkPlatform, string>>>({});
+  const [bannerFrame, setBannerFrame] = useState<BannerFrame>({ x: 50, y: 50, zoom: 1 });
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryMode, setCategoryMode] = useState<"groups" | "distances" | null>(null);
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
@@ -346,6 +369,23 @@ export default function CreateEventPage() {
     "Official Partners": [],
     "Supported By": [],
   });
+  useEffect(() => {
+    let active = true;
+    fetch("/api/organizer/organization", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<{ slug?: string | null; name?: string | null }>;
+      })
+      .then((organization) => {
+        if (!active || !organization) return;
+        const slug = organization.slug?.trim() || (organization.name ? toEventSlug(organization.name) : "");
+        setOrganizationSlug(slug);
+      })
+      .catch(() => {
+        // Keep the URL preview usable while organization details are unavailable.
+      });
+    return () => { active = false; };
+  }, []);
   const update = <K extends keyof typeof form>(
     key: K,
     value: (typeof form)[K],
@@ -436,7 +476,8 @@ export default function CreateEventPage() {
   const manilaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const registrationWindowValid = Boolean(form.registrationOpen && form.registrationClose && form.registrationOpen <= form.registrationClose && form.eventDate && form.registrationClose <= form.eventDate);
   const registrationFieldsValid = (!form.registrationOpen && !form.registrationClose) || registrationWindowValid;
-  const contactFieldsValid = isOptionalWebUrlValid(form.facebook) && isOptionalWebUrlValid(form.website) && isOptionalPhoneValid(form.phone);
+  const optionalLinksValid = Object.entries(optionalLinks).every(([key, value]) => eventPlatformLinkIsValid(key as OptionalEventLinkPlatform, value ?? ""));
+  const contactFieldsValid = eventPlatformLinkIsValid("facebook", form.facebook) && Boolean(form.phone.trim()) && isOptionalPhoneValid(form.phone) && optionalLinksValid;
   const capacityValid = capacity === null || capacity <= 2147483647;
   const registrationQuestionsReady = registrationQuestions.length <= 30 && registrationQuestions.every((question) => {
     const label = question.label.trim();
@@ -459,9 +500,9 @@ export default function CreateEventPage() {
     !categoryMode && "choose how to organize race categories",
     categoryMode === "groups" && categoryGroups.some((group) => !group.name.trim() || !categories.some((category) => category.groupId === group.id)) && "add a name and at least one distance to every category group",
     !registrationFieldsValid && "a valid registration date range",
-    !isOptionalWebUrlValid(form.facebook) && "a valid Facebook URL",
-    !isOptionalWebUrlValid(form.website) && "a valid website URL",
-    !isOptionalPhoneValid(form.phone) && "a valid phone number",
+    !eventPlatformLinkIsValid("facebook", form.facebook) && "a valid Facebook URL",
+    (!form.phone.trim() || !isOptionalPhoneValid(form.phone)) && "a valid phone number",
+    !optionalLinksValid && "valid optional links",
     !capacityValid && "a total capacity below 2,147,483,647",
     !registrationQuestionsReady && "complete or remove unfinished registration questions",
   ].filter(Boolean) as string[];
@@ -473,13 +514,13 @@ export default function CreateEventPage() {
     { label: "Event description", complete: hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || form.description) },
     { label: "Registration opening and closing dates are valid", complete: registrationWindowValid },
     { label: "At least one complete race category", complete: categoriesReady },
-    { label: "Optional links and phone number use valid formats", complete: contactFieldsValid },
+    { label: "Facebook link and phone number are provided; any extra links are valid", complete: contactFieldsValid },
     { label: "Total category capacity is within the supported limit", complete: capacityValid },
     { label: "Registration questions are complete (if added)", complete: registrationQuestionsReady },
   ];
   const submissionReady = submissionChecks.every((check) => check.complete);
   const fieldCompletedSteps = [
-    form.name.trim().length > 0,
+    Boolean(form.name.trim() && contactFieldsValid),
     Boolean(form.eventDate && form.venue.trim() && form.address.trim()),
     categoriesReady,
     hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || ""),
@@ -497,9 +538,11 @@ export default function CreateEventPage() {
       if (!form.name.trim()) errors.push("Enter an event name.");
       else if (form.name.trim().length > 160) errors.push("Event name must be 160 characters or fewer.");
       if (!form.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) errors.push("Public URL slug must use lowercase letters, numbers, and single hyphens (up to 180 characters).");
-      if (!isOptionalWebUrlValid(form.facebook)) errors.push("Facebook link must be a complete HTTP or HTTPS URL (for example, https://facebook.com/your-page).");
-      if (!isOptionalWebUrlValid(form.website)) errors.push("Website link must be a complete HTTP or HTTPS URL (for example, https://example.com).");
-      if (!isOptionalPhoneValid(form.phone)) errors.push("Phone number must contain 7 to 15 digits and only standard phone characters.");
+      if (!form.facebook.trim()) errors.push("Enter the event Facebook link.");
+      else if (!eventPlatformLinkIsValid("facebook", form.facebook)) errors.push("Facebook link must point to Facebook (for example, https://facebook.com/your-page).");
+      if (!form.phone.trim()) errors.push("Enter the event phone number.");
+      else if (!isOptionalPhoneValid(form.phone)) errors.push("Phone number must contain 7 to 15 digits and only standard phone characters.");
+      if (!optionalLinksValid) errors.push("Complete or remove each optional link. The URL must match its selected platform.");
       if (!validImage(form.logo)) errors.push("Event logo must be a JPG, PNG, or WEBP image up to 10 MB.");
       if (!validImage(form.banner)) errors.push("Banner must be a JPG, PNG, or WEBP image up to 10 MB.");
       return errors;
@@ -777,7 +820,7 @@ export default function CreateEventPage() {
           social_links: {
             facebook: form.facebook.trim(),
             phone: form.phone.trim(),
-            website: form.website.trim(),
+            ...Object.fromEntries(Object.entries(optionalLinks).map(([key, value]) => [key, value.trim()])),
           },
           registration_opens_at: form.registrationOpen
             ? `${form.registrationOpen}T00:00:00+08:00`
@@ -839,7 +882,7 @@ export default function CreateEventPage() {
       const detailsResponse = await fetch(`/api/organizer/events/${eventId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ description, banner_position_x: bannerFrame.x, banner_position_y: bannerFrame.y, banner_zoom: bannerFrame.zoom }),
       });
       const detailsBody = await detailsResponse.json().catch(() => ({}));
       if (!detailsResponse.ok) throw new Error(detailsBody.error ?? "Event description could not be saved.");
@@ -1051,7 +1094,7 @@ export default function CreateEventPage() {
                   error={attemptedSteps[0] && !form.name.trim() ? "Event name is required." : form.name.trim().length > 160 ? "Event name must be 160 characters or fewer." : undefined}
                 />
                 <TextField
-                  label="Public event URL"
+                  label="Event URL slug"
                   value={form.slug}
                   onChange={(value) => {
                     setSlugManuallyEdited(true);
@@ -1060,7 +1103,10 @@ export default function CreateEventPage() {
                   maxLength={180}
                   error={form.slug && (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) ? "Use lowercase letters, numbers, and single hyphens." : undefined}
                 />
-                <p className="-mt-3 text-xs text-slate-500 sm:col-span-2">Public link: <span className="font-medium text-slate-700">/events/{form.slug || "your-event-name"}</span>. It fills from the event name and can be edited.</p>
+                <div className="-mt-3 space-y-1 text-xs text-slate-500 sm:col-span-2">
+                  <p>Participant registration URL</p>
+                  <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-medium text-slate-700">/register/{organizationSlug || "your-organization"}/{form.slug || "your-event-name"}</p>
+                </div>
                 <TextField
                   label="Tagline"
                   value={form.tagline}
@@ -1069,28 +1115,23 @@ export default function CreateEventPage() {
                 <TextField
                   label="Facebook link"
                   type="url"
+                  required
                   value={form.facebook}
                   onChange={(value) => update("facebook", value)}
                   maxLength={2048}
-                  error={form.facebook.trim() && !isOptionalWebUrlValid(form.facebook) ? "Enter a complete link starting with https:// or http://." : undefined}
+                  error={attemptedSteps[0] && !form.facebook.trim() ? "Facebook link is required." : form.facebook.trim() && !eventPlatformLinkIsValid("facebook", form.facebook) ? "Enter a Facebook link starting with https:// or http://." : undefined}
                 />
                 <TextField
                   label="Phone number"
                   type="tel"
+                  required
                   value={form.phone}
                   onChange={(value) => update("phone", value)}
                   maxLength={24}
-                  error={form.phone.trim() && !isOptionalPhoneValid(form.phone) ? "Use 7 to 15 digits; letters are not allowed." : undefined}
-                />
-                <TextField
-                  label="Website link"
-                  type="url"
-                  value={form.website}
-                  onChange={(value) => update("website", value)}
-                  maxLength={2048}
-                  error={form.website.trim() && !isOptionalWebUrlValid(form.website) ? "Enter a complete link starting with https:// or http://." : undefined}
+                  error={attemptedSteps[0] && !form.phone.trim() ? "Phone number is required." : form.phone.trim() && !isOptionalPhoneValid(form.phone) ? "Use 7 to 15 digits; letters are not allowed." : undefined}
                 />
               </div>
+              <div className="mt-5"><OptionalEventLinks links={optionalLinks} onChange={setOptionalLinks} /></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Upload
                   label="Event logo / thumbnail"
@@ -1103,6 +1144,7 @@ export default function CreateEventPage() {
                     if (form.logo.url.startsWith("blob:")) URL.revokeObjectURL(form.logo.url);
                     update("logo", emptyUpload());
                   }}
+                  profilePreview
                 />
                 <Upload
                   label="Banner image"
@@ -1110,18 +1152,18 @@ export default function CreateEventPage() {
                   onChange={(file, url) => {
                     if (form.banner.url.startsWith("blob:")) URL.revokeObjectURL(form.banner.url);
                     update("banner", { file, url });
+                    setBannerFrame({ x: 50, y: 50, zoom: 1 });
                   }}
                   onRemove={() => {
                     if (form.banner.url.startsWith("blob:")) URL.revokeObjectURL(form.banner.url);
                     update("banner", emptyUpload());
+                    setBannerFrame({ x: 50, y: 50, zoom: 1 });
                   }}
+                  frame={bannerFrame}
+                  onFrameChange={setBannerFrame}
                   wide
                 />
               </div>
-              <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
-                Add the event description and poster images in the Content &amp;
-                Media step.
-              </p>
             </div>
           )}
           {step === 1 && (

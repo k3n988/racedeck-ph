@@ -1,6 +1,6 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
-import { loadAuthContext } from '@/lib/auth/permissions';
+import { loadAuthContext, membershipHasPermission } from '@/lib/auth/permissions';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function requireOrganizerPermission(permission: string, eventId?: string) {
@@ -16,8 +16,7 @@ export async function requireOrganizerPermission(permission: string, eventId?: s
   }
   const membership = context.memberships.find((item) =>
     (!organizationId || item.organization_id === organizationId) &&
-    item.permissions.includes(permission) &&
-    (!eventId || !item.restricted_event_ids || item.restricted_event_ids.includes(eventId))
+    membershipHasPermission(item, permission, eventId)
   );
   if (!membership) return { response: NextResponse.json({ error: 'Permission required' }, { status: 403 }) } as const;
   return { context, membership, admin } as const;

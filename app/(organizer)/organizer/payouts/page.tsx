@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, Download, FileSearch, RotateCw, Search, WalletCards, X } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, FileSearch, Search, WalletCards, X } from 'lucide-react';
+import { useRegistrationsHeader } from '@/components/organizer/registrations-header-context';
 
 type Reconciliation = {
   reference: string; status: string; discrepancy_status: string; organizer_payable_amount: number;
@@ -41,6 +42,7 @@ const date = (value: string | null) => value
   : '—';
 
 export default function PayoutsPage() {
+  const { setActions } = useRegistrationsHeader();
   const [payload, setPayload] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -115,7 +117,7 @@ export default function PayoutsPage() {
   const firstRow = payload?.pagination.total ? (page - 1) * PAGE_SIZE + 1 : 0;
   const lastRow = Math.min(page * PAGE_SIZE, payload?.pagination.total ?? 0);
 
-  const exportCsv = async () => {
+  const exportCsv = useCallback(async () => {
     setExporting(true);
     const params = new URLSearchParams({ export: 'csv' });
     if (status) params.set('status', status);
@@ -139,7 +141,22 @@ export default function PayoutsPage() {
       notify('Payout CSV exported.');
     } catch (cause) { notify(cause instanceof Error ? cause.message : 'Payout export failed.'); }
     finally { setExporting(false); }
-  };
+  }, [status, from, to, search, notify]);
+
+  const refreshPayouts = useCallback(() => {
+    setReload((value) => value + 1);
+    notify('Refreshing payout history…');
+  }, [notify]);
+
+  useEffect(() => {
+    setActions({
+      onExport: () => void exportCsv(),
+      onRefresh: refreshPayouts,
+      exportDisabled: loading || exporting || !payload?.pagination.total,
+      refreshing: loading,
+    });
+    return () => setActions(null);
+  }, [setActions, exportCsv, refreshPayouts, loading, exporting, payload?.pagination.total]);
 
   const summaryCards = [
     { title: 'Total paid out', icon: CircleDollarSign, key: 'total_paid_out' as const },
@@ -147,14 +164,6 @@ export default function PayoutsPage() {
   ];
 
   return <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-slate-600">Payout history and deductions for your organization.</p>
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={exportCsv} disabled={loading || exporting || !payload?.pagination.total} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download size={16} aria-hidden="true" />{exporting ? 'Exporting…' : 'Export CSV'}</button>
-        <button type="button" onClick={() => { setReload((value) => value + 1); notify('Refreshing payout history…'); }} disabled={loading} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RotateCw size={15} aria-hidden="true" className={loading ? 'animate-spin' : ''} />Refresh</button>
-      </div>
-    </div>
-
     {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReload((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div>}
 
     <section aria-label="Payout summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

@@ -1402,6 +1402,9 @@ export type Database = {
           address: string | null
           assembly_time: string | null
           banner_url: string | null
+          banner_position_x: number
+          banner_position_y: number
+          banner_zoom: number
           created_at: string
           created_by: string | null
           cutoff_time: string | null
@@ -1432,6 +1435,9 @@ export type Database = {
           address?: string | null
           assembly_time?: string | null
           banner_url?: string | null
+          banner_position_x?: number
+          banner_position_y?: number
+          banner_zoom?: number
           created_at?: string
           created_by?: string | null
           cutoff_time?: string | null
@@ -1462,6 +1468,9 @@ export type Database = {
           address?: string | null
           assembly_time?: string | null
           banner_url?: string | null
+          banner_position_x?: number
+          banner_position_y?: number
+          banner_zoom?: number
           created_at?: string
           created_by?: string | null
           cutoff_time?: string | null
