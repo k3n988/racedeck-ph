@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
 import { PayMongoProvider } from '@/lib/payments/paymongo.provider';
 import { reserveRegistrationSlot } from '@/lib/registrations/slot.service';
 import { calculatePaymentTotal } from '@/lib/payments/pricing.service';
@@ -12,6 +11,8 @@ import { getRaceCategoryRows } from '@/lib/events/race-category-query';
 import { categoryRegistrationAvailabilityReason, effectiveCategoryAvailability } from '@/lib/events/registration-availability';
 import { isEmergencyContactRelationship } from '@/lib/registrations/emergency-contact';
 import { validateRegistrationAnswers } from '@/lib/registration-form/validate-answers';
+import { parseVariantOptions } from '@/lib/events/variant-options';
+import { hasVariantSlots, loadVariantUsage, variantUsageKey } from '@/lib/events/variant-inventory';
 
 const participantSchema = z.object({
   category_id: z.string().uuid(),
@@ -23,6 +24,7 @@ const participantSchema = z.object({
 const schema = z.object({
   registrants: z.array(participantSchema).min(1).max(10),
   promo_code: z.string().trim().min(3).max(64).optional(),
+  payment_method: z.enum(['qrph', 'paymaya', 'gcash']).default('qrph'),
   idempotency_key: z.string().trim().min(16).max(120),
   accept_platform_terms: z.boolean().default(false),
 });
@@ -30,14 +32,10 @@ type RpcClient = { rpc(name: string, args: Record<string, unknown>): Promise<{ d
 const registrationNumber = () => `REG-${new Date().getUTCFullYear()}-${crypto.randomInt(100000, 999999)}`;
 
 export async function POST(request: Request, { params }: { params: { eventId: string } }) {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-  // Public event registration supports guest checkout. Keep any signed-in
-  // account association when present, but do not require a RaceDeck account.
-  const userId = auth.user?.id ?? null;
+  const userId = null;
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Check the participant details and try again.' }, { status: 400 });
-  const { registrants, promo_code: rawPromoCode, idempotency_key: idempotencyKey, accept_platform_terms: acceptPlatformTerms } = parsed.data;
+  const { registrants, promo_code: rawPromoCode, payment_method: paymentMethod, idempotency_key: idempotencyKey, accept_platform_terms: acceptPlatformTerms } = parsed.data;
   if (!acceptPlatformTerms) return NextResponse.json({ error: 'You must accept the Platform Disclaimer and Terms and Conditions before continuing.' }, { status: 400 });
   if (registrants.some((registrant) => !registrant.accept_waiver)) return NextResponse.json({ error: 'Each participant must accept the Participant Waiver before continuing.' }, { status: 400 });
   const admin = createAdminClient();
@@ -63,9 +61,11 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   const [{ data: waiver, error: waiverError }, { data: fields, error: fieldsError }, { data: kits, error: kitsError }] = await Promise.all([
     admin.from('event_waivers').select('id,version,title').eq('event_id', event.id).eq('organization_id', event.organization_id).eq('status', 'published').maybeSingle(),
     admin.from('event_registration_fields').select('id,label,field_type,is_required,event_registration_field_options(value,label)').eq('event_id', event.id).eq('is_active', true),
-    admin.from('race_kit_configs').select('id,category_id,race_kit_items(id,item_name,details,is_required,is_active)').eq('event_id', event.id).eq('status', 'active'),
+    admin.from('race_kit_configs').select('id,category_id,race_kit_items(id,item_name,quantity,details,is_required,is_active)').eq('event_id', event.id).eq('status', 'active'),
   ]);
   if (waiverError || fieldsError || kitsError) return NextResponse.json({ error: 'Event registration requirements could not be checked' }, { status: 500 });
+
+  const kitSlotRequests: Array<{ itemId: string; itemName: string; variant: string; quantity: number; slots: number | null; registrantIndex: number }> = [];
 
   for (let index = 0; index < registrants.length; index += 1) {
     const registrant = registrants[index];
@@ -95,7 +95,8 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     const optionMap = new Map<string, { name: string; variants: string[]; required: boolean }>();
     for (const item of items) {
       const details = item.details && typeof item.details === 'object' && !Array.isArray(item.details) ? item.details as Record<string, unknown> : {};
-      const variants = Array.isArray(details.variants) ? details.variants.filter((variant): variant is string => typeof variant === 'string') : [];
+      const options = parseVariantOptions(details.variants);
+      const variants = options.map((option) => option.name);
       // Included-kit variants (such as singlet sizes) must be selected for the
       // registrant's chosen category; enforce this server-side as well as in the form.
       if (variants.length) optionMap.set(item.id, { name: item.item_name, variants, required: true });
@@ -104,19 +105,46 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     for (const id of Array.from(optionMap.keys())) {
       const option = optionMap.get(id)!;
       if ((option.required && !registrant.race_kit_selections[id]) || (registrant.race_kit_selections[id] && !option.variants.includes(registrant.race_kit_selections[id]))) return NextResponse.json({ error: `Registrant ${index + 1}: choose a valid option for ${option.name}` }, { status: 400 });
+      const selected = registrant.race_kit_selections[id];
+      if (selected) {
+        const item = items.find((candidate) => candidate.id === id)!;
+        const details = item.details && typeof item.details === 'object' && !Array.isArray(item.details) ? item.details as Record<string, unknown> : {};
+        const selectedOption = parseVariantOptions(details.variants).find((variant) => variant.name === selected);
+        if (selectedOption) kitSlotRequests.push({ itemId: id, itemName: item.item_name, variant: selected, quantity: item.quantity ?? 1, slots: selectedOption.slots, registrantIndex: index + 1 });
+      }
     }
+  }
+
+  const variantUsage = await loadVariantUsage(admin, event.id).catch((error) => { console.error('Unable to check size availability', error); return null; });
+  if (!variantUsage) return NextResponse.json({ error: 'Size availability could not be checked. Please try again.' }, { status: 500 });
+  const requestedKitCounts = new Map<string, number>();
+  for (const request of kitSlotRequests) {
+    const key = variantUsageKey(request.itemId, request.variant);
+    requestedKitCounts.set(key, (requestedKitCounts.get(key) ?? 0) + request.quantity);
+  }
+  for (const request of kitSlotRequests) {
+    const key = variantUsageKey(request.itemId, request.variant);
+    if (!hasVariantSlots({ slots: request.slots }, (variantUsage.kit.get(key) ?? 0) * request.quantity, requestedKitCounts.get(key) ?? request.quantity)) return NextResponse.json({ error: `${request.variant} for ${request.itemName} is out of stock. Choose another option${kitSlotRequests.filter((candidate) => candidate.itemId === request.itemId && candidate.variant === request.variant).length > 1 ? ` (Registrant ${request.registrantIndex})` : ''}.` }, { status: 409 });
   }
 
   const allMerchandise = registrants.flatMap((row) => row.merchandise);
   const merchandiseIds = Array.from(new Set(allMerchandise.map((item) => item.item_id)));
   const { data: catalog, error: catalogError } = merchandiseIds.length ? await db.from('event_merchandise').select('id,name,unit_price,variants').eq('event_id', event.id).eq('is_active', true).in('id', merchandiseIds) : { data: [], error: null };
   if (catalogError || (catalog ?? []).length !== merchandiseIds.length) return NextResponse.json({ error: 'One or more optional merchandise items are no longer available' }, { status: catalogError ? 500 : 409 });
+  const requestedMerchandiseCounts = new Map<string, number>();
   const merchandiseByRegistrant = registrants.map((registrant) => {
     const lines = registrant.merchandise.map((selection) => {
       const product = catalog?.find((item) => item.id === selection.item_id);
       if (!product) return null;
-      const variants = Array.isArray(product.variants) ? product.variants.filter((variant): variant is string => typeof variant === 'string') : [];
-      if ((variants.length && (!selection.variant || !variants.includes(selection.variant))) || (!variants.length && selection.variant)) return null;
+      const variants = parseVariantOptions(product.variants);
+      const chosenVariant = variants.find((option) => option.name === selection.variant);
+      if ((variants.length && !chosenVariant) || (!variants.length && selection.variant)) return null;
+      if (chosenVariant) {
+        const usageKey = variantUsageKey(product.id, chosenVariant.name);
+        const totalRequested = (requestedMerchandiseCounts.get(usageKey) ?? 0) + selection.quantity;
+        if (!hasVariantSlots(chosenVariant, variantUsage.merchandise.get(usageKey) ?? 0, totalRequested)) return null;
+        requestedMerchandiseCounts.set(usageKey, totalRequested);
+      }
       const unit = Number(product.unit_price);
       return { event_merchandise_id: product.id, item_name: product.name, variant: selection.variant, quantity: selection.quantity, unit_price: unit, line_total: Math.round(unit * selection.quantity * 100) / 100 };
     });
@@ -181,7 +209,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     // The payment itself does not expire while the gateway is unconfigured.
     // Slot holds remain short-lived so unpaid entries cannot reserve capacity indefinitely.
     expires_at: process.env.PAYMONGO_SECRET_KEY ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null,
-    metadata: { checkout_group_id: groupId, registration_ids: registrations.map((row) => row.id), registration_amount: subtotal, category_amount: categoryTotal, merchandise_amount: merchandiseTotal, merchandise_items: (merchandiseByRegistrant as Array<NonNullable<(typeof merchandiseByRegistrant)[number]>>).flat().map((line) => ({ item_name: line.item_name, variant: line.variant, quantity: line.quantity, line_total: line.line_total })), participants: registrations.map((row) => ({ registration_id: row.id, registration_number: row.registration_number, name: `${row.first_name} ${row.last_name}`, category: categoryById.get(row.category_id)?.name, category_amount: Number(priceByCategoryId.get(row.category_id) ?? 0) })), processing_fee: 0, platform_fee: 0, discount_amount: 0, total_amount: subtotal },
+    metadata: { checkout_group_id: groupId, registration_ids: registrations.map((row) => row.id), registration_amount: subtotal, category_amount: categoryTotal, merchandise_amount: merchandiseTotal, merchandise_items: (merchandiseByRegistrant as Array<NonNullable<(typeof merchandiseByRegistrant)[number]>>).flat().map((line) => ({ item_name: line.item_name, variant: line.variant, quantity: line.quantity, line_total: line.line_total })), participants: registrations.map((row) => ({ registration_id: row.id, registration_number: row.registration_number, name: `${row.first_name} ${row.last_name}`, category: categoryById.get(row.category_id)?.name, category_amount: Number(priceByCategoryId.get(row.category_id) ?? 0) })), payment_method: paymentMethod, processing_fee: 0, platform_fee: 0, discount_amount: 0, total_amount: subtotal },
   }).select('id').single();
   if (paymentError || !payment) { await rollback(); return NextResponse.json({ error: 'Secure checkout could not be initialized' }, { status: 500 }); }
   paymentId = payment.id;
@@ -230,8 +258,8 @@ export async function POST(request: Request, { params }: { params: { eventId: st
 
   try {
     const amount = Number((await admin.from('payments').select('amount_due').eq('id', payment.id).single()).data?.amount_due ?? subtotal);
-    const returnPath = userId ? `/my-races/${promoAnchor.id}` : `/events/${event.id}`;
-    const checkout = await new PayMongoProvider().createCheckout({ amount, currency: 'PHP', description: `${event.name} · ${registrations.length} participant${registrations.length === 1 ? '' : 's'}`, reference: registrations[promoAnchorIndex].registration_number, successUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin}${returnPath}`, cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin}${returnPath}` });
+    const returnPath = `/events/${event.id}`;
+    const checkout = await new PayMongoProvider().createCheckout({ amount, currency: 'PHP', description: `${event.name} · ${registrations.length} participant${registrations.length === 1 ? '' : 's'}`, reference: registrations[promoAnchorIndex].registration_number, successUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin}${returnPath}`, cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin}${returnPath}`, paymentMethod });
     const { error: saveError } = await admin.from('payments').update({ gateway_payment_id: checkout.gatewayPaymentId, checkout_url: checkout.checkoutUrl }).eq('id', payment.id);
     if (saveError) throw saveError;
     if (holds.length) {

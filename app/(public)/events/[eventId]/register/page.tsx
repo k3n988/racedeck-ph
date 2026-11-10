@@ -4,9 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronRight, Clock3, LockKeyhole, Pencil, PhoneCall, ShoppingCart, Tag, Users, Zap } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { EMERGENCY_CONTACT_RELATIONSHIPS } from "@/lib/registrations/emergency-contact";
-import { EventBanner } from "@/components/public/event-banner";
+import { parseVariantOptions } from "@/lib/events/variant-options";
+import type { CheckoutPaymentMethod } from "@/lib/payments/gateway.interface";
 
 type Option = {
   id: string;
@@ -39,14 +39,20 @@ type Category = {
   max_slots: number | null;
   confirmed_count: number;
 };
-type KitItem = { id: string; item_name: string; details: unknown; is_required: boolean; is_active: boolean; display_order: number };
+type KitItem = { id: string; item_name: string; details: unknown; is_required: boolean; is_active: boolean; display_order: number; unavailable_variants?: string[] };
 type KitConfig = { id: string; category_id: string | null; name: string; race_kit_items: KitItem[] };
-type MerchandiseOption = { id: string; name: string; description: string | null; unit_price: number; variants: string[]; image_urls: string[]; display_order: number };
+type MerchandiseOption = { id: string; name: string; description: string | null; unit_price: number; variants: string[]; unavailable_variants?: string[]; image_urls: string[]; display_order: number };
+const PAYMENT_METHOD_OPTIONS: Array<{ id: CheckoutPaymentMethod; label: string; detail: string; badge: string }> = [
+  { id: "qrph", label: "QR Ph", detail: "Scan with a participating bank or e-wallet", badge: "QR" },
+  { id: "paymaya", label: "Maya", detail: "Continue in the Maya app", badge: "M" },
+  { id: "gcash", label: "GCash", detail: "Continue in the GCash app", badge: "G" },
+];
 type RegistrationInfo = {
   event: {
     id: string;
     name: string;
     banner_url: string | null;
+    poster_fallback: boolean;
     event_date: string;
     assembly_time: string | null;
     venue: string | null;
@@ -84,7 +90,7 @@ function kitDetails(details: unknown) {
   const value = details && typeof details === "object" && !Array.isArray(details) ? details as Record<string, unknown> : {};
   return {
     description: typeof value.description === "string" ? value.description : "",
-    variants: Array.isArray(value.variants) ? value.variants.filter((variant): variant is string => typeof variant === "string") : [],
+    variants: parseVariantOptions(value.variants).map((option) => option.name),
     images: [...(Array.isArray(value.product_image_urls) ? value.product_image_urls.filter((url): url is string => typeof url === "string") : []), ...(typeof value.reference_image_url === "string" ? [value.reference_image_url] : [])],
   };
 }
@@ -329,6 +335,7 @@ function VariantChoiceGroup({
   name,
   value,
   variants,
+  unavailableVariants = [],
   required,
   onChange,
 }: {
@@ -336,17 +343,24 @@ function VariantChoiceGroup({
   name: string;
   value: string;
   variants: string[];
+  unavailableVariants?: string[];
   required: boolean;
   onChange: (value: string) => void;
 }) {
   return <fieldset className="mt-3 min-w-0">
     <legend className="text-sm font-semibold text-slate-800">{label}{required && <span className="ml-1 text-orange-600">*</span>}</legend>
     <div className="mt-2 flex flex-wrap gap-2">
-      {variants.map((variant, index) => <label key={`${variant}-${index}`} className="w-fit max-w-full cursor-pointer">
-        <input className="peer sr-only" type="radio" name={name} value={variant} checked={value === variant} required={required} onChange={() => onChange(variant)} />
-        <span className="flex min-h-11 min-w-[88px] max-w-full items-center justify-center rounded-lg border border-[#ed3b36] bg-white px-4 py-2 text-center text-sm font-medium text-slate-600 transition hover:bg-orange-50 peer-checked:bg-[#ed3b36] peer-checked:text-white peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-orange-500">{variant}</span>
-      </label>)}
+      {variants.map((variant, index) => {
+        const unavailable = unavailableVariants.includes(variant);
+        return (
+          <label key={`${variant}-${index}`} className={`w-fit max-w-full ${unavailable ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input className="peer sr-only" type="radio" name={name} value={variant} checked={value === variant} required={required && !unavailable} disabled={unavailable} onChange={() => onChange(variant)} />
+            <span className={`flex min-h-8 min-w-20 max-w-full items-center justify-center rounded-md border px-3 py-1 text-center text-sm font-medium transition peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-orange-500 ${unavailable ? 'border-green-700 bg-white text-green-700 line-through opacity-80' : 'border-[#ed3b36] bg-white text-slate-700 hover:bg-orange-50 peer-checked:bg-orange-50 peer-checked:text-[#071b41] peer-checked:ring-1 peer-checked:ring-[#ed3b36]'}`}>{unavailable ? `${variant} (Unavailable)` : variant}</span>
+          </label>
+        );
+      })}
     </div>
+    {variants.length > 0 && unavailableVariants.length >= variants.length && <p className="mt-2 text-xs font-semibold text-rose-700">All options are currently out of stock.</p>}
     {!required && value && <button type="button" onClick={() => onChange("")} className="mt-2 min-h-9 rounded-lg px-2 text-xs font-semibold text-slate-500 underline underline-offset-2 hover:text-slate-800">Clear size selection</button>}
   </fieldset>;
 }
@@ -496,7 +510,7 @@ function RegistrantFields({
           <h2 className="text-lg font-bold text-slate-900">Included race kit</h2><p className="mt-1 text-sm text-slate-600">Items configured for this selected category. Select a size or option for every item that offers choices.</p>
           <div className="mt-4 space-y-3">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
-              {details.variants.length > 0 && <VariantChoiceGroup label={item.item_name.trim().toLowerCase() === "race kit claiming" ? "Claiming place" : "Size / option"} name={`kit-${registrant.id}-${item.id}`} value={registrant.kitSelections[item.id] ?? ""} variants={details.variants} required={item.is_required} onChange={(value) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: value } })} />}
+              {details.variants.length > 0 && <VariantChoiceGroup label={item.item_name.trim().toLowerCase() === "race kit claiming" ? "Claiming place" : "Size / option"} name={`kit-${registrant.id}-${item.id}`} value={registrant.kitSelections[item.id] ?? ""} variants={details.variants} unavailableVariants={item.unavailable_variants} required={item.is_required} onChange={(value) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: value } })} />}
             </div>
             {details.images.length > 0 && <ProductImageCarousel images={details.images} label={item.item_name} />}
           </article>; })}</div>
@@ -506,8 +520,8 @@ function RegistrantFields({
           <div className="flex flex-wrap items-end justify-between gap-2"><h2 className="text-lg font-bold text-slate-900">Optional merchandise</h2><span className="text-sm font-bold text-slate-700">Registrant subtotal: {peso(merchandiseTotal)}</span></div>
           <div className="mt-4 space-y-3">{data.merchandise.map((item) => { const selection = registrant.merchandiseSelections[item.id] ?? { quantity: 0, variant: "" }; const selected = selection.quantity > 0; const variants = item.variants ?? []; const images = item.image_urls ?? []; const checkboxId = `merch-${registrant.id}-${item.id}`; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.name}</h3><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800">Optional</span></div>{item.description && <p className="mt-1 text-sm text-slate-600">{item.description}</p>}<p className="mt-2 text-sm font-bold text-[#071b41]">{peso(item.unit_price)} each</p>
-              <label htmlFor={checkboxId} className="mt-3 inline-flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input id={checkboxId} type="checkbox" checked={selected} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { quantity: event.target.checked ? 1 : 0, variant: event.target.checked ? selection.variant : "" } } })} className="h-4 w-4 accent-orange-600" />Add to order</label>
-              {selected && variants.length > 0 && <VariantChoiceGroup label="Size / variant" name={`merch-${registrant.id}-${item.id}`} value={selection.variant} variants={variants} required onChange={(variant) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant } } })} />}
+              <label htmlFor={checkboxId} className={`mt-3 inline-flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700 ${variants.length > 0 && variants.every((variant) => item.unavailable_variants?.includes(variant)) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}><input id={checkboxId} type="checkbox" checked={selected} disabled={variants.length > 0 && variants.every((variant) => item.unavailable_variants?.includes(variant))} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { quantity: event.target.checked ? 1 : 0, variant: event.target.checked ? selection.variant : "" } } })} className="h-4 w-4 accent-orange-600" />Add to order</label>
+              {selected && variants.length > 0 && <VariantChoiceGroup label="Size / variant" name={`merch-${registrant.id}-${item.id}`} value={selection.variant} variants={variants} unavailableVariants={item.unavailable_variants} required onChange={(variant) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant } } })} />}
               {selected && <div className="mt-2 flex items-center gap-3"><span className="text-sm text-slate-600">Quantity</span><div className="inline-flex items-center rounded-lg border border-slate-300" aria-label={`Quantity for ${item.name}`}><button type="button" aria-label={`Remove one ${item.name}`} disabled={selection.quantity <= 1} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity - 1 } } })} className="h-9 w-9 rounded-l-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">−</button><span aria-live="polite" className="min-w-8 text-center text-sm font-semibold text-slate-900">{selection.quantity}</span><button type="button" aria-label={`Add one ${item.name}`} disabled={selection.quantity >= 5} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity + 1 } } })} className="h-9 w-9 rounded-r-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">+</button></div><span className="text-sm font-semibold text-slate-700">{peso(item.unit_price * selection.quantity)}</span></div>}
             </div>
             {images[0] && <Image src={images[0]} alt={`${item.name} product`} width={480} height={480} unoptimized className="h-auto max-h-64 w-full max-w-[200px] justify-self-center object-contain sm:justify-self-end" />}
@@ -532,14 +546,13 @@ export default function RegisterPage({
   const [registrants, setRegistrants] = useState<RegistrantDraft[]>(() => [blankRegistrant("registrant-1")]);
   const [promoCode, setPromoCode] = useState("");
   const [promoStatus, setPromoStatus] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>("qrph");
   const [acceptPlatformTerms, setAcceptPlatformTerms] = useState(false);
   const [message, setMessage] = useState("Loading registration details...");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [pricingNow, setPricingNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const [registrationHref, setRegistrationHref] = useState<string | null>(null);
   const [registrationReference, setRegistrationReference] = useState<string | null>(null);
   const [registrationSaved, setRegistrationSaved] = useState(false);
   const idempotencyKey = useRef<string>("");
@@ -552,7 +565,6 @@ export default function RegisterPage({
 
   useEffect(() => {
     idempotencyKey.current = crypto.randomUUID();
-    const supabase = createClient();
     let cancelled = false;
     void (async () => {
       try {
@@ -563,34 +575,7 @@ export default function RegisterPage({
         const info = body as RegistrationInfo;
         if (!Array.isArray(info.categories) || !Array.isArray(info.fields)) throw new Error("Registration details are incomplete. Please try again later.");
         setData(info);
-        // A guest can start immediately. Session lookup and profile prefill are
-        // optional enhancements and must never hold the registration form open.
-        setAuthenticated(false);
         setMessage("");
-        void supabase.auth.getUser().then(async ({ data: auth }) => {
-          if (cancelled || !auth.user) return;
-          setAuthenticated(true);
-          try {
-            const profileResponse = await fetch("/api/participant/profile");
-            if (!profileResponse.ok || cancelled) return;
-            const profileBody = await profileResponse.json();
-            const profile = profileBody.profile ?? {};
-            const prefilled: Record<string, string> = {
-              first_name: profile.first_name ?? "", last_name: profile.last_name ?? "",
-              birthdate: profile.birthdate ?? "", email: profileBody.email ?? "",
-              contact_number: profile.mobile ?? "", address: profile.address ?? "",
-              emergency_contact: profile.emergency_contact_name ?? "",
-              emergency_contact_phone: profile.emergency_contact_number ?? "",
-            };
-            setRegistrants((current) => current.map((registrant, index) => index === 0
-              ? { ...registrant, answers: Object.fromEntries(Object.entries({ ...prefilled, ...registrant.answers }).filter(([, value]) => Boolean(value))) }
-              : registrant));
-          } catch {
-            // Profile prefill is optional; participant details remain editable.
-          }
-        }).catch(() => {
-          // Auth service availability is not a prerequisite for guest signup.
-        });
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : "Registration details could not be loaded");
       }
@@ -605,6 +590,19 @@ export default function RegisterPage({
       if (!formRef.current?.reportValidity()) return;
       if (!registrants.every((registrant) => registrant.categoryId)) {
         setMessage("Choose a race category for each registrant before continuing.");
+        return;
+      }
+      const requiredKitOutOfStock = registrants.some((registrant) => data.kits
+        .filter((kit) => kit.category_id === null || kit.category_id === registrant.categoryId)
+        .flatMap((kit) => kit.race_kit_items ?? [])
+        .some((item) => {
+          if (!item.is_active || !item.is_required || !item.unavailable_variants?.length) return false;
+          const details = item.details && typeof item.details === "object" && !Array.isArray(item.details) ? item.details as Record<string, unknown> : {};
+          const options = parseVariantOptions(details.variants).map((option) => option.name);
+          return options.length > 0 && options.every((option) => item.unavailable_variants?.includes(option));
+        }));
+      if (requiredKitOutOfStock) {
+        setMessage("A required included item is out of stock in every available size. Please contact the event organizer.");
         return;
       }
       setMessage("");
@@ -642,7 +640,6 @@ export default function RegisterPage({
       return;
     }
     setBusy(true);
-    setRegistrationHref(null);
     setRegistrationReference(null);
     setRegistrationSaved(false);
     setMessage("Saving your registration and preparing the next step...");
@@ -659,6 +656,7 @@ export default function RegisterPage({
             accept_waiver: registrant.acceptWaiver,
           })),
           promo_code: promoCode.trim() || undefined,
+          payment_method: paymentMethod,
           idempotency_key: idempotencyKey.current,
             accept_platform_terms: acceptPlatformTerms,
         }),
@@ -672,10 +670,6 @@ export default function RegisterPage({
         return;
       }
       setRegistrationSaved(true);
-      const nextRegistrationHref = authenticated && typeof body.registration_id === "string"
-        ? `/my-races/${encodeURIComponent(body.registration_id)}`
-        : null;
-      if (nextRegistrationHref) setRegistrationHref(nextRegistrationHref);
       const reference = Array.isArray(body.registration_numbers) ? body.registration_numbers[0] : null;
       if (typeof reference === "string") setRegistrationReference(reference);
       // An idempotent retry may return an old URL for a completed or cancelled
@@ -686,16 +680,12 @@ export default function RegisterPage({
       }
       if (body.status === "pending" || body.status === "processing") {
         setMessage(body.payment_setup_pending
-          ? authenticated
-            ? "Your registration details were saved, but online payment is not set up yet. Your place is not confirmed until payment is verified. Open My Races to review your registration."
-            : "Your registration details were saved. Online payment is not set up yet, so your place is not confirmed. Keep your registration reference for follow-up."
-          : authenticated
-            ? "Your registration is saved. Continue to My Races to review its payment status."
-            : "Your registration is saved. Keep your registration reference for payment follow-up.");
+          ? "Your registration details were saved. Online payment is not set up yet, so your place is not confirmed. Keep your registration reference for follow-up."
+          : "Your registration is saved. Keep your registration reference for payment follow-up.");
         return;
       }
       if (body.status === "succeeded") {
-        setMessage("Payment is already confirmed. View your registration in My Races.");
+        setMessage("Payment is already confirmed. Keep your registration reference for your records.");
         return;
       }
       if (body.status) {
@@ -703,7 +693,7 @@ export default function RegisterPage({
         setMessage("The previous payment session is no longer active. Review your details and start a new secure checkout.");
         return;
       }
-      setMessage("Your registration is saved. Open My Races to review the next step.");
+      setMessage("Your registration is saved. Keep your registration reference for follow-up.");
     } catch {
       setMessage("We could not reach RaceDeck. Your entered details are still here; please try again.");
     } finally {
@@ -757,8 +747,8 @@ export default function RegisterPage({
     { title: "13. Electronic Agreement", content: "By selecting “I Agree,” I confirm that I have read and understood this Participant Waiver and agree to it electronically for the participant(s) listed in this registration. The acceptance is recorded with this event registration." },
   ];
   return (
-    <main className="min-h-screen bg-slate-100 px-3 pb-5 pt-2 sm:px-6 sm:pb-8 sm:pt-5">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-screen bg-slate-100 px-4 pb-5 pt-2 sm:px-6 sm:pb-8 sm:pt-5">
+      <div className="mx-auto max-w-[938px]">
       <Link
         href={`/events/${params.eventId}`}
         className="relative -top-1 text-sm font-semibold text-orange-600 hover:text-orange-700"
@@ -766,15 +756,31 @@ export default function RegisterPage({
         ← Back to event details
       </Link>
       <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <EventBanner eventName={data.event.name} imageUrl={data.event.banner_url} />
+        <div className="relative aspect-[4/1] min-h-40 bg-[#071b41]">
+          {data.event.banner_url ? (
+            <Image
+              src={data.event.banner_url}
+              alt={`${data.event.name} banner`}
+              fill
+              unoptimized
+              sizes="(max-width: 768px) 100vw, 938px"
+              className={data.event.poster_fallback ? "object-contain object-center p-2" : "object-cover object-center"}
+            />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center px-5 text-center text-xl font-bold text-white sm:text-2xl">{data.event.name}</div>
+          )}
+        </div>
       </div>
       <div className="mt-5">
         <section className="min-w-0">
-          <header className="text-center">
-            <h1 className="text-2xl font-extrabold text-[#071b41] sm:text-3xl">
+          <header>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">
+              RaceDeck PH · Participant registration
+            </p>
+            <h1 className="mt-1 text-2xl font-extrabold text-[#071b41] sm:text-3xl">
               {data.event.name}
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-slate-600">
               {data.event.event_date} •{" "}
               {data.event.venue ??
                 data.event.address ??
@@ -804,10 +810,10 @@ export default function RegisterPage({
           <form
             ref={formRef}
             onSubmit={submit}
-            className="mt-4 space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
+            className={`space-y-5 rounded-2xl border border-slate-200 bg-white shadow-sm ${step === 2 ? "mt-2 p-3 sm:p-4" : "mt-4 p-4 sm:p-6"}`}
           >
-            <div className="space-y-5">
-              {step === 1 && registrants.map((registrant, index) => (
+            {step === 1 && <div className="space-y-5">
+              {registrants.map((registrant, index) => (
                 <RegistrantFields
                   key={registrant.id}
                   data={data}
@@ -819,7 +825,7 @@ export default function RegisterPage({
                   onRemove={registrants.length > 1 ? () => setRegistrants((current) => current.filter((item) => item.id !== registrant.id)) : undefined}
                 />
               ))}
-            </div>
+            </div>}
             {step === 2 && <section aria-labelledby="participant-waiver-heading" className="space-y-4">
               <div>
                 <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -844,14 +850,14 @@ export default function RegisterPage({
 
               <fieldset className="mx-auto w-full max-w-5xl px-4 sm:px-5">
                 <legend className="sr-only">Required agreements</legend>
-                <div className="mx-auto w-full max-w-[78ch] space-y-3">
-                  <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
-                    <input type="checkbox" checked={allWaiversAccepted} onChange={(event) => setRegistrants((current) => current.map((registrant) => ({ ...registrant, acceptWaiver: event.target.checked })))} className="h-5 w-5 shrink-0 accent-slate-500" />
-                    <span className="min-w-0 break-words">I Agree</span>
+                <div className="mx-auto w-full space-y-1">
+                  <label className="flex min-h-9 cursor-pointer items-center gap-2 py-1 text-[13px] leading-5 text-slate-600">
+                    <input type="checkbox" checked={allWaiversAccepted} onChange={(event) => setRegistrants((current) => current.map((registrant) => ({ ...registrant, acceptWaiver: event.target.checked })))} className="relative h-4 w-4 shrink-0 appearance-none rounded-[4px] border border-green-700 bg-white checked:bg-green-700 checked:after:absolute checked:after:left-[5px] checked:after:top-[1px] checked:after:h-2.5 checked:after:w-1 checked:after:rotate-45 checked:after:border-b-2 checked:after:border-r-2 checked:after:border-white checked:after:content-[''] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700" />
+                    <span className="min-w-0 break-words lg:whitespace-nowrap">I have read and understood the terms of the <span className="font-semibold text-slate-700">{data.event.name}</span> waiver, and agree on behalf of the participant(s) in this registration.</span>
                   </label>
-                  <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
-                    <input type="checkbox" checked={acceptPlatformTerms} onChange={(event) => setAcceptPlatformTerms(event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-500" />
-                    <span className="min-w-0 break-words">I agree to the <Link href="/legal/terms" target="_blank" rel="noreferrer" className="text-indigo-500 underline underline-offset-2">Platform Disclaimer and Terms and Conditions</Link>.</span>
+                  <label className="flex min-h-9 cursor-pointer items-center gap-2 py-1 text-[13px] leading-5 text-slate-600">
+                    <input type="checkbox" checked={acceptPlatformTerms} onChange={(event) => setAcceptPlatformTerms(event.target.checked)} className="relative h-4 w-4 shrink-0 appearance-none rounded-[4px] border border-green-700 bg-white checked:bg-green-700 checked:after:absolute checked:after:left-[5px] checked:after:top-[1px] checked:after:h-2.5 checked:after:w-1 checked:after:rotate-45 checked:after:border-b-2 checked:after:border-r-2 checked:after:border-white checked:after:content-[''] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700" />
+                    <span className="min-w-0 break-words lg:whitespace-nowrap">I agree to the <Link href="/legal/terms" target="_blank" rel="noreferrer" className="font-medium text-indigo-600 underline underline-offset-2">Platform Disclaimer and Terms and Conditions</Link>.</span>
                   </label>
                 </div>
               </fieldset>
@@ -912,9 +918,18 @@ export default function RegisterPage({
               <div className="space-y-4">
                 <header><h2 id="payment-checkout-heading" className="text-xl font-extrabold text-[#071b41] sm:text-2xl">Payment</h2><p className="mt-1 text-sm text-slate-600">Your participant details have been reviewed. Complete payment to finish registration.</p></header>
                 <section aria-labelledby="secure-payment-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                  <h3 id="secure-payment-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><LockKeyhole className="h-5 w-5" aria-hidden="true" />Secure online checkout</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">You’ll continue to PayMongo to complete payment. RaceDeck does not collect your card details.</p>
-                  <div className="mt-4 flex flex-wrap gap-2" aria-label="Available payment methods"><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">GCash</span><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">Credit or debit card</span><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">Maya</span></div>
+                  <h3 id="secure-payment-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><LockKeyhole className="h-5 w-5" aria-hidden="true" />Choose a payment method</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">Select how you’d like to pay. You’ll continue to PayMongo to securely complete checkout.</p>
+                  <div role="radiogroup" aria-label="Payment method" className="mt-4 grid gap-2 sm:grid-cols-3">
+                    {PAYMENT_METHOD_OPTIONS.map((method) => <label key={method.id} className="cursor-pointer">
+                      <input className="peer sr-only" type="radio" name="payment-method" value={method.id} checked={paymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} />
+                      <span className="relative flex min-h-[76px] items-center gap-3 rounded-lg border border-slate-200 bg-white py-3 pl-3 pr-9 transition before:absolute before:right-3 before:top-1/2 before:h-4 before:w-4 before:-translate-y-1/2 before:rounded-full before:border before:border-slate-300 before:content-[''] after:absolute after:right-[17px] after:top-1/2 after:h-2 after:w-2 after:-translate-y-1/2 after:rounded-full after:bg-orange-600 after:opacity-0 after:content-[''] hover:border-orange-300 peer-checked:border-orange-600 peer-checked:bg-orange-50/60 peer-checked:ring-1 peer-checked:ring-orange-500 peer-checked:before:border-orange-600 peer-checked:after:opacity-100 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-orange-500">
+                        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-extrabold text-[#0b2b5b]">{method.badge}</span>
+                        <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-[#071b41]">{method.label}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{method.detail}</span></span>
+                      </span>
+                    </label>)}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-slate-500">Payment is processed securely by PayMongo. RaceDeck does not collect your wallet credentials.</p>
                 </section>
                 <section aria-labelledby="promo-code-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                   <h3 id="promo-code-heading" className="font-bold text-[#071b41]">Promo code <span className="font-normal text-slate-500">(optional)</span></h3>
@@ -923,7 +938,7 @@ export default function RegisterPage({
                   {promoStatus && <p role="status" className="mt-2 text-xs leading-5 text-slate-500">{promoStatus}</p>}
                   <p className="mt-2 text-xs leading-5 text-slate-500">Promo codes are validated when checkout starts. Eligible discounts will be reflected in the payment amount.</p>
                 </section>
-                {registrationSaved && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><p className="font-bold">Registration details saved</p><p>{message}</p>{registrationReference && <p className="mt-1">Reference: <strong>{registrationReference}</strong></p>}{registrationHref && <Link href={registrationHref} className="mt-2 inline-block font-semibold text-orange-800 underline underline-offset-2">Open My Races</Link>}</div>}
+                {registrationSaved && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><p className="font-bold">Registration details saved</p><p>{message}</p>{registrationReference && <p className="mt-1">Reference: <strong>{registrationReference}</strong></p>}</div>}
               </div>
               <aside aria-label="Payment total" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
                 <h3 className="text-lg font-bold text-[#071b41]">Amount due</h3>
@@ -965,7 +980,6 @@ export default function RegisterPage({
             {message && !(step === 4 && registrationSaved) && (
               <p role="status" aria-live="polite" className="text-center text-sm text-slate-600">
                 {message}
-                {registrationHref && <> <Link href={registrationHref} className="font-semibold text-orange-700 underline underline-offset-2">Open My Races</Link></>}
               </p>
             )}
           </form>

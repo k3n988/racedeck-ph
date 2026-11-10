@@ -20,6 +20,11 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.redirect(new URL('/login?error=profile_setup_failed', request.url));
   }
-  const destination = safeNextPath(request.nextUrl.searchParams.get('next')) ?? await resolveLandingRoute();
+  const landingRoute = await resolveLandingRoute();
+  if (!landingRoute) {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(new URL('/login?error=account_access_required', request.url));
+  }
+  const destination = safeNextPath(request.nextUrl.searchParams.get('next')) ?? landingRoute;
   return NextResponse.redirect(new URL(destination, request.url));
 }

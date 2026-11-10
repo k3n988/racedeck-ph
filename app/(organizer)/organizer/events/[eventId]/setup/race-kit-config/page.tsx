@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { parseVariantOptions, variantOptionsPayload } from '@/lib/events/variant-options';
 
 type KitImage = { url: string; file?: File };
 type Item = {
@@ -46,6 +47,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
   const [configId, setConfigId] = useState<string | null>(null);
   const [item, setItem] = useState<ItemDraft>(emptyItem());
   const [variants, setVariants] = useState<string[]>([]);
+  const [variantSlots, setVariantSlots] = useState<Record<string, string>>({});
   const [variantDraft, setVariantDraft] = useState('');
   const [productImages, setProductImages] = useState<KitImage[]>([]);
   const [referenceImage, setReferenceImage] = useState<KitImage | null>(null);
@@ -146,7 +148,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
         ...item,
         item_code: itemCode,
         item_name: name,
-        details: { ...item.details, kind: isProduct ? 'product' : 'text_inclusion', description: String(item.details.description ?? '').trim() || null, variants: isProduct ? variants : [], product_image_urls: imageUrls, reference_image_url: sizeChartUrl },
+        details: { ...item.details, kind: isProduct ? 'product' : 'text_inclusion', description: String(item.details.description ?? '').trim() || null, variants: isProduct ? variantOptionsPayload(variants, variantSlots) : [], product_image_urls: imageUrls, reference_image_url: sizeChartUrl },
         is_required: isProduct && variants.length > 0 ? item.is_required : false,
       };
       const url = `/api/organizer/events/${params.eventId}/race-kit-config/${currentConfig.id}/items${itemId ? `/${itemId}` : ''}`;
@@ -169,6 +171,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     setEditorConfigId(null);
     setItem(emptyItem());
     setVariants([]);
+    setVariantSlots({});
     setVariantDraft('');
     setProductImages([]);
     setReferenceImage(null);
@@ -179,7 +182,9 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     setEditorConfigId(currentConfigId);
     setItemId(currentItem.id);
     setItem({ ...currentItem, details });
-    setVariants(strings(details.variants));
+    const options = parseVariantOptions(details.variants);
+    setVariants(options.map((option) => option.name));
+    setVariantSlots(Object.fromEntries(options.filter((option) => option.slots !== null).map((option) => [option.name, String(option.slots)])));
     setVariantDraft('');
     setProductImages(strings(details.product_image_urls).map((url) => ({ url })));
     setReferenceImage(typeof details.reference_image_url === 'string' ? { url: details.reference_image_url } : null);
@@ -234,6 +239,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     const next = variantDraft.trim();
     if (!next || variants.some((value) => value.toLowerCase() === next.toLowerCase())) return;
     setVariants([...variants, next]);
+    setVariantSlots((current) => ({ ...current, [next]: '' }));
     if (!itemId) setItem((current) => ({ ...current, is_required: true }));
     setVariantDraft('');
   }
@@ -275,7 +281,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
             <div className="mt-4 divide-y divide-slate-100 border-y border-slate-100">
               {current.race_kit_items?.map((currentItem) => {
                 const details = currentItem.details && typeof currentItem.details === 'object' ? currentItem.details : {};
-                const itemVariants = strings(details.variants);
+                const itemVariants = parseVariantOptions(details.variants).map((option) => option.name);
                 const imageUrls = strings(details.product_image_urls);
                 return <article key={currentItem.id} className="flex flex-wrap items-start justify-between gap-4 py-4">
                   <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
@@ -297,7 +303,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
               </div>
               <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-500">(optional)</span><input maxLength={500} value={editItemDescription} onChange={(event) => setItem({ ...item, details: { ...item.details, description: event.target.value } })} placeholder="e.g. Moisture-wicking event singlet" className={inputClass} /></label>
               {isProductItem && <>
-              <div><label className="block text-sm font-semibold text-slate-700">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Claiming place options' : 'Available variants'} <span className="font-normal text-slate-500">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? '(participant chooses one)' : '(sizes, colors, or other options)'}</span></label><div className="mt-2 flex flex-wrap gap-2">{variants.map((variant) => <span key={variant} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-sm font-semibold text-orange-800">{variant}<button type="button" onClick={() => setVariants(variants.filter((value) => value !== variant))} className="ml-1" aria-label={`Remove ${variant}`}>×</button></span>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addVariant(); } }} placeholder={item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Add a place, e.g. Race-day venue' : 'Add a variant, e.g. Kids Small'} className={`${inputClass} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 bg-white px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
+              <div><label className="block text-sm font-semibold text-slate-700">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Claiming place options' : 'Available variants'} <span className="font-normal text-slate-500">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? '(participant chooses one)' : '(sizes, colors, or other options)'}</span></label><div className="mt-2 space-y-2">{variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-2 rounded-lg border border-slate-200 bg-white p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.item_name.trim().toLowerCase() !== 'race kit claiming' && <label className="text-xs font-semibold text-slate-600">Slots<input type="number" min="0" step="1" inputMode="numeric" value={variantSlots[variant] ?? ''} onChange={(event) => setVariantSlots({ ...variantSlots, [variant]: event.target.value })} aria-label={`Available slots for ${variant}`} placeholder="Qty" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm font-normal" /></label>}<button type="button" onClick={() => { setVariants(variants.filter((value) => value !== variant)); const next = { ...variantSlots }; delete next[variant]; setVariantSlots(next); }} className="ml-1 rounded px-2 py-1 text-slate-600" aria-label={`Remove ${variant}`}>×</button></div>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addVariant(); } }} placeholder={item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Add a place, e.g. Race-day venue' : 'Add a variant, e.g. Kids Small'} className={`${inputClass} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 bg-white px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-semibold text-slate-700">Product photos <span className="font-normal text-slate-500">(JPG, PNG, WEBP · max 10 MB each)</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const files = Array.from(event.target.files ?? []); setProductImages([...productImages, ...files.map((file) => ({ file, url: URL.createObjectURL(file) }))]); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{productImages.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{productImages.map((image, index) => <div key={`${image.url}-${index}`} className="relative"><Image src={image.url} alt={`Product photo ${index + 1}`} width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" aria-label={`Remove product photo ${index + 1}`} onClick={() => setProductImages(productImages.filter((_, imageIndex) => imageIndex !== index))} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-red-600 text-white">×</button></div>)}</div>}</label>
                 <label className="block text-sm font-semibold text-slate-700">Size chart or reference guide <span className="font-normal text-slate-500">(optional)</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setReferenceImage({ file, url: URL.createObjectURL(file) }); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{referenceImage && <div className="mt-2 flex items-center gap-2"><Image src={referenceImage.url} alt="Size guide preview" width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" onClick={() => setReferenceImage(null)} className="text-sm font-semibold text-red-700">Remove guide</button></div>}</label>

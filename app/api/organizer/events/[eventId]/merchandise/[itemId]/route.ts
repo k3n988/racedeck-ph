@@ -7,7 +7,10 @@ const schema = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(1000).nullable(),
   unit_price: z.number().positive().max(1_000_000),
-  variants: z.array(z.string().trim().min(1).max(80)).max(40),
+  variants: z.array(z.union([
+    z.string().trim().min(1).max(80),
+    z.object({ name: z.string().trim().min(1).max(80), slots: z.number().int().min(0).max(1_000_000).nullable() }),
+  ])).max(40),
   image_urls: z.array(z.string().url()).max(8),
   display_order: z.number().int().nonnegative(),
   is_active: z.boolean(),

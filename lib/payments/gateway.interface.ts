@@ -1,4 +1,5 @@
-export type CheckoutRequest = { amount: number; currency: string; description: string; reference: string; successUrl: string; cancelUrl: string };
+export type CheckoutPaymentMethod = 'qrph' | 'paymaya' | 'gcash';
+export type CheckoutRequest = { amount: number; currency: string; description: string; reference: string; successUrl: string; cancelUrl: string; paymentMethod?: CheckoutPaymentMethod };
 export type CheckoutResult = { gatewayPaymentId: string; checkoutUrl: string };
 export type RefundRequest = { gatewayPaymentId: string; amount: number; reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' | 'others'; notes: string; idempotencyKey: string };
 export type RefundResult = { gatewayRefundId: string; status: 'pending' | 'processing' | 'succeeded' | 'failed'; failureCode?: string; failureMessage?: string };

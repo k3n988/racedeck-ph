@@ -7,9 +7,11 @@ import Image from "next/image";
 import { ContentEditor } from "@/components/organizer/content-editor";
 import { Check } from "lucide-react";
 import { manilaDateTimeToIso } from "@/lib/events/category-pricing";
+import { variantOptionsPayload } from "@/lib/events/variant-options";
+import { DEFAULT_PARTICIPANT_WAIVER_CONTENT, DEFAULT_PARTICIPANT_WAIVER_TITLE, EVENT_NAME_TOKEN, eventWaiverContentForTitle } from "@/lib/events/default-participant-waiver";
 
-type KitItem = { kind: "product" | "inclusion"; name: string; description: string; variants: string[]; productImages: UploadValue[]; referenceImage: UploadValue };
-type MerchandiseItem = { name: string; description: string; unitPrice: string; variants: string[]; images: UploadValue[] };
+type KitItem = { kind: "product" | "inclusion"; name: string; description: string; variants: string[]; variantSlots: Record<string, string>; productImages: UploadValue[]; referenceImage: UploadValue };
+type MerchandiseItem = { name: string; description: string; unitPrice: string; variants: string[]; variantSlots: Record<string, string>; images: UploadValue[] };
 type Category = {
   // Persisted as the participant-facing category group name when group mode is selected.
   name: string;
@@ -94,8 +96,12 @@ const steps = [
 const input =
   "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100";
 const emptyUpload = (): UploadValue => ({ url: "", file: null });
-const emptyKitItem = (kind: KitItem["kind"] = "product"): KitItem => ({ kind, name: "", description: "", variants: [], productImages: [], referenceImage: emptyUpload() });
-const emptyMerchandiseItem = (): MerchandiseItem => ({ name: "", description: "", unitPrice: "", variants: [], images: [] });
+const emptyKitItem = (kind: KitItem["kind"] = "product"): KitItem => ({ kind, name: "", description: "", variants: [], variantSlots: {}, productImages: [], referenceImage: emptyUpload() });
+const emptyMerchandiseItem = (): MerchandiseItem => ({ name: "", description: "", unitPrice: "", variants: [], variantSlots: {}, images: [] });
+const hasValidOptionalVariantSlots = (variants: string[], variantSlots: Record<string, string>) => variants.every((variant) => {
+  const value = variantSlots[variant]?.trim();
+  return !value || (Number.isSafeInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 1000000);
+});
 const hasRichContent = (value: string) => Boolean(value.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim());
 const toEventSlug = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const isOptionalWebUrlValid = (value: string) => {
@@ -242,19 +248,19 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
   const addVariant = () => {
     const variant = variantDraft.trim();
     if (!variant || item.variants.some((value) => value.toLowerCase() === variant.toLowerCase())) return;
-    onChange({ ...item, variants: [...item.variants, variant] });
+    onChange({ ...item, variants: [...item.variants, variant], variantSlots: { ...item.variantSlots, [variant]: "" } });
     setVariantDraft("");
   };
   return <article className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="mb-3 flex items-center justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Race kit item</h4><p className="text-xs text-slate-500">Add an informational inclusion or a product with selectable options.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
-    <label className="block max-w-sm text-sm font-semibold text-slate-700">Item type<select value={item.kind} onChange={(event) => { if (event.target.value === "inclusion") { item.productImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); }); if (item.referenceImage.url.startsWith("blob:")) URL.revokeObjectURL(item.referenceImage.url); } onChange({ ...item, kind: event.target.value as KitItem["kind"], variants: [], productImages: [], referenceImage: emptyUpload() }); }} className={input}><option value="product">Product with options (singlet, shirt, etc.)</option><option value="inclusion">Plain text inclusion (no size or image)</option></select></label>
+    <label className="block max-w-sm text-sm font-semibold text-slate-700">Item type<select value={item.kind} onChange={(event) => { if (event.target.value === "inclusion") { item.productImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); }); if (item.referenceImage.url.startsWith("blob:")) URL.revokeObjectURL(item.referenceImage.url); } onChange({ ...item, kind: event.target.value as KitItem["kind"], variants: [], variantSlots: {}, productImages: [], referenceImage: emptyUpload() }); }} className={input}><option value="product">Product with options (singlet, shirt, etc.)</option><option value="inclusion">Plain text inclusion (no size or image)</option></select></label>
     <div className="mt-3 grid gap-3 md:grid-cols-2">
       <label className="block text-sm font-semibold text-slate-700">{item.kind === "inclusion" ? "Inclusion name" : "Product name"}<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder={item.kind === "inclusion" ? "e.g. E-certificate or Sports headband" : "e.g. Race singlet"} maxLength={160} className={input} /></label>
       <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder={item.kind === "inclusion" ? "Add details only if the inclusion needs clarification" : "Add fabric, fit, or other helpful details"} maxLength={1000} className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">You can leave this blank if the name, size options, and photos give participants enough information.</span></label>
     </div>
     {item.kind === "product" && <><div className="mt-4">
       <label className="block text-sm font-semibold text-slate-700">Available variants <span className="font-normal text-slate-400">(sizes, colors, or other options)</span></label>
-      <div className="mt-2 flex flex-wrap gap-2">{item.variants.map((variant) => <span key={variant} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{variant}<button type="button" onClick={() => onChange({ ...item, variants: item.variants.filter((value) => value !== variant) })} className="ml-1 text-slate-600" aria-label={`Remove ${variant}`}>×</button></span>)}</div>
+      <div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.name.trim().toLowerCase() !== "race kit claiming" && <label className="text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label>}<button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} className="rounded px-2 py-1 text-slate-600 hover:bg-white" aria-label={`Remove ${variant}`}>×</button></div>)}</div>
       <div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
     </div>
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -268,12 +274,12 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
 
 function MerchandiseEditor({ item, onChange, onRemove }: { item: MerchandiseItem; onChange: (item: MerchandiseItem) => void; onRemove: () => void }) {
   const [variantDraft, setVariantDraft] = useState("");
-  const addVariant = () => { const variant = variantDraft.trim(); if (!variant || item.variants.some((value) => value.toLowerCase() === variant.toLowerCase())) return; onChange({ ...item, variants: [...item.variants, variant] }); setVariantDraft(""); };
+  const addVariant = () => { const variant = variantDraft.trim(); if (!variant || item.variants.some((value) => value.toLowerCase() === variant.toLowerCase())) return; onChange({ ...item, variants: [...item.variants, variant], variantSlots: { ...item.variantSlots, [variant]: "" } }); setVariantDraft(""); };
   return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="flex items-start justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Additional merchandise</h4><p className="text-xs text-slate-500">Optional paid add-on available to every category.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
     <div className="mt-3 grid gap-3 md:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Product name<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder="e.g. Event finisher shirt" className={input} /></label><label className="block text-sm font-semibold text-slate-700">Price (PHP)<input type="number" min="0.01" step="0.01" value={item.unitPrice} onChange={(event) => onChange({ ...item, unitPrice: event.target.value })} placeholder="450.00" className={input} /></label></div>
     <label className="mt-3 block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="Add fabric, fit, or other helpful details" className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">Leave blank if the product name, size options, and photos are enough.</span></label>
-    <div className="mt-3"><label className="block text-sm font-semibold text-slate-700">Variants <span className="font-normal text-slate-400">(optional, e.g. size or color)</span></label><div className="mt-2 flex flex-wrap gap-2">{item.variants.map((variant) => <span key={variant} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{variant}<button type="button" onClick={() => onChange({ ...item, variants: item.variants.filter((value) => value !== variant) })} aria-label={`Remove ${variant}`} className="ml-1 text-slate-600">×</button></span>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add option, e.g. Medium" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
+    <div className="mt-3"><label className="block text-sm font-semibold text-slate-700">Variants <span className="font-normal text-slate-400">(optional, e.g. size or color)</span></label><div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span><label className="text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label><button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} aria-label={`Remove ${variant}`} className="rounded px-2 py-1 text-slate-600 hover:bg-white">×</button></div>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add option, e.g. Medium" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
     <div className="mt-4"><Upload label="Merchandise photos" value={item.images} multiple onChange={(file, url) => onChange({ ...item, images: [...item.images, { file, url }] })} onRemove={(imageIndex) => { const image = item.images[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, images: item.images.filter((_, index) => index !== imageIndex) }); }} /></div>
   </article>;
 }
@@ -312,8 +318,8 @@ export default function CreateEventPage() {
   const [kitClaimingLocationDraft, setKitClaimingLocationDraft] = useState("");
   const [merchandise, setMerchandise] = useState<MerchandiseItem[]>([]);
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
-  const [waiverTitle, setWaiverTitle] = useState("");
-  const [waiverContent, setWaiverContent] = useState("");
+  const [waiverTitle, setWaiverTitle] = useState(DEFAULT_PARTICIPANT_WAIVER_TITLE);
+  const [waiverContent, setWaiverContent] = useState(DEFAULT_PARTICIPANT_WAIVER_CONTENT);
   const [posters, setPosters] = useState<UploadValue[]>([]);
   const [eventPages, setEventPages] = useState<EventPage[]>([
     {
@@ -549,6 +555,7 @@ export default function CreateEventPage() {
         if (item.description.trim().length > 1000) errors.push(`Race kit item ${index + 1}: description must be 1,000 characters or fewer.`);
         if (item.kind === "product") {
           if (item.variants.length > 40) errors.push(`Race kit item ${index + 1}: use no more than 40 variants.`);
+          if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`Race kit item ${index + 1}: any slot count entered must be a whole number from 0 to 1,000,000.`);
           if (item.productImages.length > 8) errors.push(`Race kit item ${index + 1}: upload no more than 8 product photos.`);
           if (!item.productImages.every(validImage) || !validImage(item.referenceImage)) errors.push(`Race kit item ${index + 1}: images must be JPG, PNG, or WEBP and no larger than 10 MB each.`);
         }
@@ -564,6 +571,7 @@ export default function CreateEventPage() {
         if (started && (!item.unitPrice.trim() || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 || Number(item.unitPrice) > 1000000)) errors.push(`Merchandise ${index + 1}: enter a price greater than PHP 0 and no more than PHP 1,000,000.`);
         if (item.variants.some((variant) => variant.length > 80)) errors.push(`Merchandise ${index + 1}: each variant must be 80 characters or fewer.`);
         if (item.variants.length > 40) errors.push(`Merchandise ${index + 1}: use no more than 40 variants.`);
+        if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`Merchandise ${index + 1}: any slot count entered must be a whole number from 0 to 1,000,000.`);
         if (item.images.length > 8) errors.push(`Merchandise ${index + 1}: upload no more than 8 photos.`);
         if (!item.images.every(validImage)) errors.push(`Merchandise ${index + 1}: images must be JPG, PNG, or WEBP and no larger than 10 MB each.`);
       });
@@ -590,7 +598,7 @@ export default function CreateEventPage() {
       const errors: string[] = [];
       if (Boolean(waiverTitle.trim()) !== Boolean(waiverContent.trim())) errors.push("Complete both the event waiver title and content, or leave both blank to skip the waiver.");
       if (waiverTitle.trim().length > 240) errors.push("Event waiver title must be 240 characters or fewer.");
-      if (waiverContent.length > 50000) errors.push("Event waiver content must be 50,000 characters or fewer.");
+      if (eventWaiverContentForTitle(waiverContent, form.name).length > 50000) errors.push("Event waiver content must be 50,000 characters or fewer.");
       if (registrationQuestions.length > 30) errors.push("Add no more than 30 registration questions.");
       registrationQuestions.forEach((question, index) => {
         const number = index + 1;
@@ -694,7 +702,7 @@ export default function CreateEventPage() {
         item_code: `${categoryId ?? "shared"}-${index + 1}-${itemName.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)}`,
         item_name: itemName,
         quantity: 1,
-        details: { kind: item.kind === "inclusion" ? "text_inclusion" : "product", description: item.description.trim() || null, variants: item.kind === "product" ? item.variants : [], product_image_urls: productImageUrls, reference_image_url: referenceImageUrl },
+        details: { kind: item.kind === "inclusion" ? "text_inclusion" : "product", description: item.description.trim() || null, variants: item.kind === "product" ? variantOptionsPayload(item.variants, item.variantSlots) : [], product_image_urls: productImageUrls, reference_image_url: referenceImageUrl },
         is_required: item.kind === "product" && item.variants.length > 0,
         is_active: true,
         display_order: index,
@@ -736,7 +744,7 @@ export default function CreateEventPage() {
     }
     const incompleteMerchandise = merchandise.some((item) => {
       const started = item.name.trim() || item.description.trim() || item.unitPrice.trim() || item.variants.length || item.images.length;
-      return Boolean(started && (!item.name.trim() || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 || item.variants.length > 40 || item.images.length > 8));
+      return Boolean(started && (!item.name.trim() || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 || item.variants.length > 40 || !hasValidOptionalVariantSlots(item.variants, item.variantSlots) || item.images.length > 8));
     });
     if (incompleteMerchandise) {
       updateAttemptedStep(2);
@@ -744,7 +752,7 @@ export default function CreateEventPage() {
       setStep(2);
       return;
     }
-    const incompleteKit = [...categories.flatMap((category) => category.kitItems), ...categoryGroups.flatMap((group) => group.kitItems)].some((item) => item.name.trim() && item.kind === "product" && (item.variants.length > 40 || item.productImages.length > 8));
+    const incompleteKit = [...categories.flatMap((category) => category.kitItems), ...categoryGroups.flatMap((group) => group.kitItems)].some((item) => item.name.trim() && item.kind === "product" && (item.variants.length > 40 || !hasValidOptionalVariantSlots(item.variants, item.variantSlots) || item.productImages.length > 8));
     if (incompleteKit) {
       updateAttemptedStep(2);
       setMessage("");
@@ -791,7 +799,7 @@ export default function CreateEventPage() {
         const waiverResponse = await fetch(`/api/organizer/events/${eventId}/waiver`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: waiverTitle.trim(), content: waiverContent.trim() }),
+          body: JSON.stringify({ title: waiverTitle.trim(), content: eventWaiverContentForTitle(waiverContent, form.name).trim() }),
         });
         const waiver = await waiverResponse.json().catch(() => ({}));
         if (!waiverResponse.ok || !waiver.id) throw new Error(waiver.error ?? "Event waiver could not be saved.");
@@ -916,13 +924,14 @@ export default function CreateEventPage() {
           name: "Race Kit Claiming",
           description: "Choose where you plan to claim your included race kit.",
           variants: kitClaimingLocations,
+          variantSlots: {},
           productImages: [],
           referenceImage: emptyUpload(),
         }]);
       }
       for (const [index, item] of Array.from(merchandise.filter((entry) => entry.name.trim()).entries())) {
         const imageUrls = await Promise.all(item.images.map((image) => image.file ? uploadAsset(eventId, "merchandise", image.file) : image.url));
-        const saved = await fetch(`/api/organizer/events/${eventId}/merchandise`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: item.name.trim(), description: item.description.trim() || null, unit_price: Number(item.unitPrice), variants: item.variants, image_urls: imageUrls, display_order: index }) });
+        const saved = await fetch(`/api/organizer/events/${eventId}/merchandise`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: item.name.trim(), description: item.description.trim() || null, unit_price: Number(item.unitPrice), variants: variantOptionsPayload(item.variants, item.variantSlots), image_urls: imageUrls, display_order: index }) });
         const savedBody = await saved.json().catch(() => ({}));
         if (!saved.ok) throw new Error(savedBody.error ?? "Additional merchandise could not be saved.");
       }
@@ -1558,9 +1567,9 @@ export default function CreateEventPage() {
               <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#071b41]">Event Participant Waiver <span className="font-normal normal-case text-slate-500">(optional)</span></div>
                 <div className="space-y-4 p-4 sm:p-5">
-                  <p className="text-sm text-slate-600">Add event-specific waiver wording for participants to read and accept during registration. This is separate from RaceDeck’s Terms and Conditions. Leave both fields blank if this event has no waiver.</p>
-                  <label className="block text-sm font-semibold text-slate-700">Waiver title<input maxLength={240} value={waiverTitle} onChange={(event) => setWaiverTitle(event.target.value)} placeholder="e.g. Event Participation Waiver" className={input} /></label>
-                  <label className="block text-sm font-semibold text-slate-700">Waiver content<textarea maxLength={50000} rows={8} value={waiverContent} onChange={(event) => setWaiverContent(event.target.value)} placeholder="Enter the waiver participants must review and accept." className={input} /></label>
+                  <p className="text-sm text-slate-600">A participant waiver is prefilled for this event and can be edited before publishing. The event title updates automatically in the default wording. This is separate from RaceDeck’s Terms and Conditions; clear both fields if you do not want to include an event waiver.</p>
+                  <label className="block text-sm font-semibold text-slate-700">Waiver title<input maxLength={240} value={waiverTitle} onChange={(event) => setWaiverTitle(event.target.value)} placeholder="Participant Waiver and Release Agreement" className={input} /></label>
+                  <label className="block text-sm font-semibold text-slate-700">Waiver content<textarea maxLength={50000} rows={14} value={eventWaiverContentForTitle(waiverContent, form.name)} onChange={(event) => setWaiverContent(event.target.value.replaceAll(form.name.trim() || "this event", EVENT_NAME_TOKEN))} placeholder="Enter the waiver participants must review and accept." className={`${input} font-normal leading-6`} /></label>
                 </div>
               </section>
               <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">

@@ -25,7 +25,7 @@ export default function OrganizerRegisterPage() {
       window.location.assign("/organizer/organization");
     }
     setMessage("Organizer account created. Check your email, verify it, then sign in to continue.");
-    window.setTimeout(() => window.location.assign("/login?portal=organizer&registered=1"), 1200);
+    window.setTimeout(() => window.location.assign("/login?registered=1"), 1200);
   }
   return <main className="mx-auto flex min-h-screen max-w-md items-center p-6"><form onSubmit={submit} className="w-full space-y-4">
     <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-600">Organizer Portal</p>
@@ -36,7 +36,6 @@ export default function OrganizerRegisterPage() {
     <input required type="email" autoComplete="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded border p-3" />
     <input required minLength={8} type="password" autoComplete="new-password" placeholder="Password (8+ characters)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full rounded border p-3" />
     <button disabled={busy} className="w-full rounded bg-black p-3 text-white disabled:opacity-50">{busy ? "Creating…" : "Create organizer account"}</button>
-    {message && <p role="status" className="text-sm">{message}</p>}<p className="text-sm">Already registered? <a href="/login?portal=organizer" className="underline">Sign in</a></p>
-    <p className="text-sm">Joining a race? <a href="/register" className="underline">Register as a participant</a></p>
+    {message && <p role="status" className="text-sm">{message}</p>}<p className="text-sm">Already registered? <a href="/login" className="underline">Sign in</a></p>
   </form></main>;
 }

@@ -58,32 +58,10 @@ Participant outcome: Finished · DNF · DNS · DQ
 [OPTIONAL] Chip time
 [PHASE 2] Live timing, RFID live feeds, live leaderboard
 
-7. Participant Portal
-Sidebar: Dashboard · My Races · Results · Payments · Notifications · Profile
-No separate Race Kit sidebar item — kit info lives inside the registration.
-
-8. Participant Dashboard
-[CORE] Next Race (event, date, location, category, countdown, View Race) · Upcoming Races · Important Reminders (payment pending, kit available, kit deadline, race approaching, organizer announcement) · Recent Result
-No analytics charts, no unnecessary KPI cards.
-
-9. My Races
-Race Card: event, date, location, category, registration status, payment status, bib, race-kit status, View Race
-Selected Race → Registration: Registration ID, status, category, registered date
-Digital Registration QR — tied to the registration, distinct from the bib number.
-Registration: REG-2027-005423
-QR: secure registration token
-Bib: 21001
-Race Kit: Unclaimed
-
-Race Information: event details, schedule, venue, route, announcements
-Payment: amount, registration fee, RaceDeck/processing fee, discount, total paid, method, transaction reference, date, status, Download Receipt, Download Invoice if issued
-Race Kit: claiming location/date/time, QR, status, claim timestamp
-Results: shown after publication
-Certificate: shown only when Organizer has enabled E-Certificate for the event and the participant meets eligibility (see §34)
-
-10. Participant Profile
-[CORE] First name, last name, birthdate, email, mobile, address, emergency contact, default shirt size, password/security, saved registration info
-Competition Classification — collected only when a specific event's rules require it for ranking purposes; not a global mandatory field.
+7. Accountless Participant Registration
+Participants register directly from an event without creating or signing in to a RaceDeck account.
+Registration collects the event-specific participant details, category, race-kit selections, optional merchandise, waiver acceptance, and payment method.
+Participants keep their registration reference for payment and organizer follow-up. Public finished-event results remain available from the Results page.
 
 11. Organizer Account Architecture
 User → Organization Membership → Organization → Events

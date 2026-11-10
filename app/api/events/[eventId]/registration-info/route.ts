@@ -5,6 +5,8 @@ import { effectiveAvailability } from '@/lib/public/events';
 import { getCategoryPricing } from '@/lib/events/category-pricing';
 import { getRaceCategoryRows } from '@/lib/events/race-category-query';
 import { categoryRegistrationAvailabilityReason, effectiveCategoryAvailability } from '@/lib/events/registration-availability';
+import { parseVariantOptions } from '@/lib/events/variant-options';
+import { loadVariantUsage, variantUsageKey } from '@/lib/events/variant-inventory';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,7 +51,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
   const readKits = async () => {
     const configs = await admin.from('race_kit_configs').select('id,event_id,category_id,name,status').eq('event_id', params.eventId).eq('status', 'active').order('created_at');
     if (configs.error || !configs.data?.length) return { data: configs.data, error: configs.error, items: [], itemsError: null };
-    const items = await admin.from('race_kit_items').select('id,config_id,item_name,details,is_required,is_active,display_order').in('config_id', configs.data.map((config) => config.id)).eq('is_active', true).order('display_order');
+    const items = await admin.from('race_kit_items').select('id,config_id,item_name,quantity,details,is_required,is_active,display_order').in('config_id', configs.data.map((config) => config.id)).eq('is_active', true).order('display_order');
     return { data: configs.data, error: configs.error, items: items.data, itemsError: items.error };
   };
 
@@ -80,7 +82,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     } : undefined;
     return jsonNoStore({ error: 'Registration options could not be loaded. Please try again.', ...(diagnostics ? { diagnostics } : {}) }, { status: 500 });
   }
-  type RegistrationKitItem = { id: string; config_id: string; item_name: string; details: unknown; is_required: boolean; is_active: boolean; display_order: number };
+  type RegistrationKitItem = { id: string; config_id: string; item_name: string; quantity: number; details: unknown; is_required: boolean; is_active: boolean; display_order: number };
   const itemsByConfig = new Map<string, RegistrationKitItem[]>();
   for (const item of (kitItems ?? []) as RegistrationKitItem[]) {
     const items = itemsByConfig.get(item.config_id) ?? [];
@@ -122,5 +124,35 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
       .maybeSingle();
     bannerUrl = poster?.image_url ?? null;
   }
-  return jsonNoStore({ event: { ...event, banner_url: bannerUrl, organizer_name: organization?.name ?? 'the event organizer', registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
+  let variantUsage;
+  try {
+    variantUsage = await loadVariantUsage(admin, params.eventId);
+  } catch (inventoryError) {
+    console.error('Unable to load size availability', inventoryError);
+    return jsonNoStore({ error: 'Registration availability could not be checked. Please try again.' }, { status: 500 });
+  }
+  const publicMerchandise = (merchandise ?? []).map((item) => {
+    const variants = parseVariantOptions(item.variants);
+    return {
+      ...item,
+      variants: variants.map((option) => option.name),
+      unavailable_variants: variants.filter((option) => option.slots !== null && (variantUsage.merchandise.get(variantUsageKey(item.id, option.name)) ?? 0) >= option.slots).map((option) => option.name),
+    };
+  });
+  const publicKits = kits.map((kit) => ({ ...kit, race_kit_items: kit.race_kit_items.map((item) => {
+    const details = item.details && typeof item.details === 'object' && !Array.isArray(item.details) ? item.details as Record<string, unknown> : {};
+    const options = parseVariantOptions(details.variants);
+    const quantity = Number.isSafeInteger(item.quantity) && item.quantity > 0 ? item.quantity : 1;
+    return {
+      id: item.id,
+      config_id: item.config_id,
+      item_name: item.item_name,
+      is_required: item.is_required,
+      is_active: item.is_active,
+      display_order: item.display_order,
+      unavailable_variants: options.filter((option) => option.slots !== null && (variantUsage.kit.get(variantUsageKey(item.id, option.name)) ?? 0) * quantity >= option.slots).map((option) => option.name),
+      details: { ...details, variants: options.map((option) => option.name) },
+    };
+  }) }));
+  return jsonNoStore({ event: { ...event, banner_url: bannerUrl, poster_fallback: !event.banner_url && Boolean(bannerUrl), organizer_name: organization?.name ?? 'the event organizer', registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: publicKits, merchandise: publicMerchandise, waiver: waiver ?? null });
 }

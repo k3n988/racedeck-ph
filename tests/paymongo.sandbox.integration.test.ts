@@ -14,7 +14,7 @@ describe.skipIf(!sandboxSecret)('PayMongo sandbox integration', () => {
         currency: 'PHP',
         description: 'RaceDeck sandbox integration test',
         reference: `RACEDECK-SANDBOX-${Date.now()}`,
-        successUrl: 'http://localhost:3000/my-races/sandbox-test',
+        successUrl: 'http://localhost:3000/events/sandbox-test',
         cancelUrl: 'http://localhost:3000/events',
       });
       expect(checkout.gatewayPaymentId).toMatch(/^cs_/);
