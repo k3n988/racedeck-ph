@@ -18,16 +18,6 @@ function eventDateParts(value: string) {
   };
 }
 
-function registrationStatus(event: PublicEventCard) {
-  if (event.event_status === 'cancelled') return { label: 'Cancelled', style: 'bg-red-50 text-red-700 ring-red-200' };
-  if (event.event_status === 'completed' || event.registration_availability === 'completed') return { label: 'Completed', style: 'bg-slate-100 text-slate-700 ring-slate-200' };
-  if (event.registration_availability === 'open') return { label: 'Open', style: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
-  if (event.registration_availability === 'closing_soon') return { label: 'Closing Soon', style: 'bg-orange-50 text-orange-800 ring-orange-200' };
-  if (event.registration_availability === 'not_yet_open') return { label: 'Not Yet Open', style: 'bg-slate-100 text-slate-700 ring-slate-200' };
-  if (event.registration_availability === 'sold_out') return { label: 'Sold Out', style: 'bg-slate-100 text-slate-600 ring-slate-200' };
-  return { label: 'Registration Closed', style: 'bg-slate-100 text-slate-600 ring-slate-200' };
-}
-
 function EventActions({ event }: { event: PublicEventCard }) {
   const detailsHref = `/events/${event.slug}`;
   const primaryActionClass = 'inline-flex min-h-12 w-fit items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-[#111827] transition hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2';
@@ -42,13 +32,15 @@ function EventActions({ event }: { event: PublicEventCard }) {
   if (!event.registration_enabled) {
     return <Link href={detailsHref} className={primaryActionClass}>View Details <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
   }
-  return <Link href={`/events/${event.id}/register`} className={primaryActionClass}>Register <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
+  return <Link href={`/events/${event.id}/register`} className={primaryActionClass}>Register Now <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
 }
 
 function EventCard({ event }: { event: PublicEventCard }) {
-  const status = registrationStatus(event);
   const location = event.venue ?? event.address ?? 'Location to be announced';
   const dateParts = eventDateParts(event.event_date);
+  const categories = Array.from(new Set(event.category_labels
+    .flatMap(({ distance_km }) => distance_km === null ? [] : [`${distance_km}K`])));
+  const visibleCategories = categories.slice(0, 3);
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2">
@@ -60,12 +52,14 @@ function EventCard({ event }: { event: PublicEventCard }) {
         </time>}
       </div>
       <div className="flex flex-1 flex-col p-5">
-        <div className="mb-2"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset ${status.style}`}>{status.label}</span></div>
         <h3 className="break-words text-lg font-bold leading-tight text-[#0a234b]"><Link href={`/events/${event.slug}`} className="line-clamp-2 rounded-sm transition hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500">{event.name}</Link></h3>
         <p className="mt-1 flex min-h-5 items-center gap-2 text-sm text-slate-600"><CalendarDays aria-hidden="true" className="h-4 w-4 shrink-0 text-orange-600" /><time dateTime={event.event_date}>{formatEventDate(event.event_date)}</time></p>
         <p className="mt-1 flex min-h-5 items-start gap-2 text-sm leading-5 text-slate-600"><MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-orange-600" /><span className="line-clamp-2">{location}</span></p>
         <div className="mt-2 flex min-h-7 flex-wrap gap-2">
-          {event.distances.length ? event.distances.map((distance) => <span key={distance} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{distance}K</span>) : <span className="text-xs text-slate-500">Race categories to be announced</span>}
+          {visibleCategories.length ? <>
+            {visibleCategories.map((label) => <span key={label} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{label}</span>)}
+            {categories.length > visibleCategories.length && <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">+{categories.length - visibleCategories.length} more</span>}
+          </> : <span className="text-xs text-slate-500">Category details coming soon</span>}
         </div>
       <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-100 pt-3"><EventActions event={event} /></div>
       </div>

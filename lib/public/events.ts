@@ -11,7 +11,7 @@ export type PublicEventCard = {
   id: string; slug: string; name: string; banner_url: string | null; event_date: string;
   venue: string | null; address: string | null; organizer: { name: string; logo_url: string | null } | null;
   social_links: { facebook?: string; phone?: string; website?: string; instagram?: string } | null;
-  distances: number[]; registration_availability: string; registration_closes_at: string | null;
+  distances: number[]; category_labels: Array<{ name: string; distance_km: number | null }>; registration_availability: string; registration_closes_at: string | null;
   starting_registration_fee: number | null; registration_enabled: boolean; event_status: string | null; results_available: boolean;
   poster_fallback: boolean; event_period: 'ongoing' | 'upcoming' | 'past';
 };
@@ -35,7 +35,64 @@ export type PublicEventDetails = PublicEventCard & {
   results_available: boolean;
 };
 type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: { facebook?: string; phone?: string; website?: string; instagram?: string } | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string; lifecycle_status?: string };
-type CategoryRow = { id: string; event_id: string; name: string; distance_km: number | null; registration_fee: number; early_bird_fee: number | null; early_bird_deadline: string | null; max_slots: number | null; confirmed_count: number; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null };
+type CategoryRow = { id: string; event_id: string; name: string; category_group_name?: string | null; distance_km: number | null; registration_fee: number; early_bird_fee: number | null; early_bird_deadline: string | null; max_slots: number | null; confirmed_count: number; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null };
+
+const CATEGORY_CARD_FIELDS = 'id,event_id,name,category_group_name,distance_km,registration_fee,early_bird_fee,early_bird_deadline,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time';
+const CATEGORY_CORE_FIELDS = 'id,event_id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time';
+const CATEGORY_DISPLAY_FIELDS = 'id,event_id,name,distance_km';
+
+/**
+ * Categories are essential card content. Try the complete current schema first,
+ * then retry with the original race_categories columns when an environment has
+ * not applied optional pricing/group migrations yet. This prevents one missing
+ * optional column from hiding every category on the public event cards.
+ */
+async function loadCardCategories(admin: SupabaseClient, eventIds: string[]) {
+  if (!eventIds.length) return [] as CategoryRow[];
+  const load = (fields: string) => admin.from('race_categories').select(fields).in('event_id', eventIds)
+    .order('distance_km', { ascending: true, nullsFirst: false }).order('name');
+
+  let result = await load(CATEGORY_CARD_FIELDS);
+  if (result.error) {
+    const fullProjectionError = result.error;
+    result = await load(CATEGORY_CORE_FIELDS);
+    if (result.error) {
+      const coreProjectionError = result.error;
+      result = await load(CATEGORY_DISPLAY_FIELDS);
+      if (result.error) {
+        console.error('Public event categories could not be loaded', {
+          code: result.error.code,
+          message: result.error.message,
+          fullProjectionCode: fullProjectionError.code,
+          coreProjectionCode: coreProjectionError.code,
+        });
+        return [] as CategoryRow[];
+      }
+      console.warn('Public event category labels loaded with display fields only; category migrations may be pending.', {
+        code: fullProjectionError.code,
+        coreProjectionCode: coreProjectionError.code,
+      });
+    } else {
+      console.warn('Public event categories loaded with core fields; optional category migrations may be pending.', { code: fullProjectionError.code });
+    }
+  }
+
+  return ((result.data ?? []) as unknown as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    event_id: String(row.event_id),
+    name: String(row.name ?? ''),
+    category_group_name: typeof row.category_group_name === 'string' ? row.category_group_name : null,
+    distance_km: row.distance_km == null ? null : Number(row.distance_km),
+    registration_fee: Number(row.registration_fee ?? 0),
+    early_bird_fee: row.early_bird_fee == null ? null : Number(row.early_bird_fee),
+    early_bird_deadline: typeof row.early_bird_deadline === 'string' ? row.early_bird_deadline : null,
+    max_slots: row.max_slots == null ? null : Number(row.max_slots),
+    confirmed_count: Number(row.confirmed_count ?? 0),
+    registration_availability: String(row.registration_availability ?? 'not_yet_open'),
+    gun_start_time: typeof row.gun_start_time === 'string' ? row.gun_start_time : null,
+    cutoff_time: typeof row.cutoff_time === 'string' ? row.cutoff_time : null,
+  }));
+}
 
 async function getVisibleEvent(identifier: string) {
   const admin = createAdminClient();
@@ -47,8 +104,7 @@ async function getVisibleEvent(identifier: string) {
   return (bySlug.data as unknown as EventRow | null) ?? null;
 }
 async function categoriesForEvent(eventId: string) {
-  const { data } = await createAdminClient().from('race_categories').select('id,event_id,name,distance_km,registration_fee,early_bird_fee,early_bird_deadline,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').eq('event_id', eventId).order('distance_km', { ascending: true, nullsFirst: false }).order('name');
-  return (data ?? []) as CategoryRow[];
+  return loadCardCategories(createAdminClient() as unknown as SupabaseClient, [eventId]);
 }
 async function organizerForEvent(organizationId: string) {
   const { data } = await createAdminClient().from('organizations').select('name,slug,logo_url,description,website,social_links').eq('id', organizationId).maybeSingle();
@@ -62,6 +118,7 @@ function card(event: EventRow, categories: CategoryRow[], organizer: { name: str
   ) && (category.max_slots === null || category.confirmed_count < category.max_slots));
   const fees = availableCategories.map((category) => getCategoryPricing(category).amount).filter(Number.isFinite);
   const distances = Array.from(new Set(categories.map((category) => category.distance_km).filter((value): value is number => value !== null)));
+  const categoryLabels = categories.map((category) => ({ name: category.category_group_name?.trim() || category.name.trim(), distance_km: category.distance_km }));
   const overallCapacityReached = event.overall_capacity !== null && categories.reduce((total, category) => total + category.confirmed_count, 0) >= event.overall_capacity;
   const categoryCapacityReached = categories.length > 0 && categories.every((category) => category.registration_availability === 'sold_out' || (category.max_slots !== null && category.confirmed_count >= category.max_slots));
   const availability = overallCapacityReached || categoryCapacityReached ? 'sold_out' : eventAvailability;
@@ -70,7 +127,7 @@ function card(event: EventRow, categories: CategoryRow[], organizer: { name: str
   const finalAvailability = closingSoon ? 'closing_soon' : availability;
   const registrationEnabled = event.lifecycle_status !== 'completed' && ['open', 'closing_soon'].includes(finalAvailability) && availableCategories.length > 0 && !overallCapacityReached;
   const priceAvailable = event.lifecycle_status !== 'completed' && !['closed', 'sold_out'].includes(finalAvailability);
-  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer, social_links: event.social_links, distances, registration_availability: finalAvailability, registration_closes_at: event.registration_closes_at, starting_registration_fee: priceAvailable && fees.length ? Math.min(...fees) : null, registration_enabled: registrationEnabled, event_status: event.lifecycle_status ?? null, results_available: false, poster_fallback: false, event_period: 'upcoming' };
+  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, event_date: event.event_date, venue: event.venue, address: event.address, organizer, social_links: event.social_links, distances, category_labels: categoryLabels, registration_availability: finalAvailability, registration_closes_at: event.registration_closes_at, starting_registration_fee: priceAvailable && fees.length ? Math.min(...fees) : null, registration_enabled: registrationEnabled, event_status: event.lifecycle_status ?? null, results_available: false, poster_fallback: false, event_period: 'upcoming' };
 }
 export const effectiveAvailability = effectiveRegistrationAvailability;
 function extractTagline(description: string | null) {
@@ -113,8 +170,8 @@ export async function getHomepagePublicEvents(): Promise<HomepagePublicEventsDat
   const missingBannerIds = rows.filter((event) => !event.banner_url).map((event) => event.id);
   const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
 
-  const [categoryPages, organizationPages, resultPages, imagePages] = await Promise.all([
-    Promise.all(chunks(eventIds, 250).map((ids) => admin.from('race_categories').select('id,event_id,name,distance_km,registration_fee,early_bird_fee,early_bird_deadline,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').in('event_id', ids).order('distance_km', { ascending: true, nullsFirst: false }).order('name'))),
+  const [categories, organizationPages, resultPages, imagePages] = await Promise.all([
+    Promise.all(chunks(eventIds, 250).map((ids) => loadCardCategories(admin, ids))).then((pages) => pages.flat()),
     Promise.all(chunks(organizationIds, 250).map((ids) => admin.from('organizations').select('id,name,logo_url').in('id', ids))),
     // This runs only on the server and returns a boolean per event. Use the
     // server client so an anonymous grant/RLS mismatch cannot hide the event
@@ -122,16 +179,13 @@ export async function getHomepagePublicEvents(): Promise<HomepagePublicEventsDat
     Promise.all(chunks(eventIds, 250).map((ids) => admin.from('result_batches').select('event_id').in('event_id', ids).eq('publication_status', 'published'))),
     Promise.all(chunks(missingBannerIds, 250).map((ids) => db.from('event_content_images').select('event_id,image_url,display_order').in('event_id', ids).order('display_order', { ascending: true }))),
   ]);
-  const categoryError = categoryPages.find((page) => page.error)?.error;
   const organizationError = organizationPages.find((page) => page.error)?.error;
-  if (categoryError) console.error('Homepage event categories could not be loaded', { code: categoryError.code, message: categoryError.message });
   if (organizationError) console.error('Homepage event organizers could not be loaded', { code: organizationError.code, message: organizationError.message });
   const resultError = resultPages.find((page) => page.error)?.error;
   if (resultError) console.error('Homepage published-result availability could not be loaded', { code: resultError.code, message: resultError.message });
   const imageError = imagePages.find((page) => page.error)?.error;
   if (imageError) console.error('Homepage event poster fallbacks could not be loaded', { code: imageError.code, message: imageError.message });
 
-  const categories = categoryPages.flatMap((page) => page.data ?? []) as CategoryRow[];
   const organizations = organizationPages.flatMap((page) => page.data ?? []);
   const resultEventIds = new Set(resultPages.flatMap((page) => page.error ? [] : page.data ?? []).map((batch) => batch.event_id));
   const posterByEvent = new Map<string, string>();
@@ -235,21 +289,20 @@ export async function getPublicEvents(input: { search?: string; location?: strin
   const eventIds = rows.map((event) => event.id);
   const missingBannerIds = rows.filter((event) => !event.banner_url).map((event) => event.id);
   const organizationIds = Array.from(new Set(rows.map((event) => event.organization_id)));
-  const [{ data: categoryRows, error: categoryError }, { data: organizationRows, error: organizationError }, { data: resultBatches, error: resultError }, { data: posterRows, error: posterError }] = await Promise.all([
-    eventIds.length ? admin.from('race_categories').select('id,event_id,name,distance_km,registration_fee,early_bird_fee,early_bird_deadline,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time').in('event_id', eventIds).order('distance_km', { ascending: true, nullsFirst: false }).order('name') : Promise.resolve({ data: [], error: null }),
+  const [{ data: organizationRows, error: organizationError }, { data: resultBatches, error: resultError }, { data: posterRows, error: posterError }, categoryRows] = await Promise.all([
     organizationIds.length ? admin.from('organizations').select('id,name,slug,logo_url,description,website,social_links').in('id', organizationIds) : Promise.resolve({ data: [], error: null }),
     eventIds.length ? admin.from('result_batches').select('event_id').in('event_id', eventIds).eq('publication_status', 'published') : Promise.resolve({ data: [], error: null }),
     missingBannerIds.length ? (admin as unknown as SupabaseClient).from('event_content_images').select('event_id,image_url,display_order').in('event_id', missingBannerIds).order('display_order').order('created_at') : Promise.resolve({ data: [], error: null }),
+    loadCardCategories(admin as unknown as SupabaseClient, eventIds),
   ]);
   // Event cards must remain browsable even if supporting metadata is temporarily
   // unavailable. Categories and organizer profiles are optional card details;
   // the published event row remains the source of truth for each card.
-  if (categoryError) console.error('Public event categories could not be loaded', { code: categoryError.code, message: categoryError.message });
   if (organizationError) console.error('Public event organizer profiles could not be loaded', { code: organizationError.code, message: organizationError.message });
   if (resultError) console.error('Public event result status could not be loaded', { code: resultError.code, message: resultError.message });
   if (posterError) console.error('Public event poster images could not be loaded', { code: posterError.code, message: posterError.message });
   const categoriesByEvent = new Map<string, CategoryRow[]>();
-  for (const category of (categoryRows ?? []) as CategoryRow[]) categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
+  for (const category of categoryRows) categoriesByEvent.set(category.event_id, [...(categoriesByEvent.get(category.event_id) ?? []), category]);
   const organizationsById = new Map((organizationRows ?? []).map((organization) => [organization.id, organization]));
   const resultEventIds = new Set((resultBatches ?? []).map((batch) => batch.event_id));
   const postersByEvent = new Map<string, string>();
