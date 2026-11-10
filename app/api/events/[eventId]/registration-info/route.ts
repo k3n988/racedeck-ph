@@ -22,8 +22,6 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     return jsonNoStore({ error: 'Event registration details could not be loaded. Please try again.' }, { status: 500 });
   }
   if (!event) return jsonNoStore({ error: 'Event not found' }, { status: 404 });
-  const { data: organization, error: organizationError } = await admin.from('organizations').select('name').eq('id', event.organization_id).maybeSingle();
-  if (organizationError) return jsonNoStore({ error: 'Event organizer details could not be loaded. Please try again.' }, { status: 500 });
   const readRegistrationFields = async () => {
     const fields = await admin.from('event_registration_fields')
       .select('id,label,field_type,section_key,is_required,display_order,event_registration_field_options(id,label,value,display_order)')
@@ -48,20 +46,28 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
 
     return fields;
   };
+  const readKits = async () => {
+    const configs = await admin.from('race_kit_configs').select('id,event_id,category_id,name,status').eq('event_id', params.eventId).eq('status', 'active').order('created_at');
+    if (configs.error || !configs.data?.length) return { data: configs.data, error: configs.error, items: [], itemsError: null };
+    const items = await admin.from('race_kit_items').select('id,config_id,item_name,details,is_required,is_active,display_order').in('config_id', configs.data.map((config) => config.id)).eq('is_active', true).order('display_order');
+    return { data: configs.data, error: configs.error, items: items.data, itemsError: items.error };
+  };
 
-  const [{ data: categories, error: categoriesError }, { data: fields, error: fieldsError }, { data: waiver, error: waiverError }, { data: kitConfigs, error: kitConfigsError }, { data: merchandise, error: merchandiseError }] = await Promise.all([
+  const [{ data: organization, error: organizationError }, { data: categories, error: categoriesError }, { data: fields, error: fieldsError }, { data: waiver, error: waiverError }, kitsResult, { data: merchandise, error: merchandiseError }] = await Promise.all([
+    admin.from('organizations').select('name').eq('id', event.organization_id).maybeSingle(),
     getRaceCategoryRows(admin, params.eventId),
     readRegistrationFields(),
     admin.from('event_waivers').select('id,title,version,content,content_storage_reference,effective_at').eq('event_id', params.eventId).eq('status', 'published').maybeSingle(),
-    // Read kit configs and items separately. This avoids depending on a cached
-    // PostgREST embedded relationship and preserves the category_id linkage.
-    admin.from('race_kit_configs').select('id,event_id,category_id,name,status').eq('event_id', params.eventId).eq('status', 'active').order('created_at'),
+    // Read kit configs and items together as one promise so item loading overlaps
+    // with the other event registration queries.
+    readKits(),
     admin.from('event_merchandise').select('id,name,description,unit_price,variants,image_urls,display_order').eq('event_id', params.eventId).eq('is_active', true).order('display_order'),
   ]);
-  const kitConfigIds = (kitConfigs ?? []).map((config) => config.id);
-  const { data: kitItems, error: kitItemsError } = kitConfigIds.length
-    ? await admin.from('race_kit_items').select('id,config_id,item_name,details,is_required,is_active,display_order').in('config_id', kitConfigIds).eq('is_active', true).order('display_order')
-    : { data: [], error: null };
+  if (organizationError) return jsonNoStore({ error: 'Event organizer details could not be loaded. Please try again.' }, { status: 500 });
+  const kitConfigs = kitsResult.data;
+  const kitConfigsError = kitsResult.error;
+  const kitItems = kitsResult.items;
+  const kitItemsError = kitsResult.itemsError;
   if (categoriesError || fieldsError || waiverError || kitConfigsError || kitItemsError || merchandiseError) {
     console.error('Unable to load registration options', { categoriesError, fieldsError, waiverError, kitConfigsError, kitItemsError, merchandiseError });
     const diagnostics = process.env.NODE_ENV === 'development' ? {
@@ -105,5 +111,16 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
       confirmed_count: category.confirmed_count,
     };
   });
-  return jsonNoStore({ event: { ...event, organizer_name: organization?.name ?? 'the event organizer', registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
+  let bannerUrl = event.banner_url;
+  if (!bannerUrl) {
+    const { data: poster } = await admin.from('event_content_images')
+      .select('image_url')
+      .eq('event_id', params.eventId)
+      .order('display_order')
+      .order('created_at')
+      .limit(1)
+      .maybeSingle();
+    bannerUrl = poster?.image_url ?? null;
+  }
+  return jsonNoStore({ event: { ...event, banner_url: bannerUrl, organizer_name: organization?.name ?? 'the event organizer', registration_availability: overallCapacityReached ? 'sold_out' : availability }, categories: publicCategories, fields: fields ?? [], kits: kits ?? [], merchandise: merchandise ?? [], waiver: waiver ?? null });
 }

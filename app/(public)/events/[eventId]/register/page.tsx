@@ -3,9 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { CalendarDays, Clock3, LockKeyhole, MapPin, Pencil, PhoneCall, ShoppingCart, Tag, Users, Zap } from "lucide-react";
+import { CalendarDays, ChevronRight, Clock3, LockKeyhole, Pencil, PhoneCall, ShoppingCart, Tag, Users, Zap } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EMERGENCY_CONTACT_RELATIONSHIPS } from "@/lib/registrations/emergency-contact";
+import { EventBanner } from "@/components/public/event-banner";
 
 type Option = {
   id: string;
@@ -138,6 +139,20 @@ const manilaClockTime = (value: string | null) => {
   const [hours, minutes] = value.split(":").map(Number);
   if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return value;
   return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours >= 12 ? "PM" : "AM"}`;
+};
+const reviewAnswer = (field: Field, value: string) => {
+  if (field.field_type !== "multi_select") return value;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter((item): item is string => typeof item === "string").join(", ") || "—";
+    if (parsed && typeof parsed === "object") {
+      const answer = parsed as { selected?: unknown; other?: unknown };
+      const selected = Array.isArray(answer.selected) ? answer.selected.filter((item): item is string => typeof item === "string") : [];
+      if (typeof answer.other === "string" && answer.other.trim()) selected.push(answer.other.trim());
+      return selected.join(", ") || "—";
+    }
+  } catch { /* Display unstructured legacy answers as entered. */ }
+  return value;
 };
 
 function RegistrationEndsCountdown({ closesAt }: { closesAt: string | null }) {
@@ -309,6 +324,33 @@ function AnswerInput({
   );
 }
 
+function VariantChoiceGroup({
+  label,
+  name,
+  value,
+  variants,
+  required,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  variants: string[];
+  required: boolean;
+  onChange: (value: string) => void;
+}) {
+  return <fieldset className="mt-3 min-w-0">
+    <legend className="text-sm font-semibold text-slate-800">{label}{required && <span className="ml-1 text-orange-600">*</span>}</legend>
+    <div className="mt-2 flex flex-wrap gap-2">
+      {variants.map((variant, index) => <label key={`${variant}-${index}`} className="w-fit max-w-full cursor-pointer">
+        <input className="peer sr-only" type="radio" name={name} value={variant} checked={value === variant} required={required} onChange={() => onChange(variant)} />
+        <span className="flex min-h-11 min-w-[88px] max-w-full items-center justify-center rounded-lg border border-[#ed3b36] bg-white px-4 py-2 text-center text-sm font-medium text-slate-600 transition hover:bg-orange-50 peer-checked:bg-[#ed3b36] peer-checked:text-white peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-orange-500">{variant}</span>
+      </label>)}
+    </div>
+    {!required && value && <button type="button" onClick={() => onChange("")} className="mt-2 min-h-9 rounded-lg px-2 text-xs font-semibold text-slate-500 underline underline-offset-2 hover:text-slate-800">Clear size selection</button>}
+  </fieldset>;
+}
+
 function RegistrantFields({
   data,
   registrant,
@@ -321,7 +363,7 @@ function RegistrantFields({
   data: RegistrationInfo;
   registrant: RegistrantDraft;
   index: number;
-  step: 1 | 2 | 3;
+  step: 1 | 2 | 3 | 4;
   pricingNow: number;
   onChange: (value: Partial<RegistrantDraft>) => void;
   onRemove?: () => void;
@@ -385,10 +427,10 @@ function RegistrantFields({
 
   return (
     <article className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-3 rounded-md border-l-4 border-orange-500 bg-[#0b2b5b] px-4 py-3 text-sm font-bold text-white">
+      <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border-l-4 border-orange-500 bg-[#0b2b5b] px-3 py-3 text-sm font-bold text-white sm:items-center sm:px-4">
         <span>Registrant No. {index + 1}</span>
-        <div className="flex items-center gap-3">
-        <span className="text-xs font-medium text-white/80">{(() => { const selected = data.categories.find((category) => category.id === registrant.categoryId); return selected ? `${selected.category_group_name ? `${selected.category_group_name} · ` : ''}${selected.distance_km === null ? selected.name : `${selected.distance_km}K`}` : 'Choose a category to begin'; })()}</span>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+        <span className="min-w-0 break-words text-right text-xs font-medium text-white/80">{(() => { const selected = data.categories.find((category) => category.id === registrant.categoryId); return selected ? `${selected.category_group_name ? `${selected.category_group_name} · ` : ''}${selected.distance_km === null ? selected.name : `${selected.distance_km}K`}` : 'Choose a category to begin'; })()}</span>
           {onRemove && <button type="button" onClick={onRemove} className="rounded-md border border-white/40 px-2.5 py-1 text-xs font-bold text-white hover:bg-white/10">Remove</button>}
         </div>
       </div>
@@ -454,7 +496,7 @@ function RegistrantFields({
           <h2 className="text-lg font-bold text-slate-900">Included race kit</h2><p className="mt-1 text-sm text-slate-600">Items configured for this selected category. Select a size or option for every item that offers choices.</p>
           <div className="mt-4 space-y-3">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
-              {details.variants.length > 0 && <label className="mt-3 block text-sm font-semibold text-slate-800">{item.item_name.trim().toLowerCase() === "race kit claiming" ? "Claiming place" : "Size / option"} {item.is_required ? <span className="text-orange-600">*</span> : <span className="text-xs font-normal text-slate-500">(optional)</span>}<select required={item.is_required} value={registrant.kitSelections[item.id] ?? ""} onChange={(event) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: event.target.value } })} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">{item.item_name.trim().toLowerCase() === "race kit claiming" ? "Select a claiming place" : "Choose a size or option"}</option>{details.variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
+              {details.variants.length > 0 && <VariantChoiceGroup label={item.item_name.trim().toLowerCase() === "race kit claiming" ? "Claiming place" : "Size / option"} name={`kit-${registrant.id}-${item.id}`} value={registrant.kitSelections[item.id] ?? ""} variants={details.variants} required={item.is_required} onChange={(value) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: value } })} />}
             </div>
             {details.images.length > 0 && <ProductImageCarousel images={details.images} label={item.item_name} />}
           </article>; })}</div>
@@ -465,7 +507,7 @@ function RegistrantFields({
           <div className="mt-4 space-y-3">{data.merchandise.map((item) => { const selection = registrant.merchandiseSelections[item.id] ?? { quantity: 0, variant: "" }; const selected = selection.quantity > 0; const variants = item.variants ?? []; const images = item.image_urls ?? []; const checkboxId = `merch-${registrant.id}-${item.id}`; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.name}</h3><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-800">Optional</span></div>{item.description && <p className="mt-1 text-sm text-slate-600">{item.description}</p>}<p className="mt-2 text-sm font-bold text-[#071b41]">{peso(item.unit_price)} each</p>
               <label htmlFor={checkboxId} className="mt-3 inline-flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input id={checkboxId} type="checkbox" checked={selected} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { quantity: event.target.checked ? 1 : 0, variant: event.target.checked ? selection.variant : "" } } })} className="h-4 w-4 accent-orange-600" />Add to order</label>
-              {selected && variants.length > 0 && <label className="mt-2 block text-sm font-semibold text-slate-800">Size / variant <span className="text-orange-600">*</span><select required value={selection.variant} onChange={(event) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant: event.target.value } } })} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Choose a size or option</option>{variants.map((variant) => <option key={variant}>{variant}</option>)}</select></label>}
+              {selected && variants.length > 0 && <VariantChoiceGroup label="Size / variant" name={`merch-${registrant.id}-${item.id}`} value={selection.variant} variants={variants} required onChange={(variant) => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, variant } } })} />}
               {selected && <div className="mt-2 flex items-center gap-3"><span className="text-sm text-slate-600">Quantity</span><div className="inline-flex items-center rounded-lg border border-slate-300" aria-label={`Quantity for ${item.name}`}><button type="button" aria-label={`Remove one ${item.name}`} disabled={selection.quantity <= 1} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity - 1 } } })} className="h-9 w-9 rounded-l-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">−</button><span aria-live="polite" className="min-w-8 text-center text-sm font-semibold text-slate-900">{selection.quantity}</span><button type="button" aria-label={`Add one ${item.name}`} disabled={selection.quantity >= 5} onClick={() => onChange({ merchandiseSelections: { ...registrant.merchandiseSelections, [item.id]: { ...selection, quantity: selection.quantity + 1 } } })} className="h-9 w-9 rounded-r-lg text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">+</button></div><span className="text-sm font-semibold text-slate-700">{peso(item.unit_price * selection.quantity)}</span></div>}
             </div>
             {images[0] && <Image src={images[0]} alt={`${item.name} product`} width={480} height={480} unoptimized className="h-auto max-h-64 w-full max-w-[200px] justify-self-center object-contain sm:justify-self-end" />}
@@ -493,7 +535,7 @@ export default function RegisterPage({
   const [acceptPlatformTerms, setAcceptPlatformTerms] = useState(false);
   const [message, setMessage] = useState("Loading registration details...");
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [pricingNow, setPricingNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -584,6 +626,12 @@ export default function RegisterPage({
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
+    if (step === 3) {
+      setMessage("");
+      setStep(4);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     if (registrants.some((registrant) => !registrant.categoryId)) {
       setMessage("Choose a race category for each registrant before continuing.");
       return;
@@ -665,24 +713,19 @@ export default function RegisterPage({
 
   if (!data)
     return (
-      <main className="mx-auto max-w-3xl p-6">
-        <Link
-          href={`/events/${params.eventId}`}
-          className="text-sm font-semibold text-orange-600"
-        >
-          ← Back to event
-        </Link>
-        <p
-          role="status"
-          className="mt-6 rounded-xl border border-slate-200 p-5 text-sm text-slate-600"
-        >
-              {message}{registrationReference && <> Reference: <strong>{registrationReference}</strong>.</>}
-        </p>
-        {message !== "Loading registration details..." && (
-          <button type="button" onClick={() => { setMessage("Loading registration details..."); setLoadAttempt((attempt) => attempt + 1); }} className="mt-3 rounded-lg bg-[#0b2b5b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123b78]">
-            Try again
-          </button>
-        )}
+      <main className="min-h-[60vh] bg-slate-100 px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
+        <div className="mx-auto max-w-6xl">
+          <Link href={`/events/${params.eventId}`} className="text-sm font-semibold text-orange-600 hover:text-orange-700">← Back to event</Link>
+          {message === "Loading registration details..." ? <div role="status" aria-live="polite" aria-busy="true" aria-label="Loading registration details" className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="h-28 animate-pulse bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 motion-reduce:animate-none sm:h-40" />
+            <div className="space-y-5 p-4 sm:p-6">
+              <div className="space-y-3"><div className="h-3 w-52 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" /><div className="h-8 max-w-lg animate-pulse rounded bg-slate-200 motion-reduce:animate-none" /><div className="h-4 w-64 max-w-full animate-pulse rounded bg-slate-100 motion-reduce:animate-none" /></div>
+              <div className="rounded-xl border border-slate-200 p-4 sm:p-5"><div className="mb-4 flex justify-end"><span className="h-3 w-20 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" /></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="flex items-center gap-2"><span className="h-6 w-6 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none" /><span className="h-3 flex-1 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" /></div>)}</div><div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-1/4 animate-pulse rounded-full bg-orange-400 motion-reduce:animate-none" /></div></div>
+              <div className="space-y-4 rounded-2xl border border-slate-200 p-4 sm:p-6"><div className="h-5 w-48 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" /><div className="grid gap-4 sm:grid-cols-2">{[0, 1].map((item) => <div key={item} className="h-36 animate-pulse rounded-xl border border-slate-100 bg-slate-50 motion-reduce:animate-none" />)}</div><div className="grid gap-4 sm:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="h-11 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none" />)}</div></div>
+              <p className="text-center text-sm text-slate-500">Loading event registration…</p>
+            </div>
+          </div> : <div role="alert" className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm text-slate-700">{message}{registrationReference && <> Reference: <strong>{registrationReference}</strong>.</>}</p><button type="button" onClick={() => { setMessage("Loading registration details..."); setLoadAttempt((attempt) => attempt + 1); }} className="mt-3 rounded-lg bg-[#0b2b5b] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123b78]">Try again</button></div>}
+        </div>
       </main>
     );
   const selectedTotal = registrants.reduce((total, registrant) => {
@@ -723,31 +766,15 @@ export default function RegisterPage({
         ← Back to event details
       </Link>
       <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="relative h-32 bg-slate-100 sm:h-44">
-          {data.event.banner_url ? (
-            <Image
-              src={data.event.banner_url}
-              alt={`${data.event.name} banner`}
-              fill
-              unoptimized
-              sizes="(max-width: 768px) 100vw, 1152px"
-              className="object-cover"
-            />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-r from-[#071b41] via-[#102b58] to-[#a7421c]" />
-          )}
-        </div>
+        <EventBanner eventName={data.event.name} imageUrl={data.event.banner_url} />
       </div>
       <div className="mt-5">
         <section className="min-w-0">
-          <header>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">
-              RaceDeck PH · Participant registration
-            </p>
-            <h1 className="mt-1 text-2xl font-extrabold text-[#071b41] sm:text-3xl">
-              Register for {data.event.name}
+          <header className="text-center">
+            <h1 className="text-2xl font-extrabold text-[#071b41] sm:text-3xl">
+              {data.event.name}
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600">
               {data.event.event_date} •{" "}
               {data.event.venue ??
                 data.event.address ??
@@ -755,22 +782,22 @@ export default function RegisterPage({
             </p>
           </header>
           <div className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-4 sm:px-6">
-            <p className="mb-3 text-right text-xs font-semibold text-slate-500">Step {step} of 3</p>
-            <ol aria-label="Registration progress" className="grid grid-cols-3 gap-2">
-              {(["Category & Information", "Waiver Agreement", "Payment"] as const).map((label, index) => {
-                const itemStep = (index + 1) as 1 | 2 | 3;
+            <ol aria-label="Registration progress" className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-4 sm:gap-y-0">
+              {(["Category & Information", "Waiver Agreement", "Review", "Payment"] as const).map((label, index) => {
+                const itemStep = (index + 1) as 1 | 2 | 3 | 4;
                 const isCurrent = step === itemStep;
                 const isComplete = step > itemStep;
                 return (
-                  <li key={label} aria-current={isCurrent ? "step" : undefined} className={`flex min-w-0 items-center gap-1.5 text-[10px] font-semibold sm:gap-2 sm:text-sm ${isCurrent || isComplete ? "text-slate-800" : "text-slate-500"}`}>
-                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white sm:h-6 sm:w-6 sm:text-xs ${isCurrent || isComplete ? "bg-orange-500" : "bg-slate-500"}`}>{isComplete ? "✓" : itemStep}</span>
-                    <span className="leading-tight">{label}</span>
+                  <li key={label} aria-current={isCurrent ? "step" : undefined} className="relative flex min-w-0 items-center justify-start gap-2 sm:justify-center">
+                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold transition-colors ${isCurrent || isComplete ? "bg-[#ed3b36] text-white" : "bg-slate-500 text-white"}`}>{isComplete ? "✓" : itemStep}</span>
+                    <span className={`min-w-0 text-xs leading-tight sm:text-sm ${isCurrent ? "font-bold text-[#071b41]" : isComplete ? "font-semibold text-slate-700" : "font-medium text-slate-500"}`}>{label}</span>
+                    {index < 3 && <ChevronRight aria-hidden="true" className="absolute -right-2 top-1/2 hidden h-4 w-4 -translate-y-1/2 text-slate-300 sm:block" />}
                   </li>
                 );
               })}
             </ol>
-            <div role="progressbar" aria-label="Registration progress" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full rounded-full bg-orange-500 transition-[width] duration-300" style={{ width: `${(step / 3) * 100}%` }} />
+            <div role="progressbar" aria-label="Registration progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step} className="relative mt-3 h-5 overflow-hidden rounded-full bg-slate-200">
+              <div className="flex h-full items-center justify-center rounded-full bg-[#ed3b36] transition-[width] duration-300" style={{ width: `${(step / 4) * 100}%` }}><span className="whitespace-nowrap px-1 text-[10px] font-semibold leading-none text-white sm:text-xs">Step {step} of 4</span></div>
             </div>
           </div>
           {!anyCategoryAvailable && data.categories.length > 0 && <div role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"><p className="font-bold">Registration is unavailable</p><p>{data.categories[0]?.availability_reason || registrationAvailabilityMessage(data.event)}</p></div>}
@@ -815,20 +842,22 @@ export default function RegisterPage({
                 </div>
               </div>
 
-              <fieldset className="mx-auto w-full max-w-5xl space-y-3">
+              <fieldset className="mx-auto w-full max-w-5xl px-4 sm:px-5">
                 <legend className="sr-only">Required agreements</legend>
-                <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
-                  <input type="checkbox" checked={allWaiversAccepted} onChange={(event) => setRegistrants((current) => current.map((registrant) => ({ ...registrant, acceptWaiver: event.target.checked })))} className="h-5 w-5 shrink-0 accent-slate-500" />
-                  <span>I Agree</span>
-                </label>
-                <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
-                  <input type="checkbox" checked={acceptPlatformTerms} onChange={(event) => setAcceptPlatformTerms(event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-500" />
-                  <span>I agree to the <Link href="/legal/terms" target="_blank" rel="noreferrer" className="text-indigo-500 underline underline-offset-2">Platform Disclaimer and Terms and Conditions</Link>.</span>
-                </label>
+                <div className="mx-auto w-full max-w-[78ch] space-y-3">
+                  <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
+                    <input type="checkbox" checked={allWaiversAccepted} onChange={(event) => setRegistrants((current) => current.map((registrant) => ({ ...registrant, acceptWaiver: event.target.checked })))} className="h-5 w-5 shrink-0 accent-slate-500" />
+                    <span className="min-w-0 break-words">I Agree</span>
+                  </label>
+                  <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-600 transition hover:border-slate-300">
+                    <input type="checkbox" checked={acceptPlatformTerms} onChange={(event) => setAcceptPlatformTerms(event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-500" />
+                    <span className="min-w-0 break-words">I agree to the <Link href="/legal/terms" target="_blank" rel="noreferrer" className="text-indigo-500 underline underline-offset-2">Platform Disclaimer and Terms and Conditions</Link>.</span>
+                  </label>
+                </div>
               </fieldset>
 
             </section>}
-            {step === 3 && <section aria-labelledby="payment-review-heading" className="mx-auto grid w-full max-w-7xl items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] lg:gap-6">
+            {step === 3 && <section aria-labelledby="payment-review-heading" className="mx-auto w-full max-w-5xl space-y-4">
               <div className="min-w-0 space-y-4">
                 <header className="px-1 pb-1">
                   <h2 id="payment-review-heading" className="text-xl font-extrabold text-[#071b41] sm:text-2xl">Review your registration</h2>
@@ -847,9 +876,10 @@ export default function RegisterPage({
                         .flatMap((kitConfig) => kitConfig.race_kit_items ?? [])
                         .filter((item) => item.is_active)
                         .sort((a, b) => a.display_order - b.display_order);
+                      const selectedKitOptions = includedItems.filter((item) => registrant.kitSelections[item.id]);
                       const label = category?.distance_km ? `${category.distance_km}K` : category?.name ?? "Race category";
                       return <article key={registrant.id} className="grid gap-3 rounded-xl border border-orange-200 bg-orange-50/40 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                        <div className="min-w-0"><p className="font-bold text-slate-900">{registrants.length > 1 ? `Participant ${index + 1} · ` : ""}{label}</p><p className="mt-1 text-sm font-semibold text-orange-700">{peso(amount)}{earlyBird ? " · Early bird" : ""}</p><div className="mt-3 text-xs text-slate-600"><p className="font-semibold">INCLUSIONS</p>{includedItems.length > 0 ? <ul className="mt-1 list-inside list-disc">{includedItems.map((item) => <li key={item.id}>{item.item_name}</li>)}</ul> : <p className="mt-1">No kit inclusions listed for this category.</p>}</div></div>
+                        <div className="min-w-0"><p className="font-bold text-slate-900">{registrants.length > 1 ? `Participant ${index + 1} · ` : ""}{label}</p><p className="mt-1 text-sm font-semibold text-orange-700">{peso(amount)}{earlyBird ? " · Early bird" : ""}</p><div className="mt-3 text-xs text-slate-600"><p className="font-semibold">INCLUSIONS</p>{includedItems.length > 0 ? <ul className="mt-1 list-inside list-disc">{includedItems.map((item) => <li key={item.id}>{item.item_name}</li>)}</ul> : <p className="mt-1">No kit inclusions listed for this category.</p>}{selectedKitOptions.length > 0 && <><p className="mt-2 font-semibold">YOUR KIT SELECTIONS</p><ul className="mt-1 list-inside list-disc">{selectedKitOptions.map((item) => <li key={item.id}>{item.item_name}: {registrant.kitSelections[item.id]}</li>)}</ul></>}</div></div>
                         <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm sm:min-w-40"><p className="flex items-center gap-2 font-semibold text-[#071b41]"><CalendarDays className="h-4 w-4" aria-hidden="true" />Race Schedule</p><p className="mt-2 font-semibold text-slate-800">{manilaShortDate(data.event.event_date)}</p><p className="mt-1 text-xs text-slate-500">Event date</p><p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />Assembly: {manilaClockTime(data.event.assembly_time)}</p></div>
                       </article>;
                     })}
@@ -861,6 +891,7 @@ export default function RegisterPage({
                   <div className="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{registrants.map((registrant, index) => <div key={registrant.id} className="contents">
                     {registrants.length > 1 && <p className="col-span-full border-t border-slate-100 pt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Participant {index + 1}</p>}
                     {[ ["First name", "first_name"], ["Middle name", "middle_name"], ["Last name", "last_name"], ["Birthdate", "birthdate"], ["Gender", "gender"], ["Email", "email"], ["Contact number", "contact_number"], ["Address", "address"] ].map(([label, key]) => <div key={key} className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-medium text-slate-800">{registrant.answers[key] || "—"}</p></div>)}
+                    {data.fields.filter((field) => registrant.answers[field.id]).map((field) => <div key={field.id} className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{field.label}</p><p className="mt-1 break-words text-sm font-medium text-slate-800">{reviewAnswer(field, registrant.answers[field.id])}</p></div>)}
                   </div>)}</div>
                 </section>
 
@@ -874,38 +905,53 @@ export default function RegisterPage({
                   <div className="mt-3 space-y-2">{registrants.map((registrant, index) => <p key={registrant.id} className="break-words text-sm leading-6 text-slate-700">{registrants.length > 1 && <strong className="text-slate-900">Participant {index + 1}: </strong>}<strong className="font-semibold text-slate-900">{registrant.answers.emergency_contact || "—"}</strong><span> · {registrant.answers.emergency_contact_phone || "—"} · {registrant.answers.emergency_contact_relationship || "—"}</span></p>)}</div>
                 </section>
 
-                {registrationSaved && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><p className="font-bold">Registration details saved</p><p>{message}</p>{registrationReference && <p className="mt-1">Reference: <strong>{registrationReference}</strong></p>}{registrationHref && <Link href={registrationHref} className="mt-2 inline-block font-semibold text-orange-800 underline underline-offset-2">Open My Races</Link>}</div>}
               </div>
 
-              <aside aria-labelledby="order-summary-heading" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-6">
-                <h3 id="order-summary-heading" className="flex items-center gap-2 border-b border-slate-100 pb-3 text-lg font-bold text-[#071b41]"><ShoppingCart className="h-5 w-5" aria-hidden="true" />Order Summary</h3>
-                <div className="mt-4 flex gap-3">{data.event.banner_url && <Image src={data.event.banner_url} alt={`${data.event.name} event banner`} width={100} height={100} unoptimized className="h-20 w-20 shrink-0 rounded-lg object-cover" />}<div className="min-w-0"><p className="break-words font-bold leading-5 text-[#071b41]">{data.event.name}</p><p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600"><CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{manilaShortDate(data.event.event_date)}</p><p className="mt-1 flex items-start gap-1.5 text-xs text-slate-600"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{data.event.venue ?? data.event.address ?? "Venue to be announced"}</span></p></div></div>
-                <div className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-[#0b2b5b]"><Users className="h-4 w-4" aria-hidden="true" />{registrants.length} Participant{registrants.length === 1 ? "" : "s"}</div>
-                <div className="mt-3 rounded-lg border border-slate-200 p-3"><p className="text-xs font-medium text-slate-500">Registration ends in</p><RegistrationEndsCountdown closesAt={selectedCategories.map((category) => category?.registration_closes_at).filter((value): value is string => Boolean(value)).sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? data.event.registration_closes_at} /></div>
-                <div className="mt-4 space-y-2 border-b border-slate-100 pb-4">{registrants.map((registrant, index) => { const category = data.categories.find((item) => item.id === registrant.categoryId); const earlyBird = Boolean(category?.early_bird_fee !== null && category?.early_bird_fee !== undefined && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > pricingNow); const categoryAmount = Number(earlyBird ? category?.early_bird_fee : category?.regular_registration_fee ?? category?.registration_fee ?? 0); const categoryName = category?.distance_km ? `${category.distance_km}K Registration` : `${category?.name ?? "Registration"}`; return <Fragment key={registrant.id}><div className="flex justify-between gap-3 text-sm"><span className="min-w-0 break-words">{registrants.length > 1 ? `Participant ${index + 1} · ` : ""}{categoryName}{earlyBird ? " · Early bird" : ""}</span><span className="shrink-0">{peso(categoryAmount)}</span></div>{data.merchandise.filter((item) => (registrant.merchandiseSelections[item.id]?.quantity ?? 0) > 0).map((item) => <div key={item.id} className="flex justify-between gap-3 text-sm text-slate-600"><span className="min-w-0 break-words">{item.name} × {registrant.merchandiseSelections[item.id].quantity}</span><span className="shrink-0">{peso(item.unit_price * registrant.merchandiseSelections[item.id].quantity)}</span></div>)}</Fragment>; })}</div>
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-orange-50 px-3 py-3 text-base font-extrabold text-orange-700"><span>Total</span><span>{peso(selectedTotal)}</span></div>
-                <div className="mt-3 flex gap-2"><label className="sr-only" htmlFor="registration-promo-code">Promo code</label><div className="relative min-w-0 flex-1"><Tag className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input id="registration-promo-code" value={promoCode} onChange={(event) => { setPromoCode(event.target.value.toUpperCase()); setPromoStatus(""); }} maxLength={64} autoComplete="off" placeholder="Enter promo code" className="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></div><button type="button" onClick={() => setPromoStatus(promoCode.trim() ? "This code will be checked when secure checkout starts." : "Enter a promo code first.")} className="min-h-10 rounded-lg border border-[#0b2b5b] px-3 text-sm font-semibold text-[#0b2b5b] hover:bg-blue-50">Apply</button></div>
-                {promoStatus && <p role="status" className="mt-1 text-xs leading-5 text-slate-500">{promoStatus}</p>}
-                <p className="mt-2 text-xs leading-5 text-slate-500">Promo codes are validated when checkout starts. Eligible discounts will be reflected in the payment amount.</p>
-                <div className="mt-4 space-y-2"><button type="submit" disabled={busy || registrationSaved || !selectedCategoriesAvailable || !canReviewPayment} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole className="h-4 w-4" aria-hidden="true" />{busy ? "Preparing secure checkout..." : "Pay & Complete Registration"}</button><button type="button" onClick={() => { setStep(2); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} disabled={busy || registrationSaved} className="min-h-11 w-full rounded-lg border border-[#0b2b5b] bg-white px-4 py-2.5 text-sm font-semibold text-[#0b2b5b] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">← Back to waiver</button></div>
-                <p className="mt-3 text-center text-xs leading-5 text-slate-500">You’ll continue to PayMongo. RaceDeck does not collect your card details.</p>
+            </section>}
+            {step === 4 && <section aria-labelledby="payment-checkout-heading" className="mx-auto grid w-full max-w-5xl items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+              <div className="space-y-4">
+                <header><h2 id="payment-checkout-heading" className="text-xl font-extrabold text-[#071b41] sm:text-2xl">Payment</h2><p className="mt-1 text-sm text-slate-600">Your participant details have been reviewed. Complete payment to finish registration.</p></header>
+                <section aria-labelledby="secure-payment-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h3 id="secure-payment-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><LockKeyhole className="h-5 w-5" aria-hidden="true" />Secure online checkout</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">You’ll continue to PayMongo to complete payment. RaceDeck does not collect your card details.</p>
+                  <div className="mt-4 flex flex-wrap gap-2" aria-label="Available payment methods"><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">GCash</span><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">Credit or debit card</span><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">Maya</span></div>
+                </section>
+                <section aria-labelledby="promo-code-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                  <h3 id="promo-code-heading" className="font-bold text-[#071b41]">Promo code <span className="font-normal text-slate-500">(optional)</span></h3>
+                  <p className="mt-1 text-sm text-slate-600">Apply a code before continuing to checkout.</p>
+                  <div className="mt-3 flex gap-2"><label className="sr-only" htmlFor="registration-promo-code">Promo code</label><div className="relative min-w-0 flex-1"><Tag className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input id="registration-promo-code" value={promoCode} onChange={(event) => { setPromoCode(event.target.value.toUpperCase()); setPromoStatus(""); }} maxLength={64} autoComplete="off" placeholder="Enter promo code" className="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></div><button type="button" onClick={() => setPromoStatus(promoCode.trim() ? "This code will be checked when secure checkout starts." : "Enter a promo code first.")} className="min-h-10 rounded-lg border border-[#0b2b5b] px-3 text-sm font-semibold text-[#0b2b5b] hover:bg-blue-50">Apply</button></div>
+                  {promoStatus && <p role="status" className="mt-2 text-xs leading-5 text-slate-500">{promoStatus}</p>}
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Promo codes are validated when checkout starts. Eligible discounts will be reflected in the payment amount.</p>
+                </section>
+                {registrationSaved && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><p className="font-bold">Registration details saved</p><p>{message}</p>{registrationReference && <p className="mt-1">Reference: <strong>{registrationReference}</strong></p>}{registrationHref && <Link href={registrationHref} className="mt-2 inline-block font-semibold text-orange-800 underline underline-offset-2">Open My Races</Link>}</div>}
+              </div>
+              <aside aria-label="Payment total" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
+                <h3 className="text-lg font-bold text-[#071b41]">Amount due</h3>
+                <p className="mt-1 text-sm text-slate-600">{registrants.length} participant{registrants.length === 1 ? "" : "s"} · {data.event.name}</p>
+                <div className="mt-4 space-y-2 border-y border-slate-100 py-4">{registrants.map((registrant, index) => { const category = data.categories.find((item) => item.id === registrant.categoryId); const earlyBird = Boolean(category?.early_bird_fee !== null && category?.early_bird_fee !== undefined && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > pricingNow); const categoryAmount = Number(earlyBird ? category?.early_bird_fee : category?.regular_registration_fee ?? category?.registration_fee ?? 0); const categoryName = category?.distance_km ? `${category.distance_km}K Registration` : `${category?.name ?? "Registration"}`; return <Fragment key={registrant.id}><div className="flex justify-between gap-3 text-sm"><span className="min-w-0 break-words">{registrants.length > 1 ? `Participant ${index + 1} · ` : ""}{categoryName}</span><span className="shrink-0">{peso(categoryAmount)}</span></div>{data.merchandise.filter((item) => (registrant.merchandiseSelections[item.id]?.quantity ?? 0) > 0).map((item) => <div key={item.id} className="flex justify-between gap-3 text-sm text-slate-600"><span className="min-w-0 break-words">{item.name} × {registrant.merchandiseSelections[item.id].quantity}</span><span className="shrink-0">{peso(item.unit_price * registrant.merchandiseSelections[item.id].quantity)}</span></div>)}</Fragment>; })}</div>
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-orange-50 px-3 py-3 text-base font-extrabold text-orange-700"><span>Total</span><span>{peso(selectedTotal)}</span></div>
+                <button type="button" onClick={() => { setStep(3); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} disabled={busy || registrationSaved} className="mt-4 min-h-11 w-full rounded-lg border border-[#0b2b5b] bg-white px-4 py-2.5 text-sm font-semibold text-[#0b2b5b] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">← Back to review</button>
+                {!registrationSaved && <button type="submit" disabled={busy || !selectedCategoriesAvailable || !canReviewPayment} className="mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole className="h-4 w-4" aria-hidden="true" />{busy ? "Preparing secure checkout..." : "Pay & Complete Registration"}</button>}
               </aside>
             </section>}
-            {step === 2 ? <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-start gap-3">
-              <button type="button" onClick={() => { setStep(1); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-600"><span aria-hidden="true">←</span> Back</button>
-              <button disabled={busy || !selectedCategoriesAvailable || !canReviewPayment} className="inline-flex min-h-11 min-w-[220px] items-center justify-center gap-2 rounded-lg bg-[#ed3b36] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#d92f2b] disabled:cursor-not-allowed disabled:bg-slate-300">{busy ? "Opening secure payment..." : <>Review &amp; Payment <span aria-hidden="true">›</span></>}</button>
-            </div> : step === 3 ? null : <div className="flex flex-wrap items-center justify-end gap-3">
+            {step === 2 ? <div className="mx-auto flex w-full max-w-5xl flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-start">
+              <button type="button" onClick={() => { setStep(1); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-600 sm:w-auto"><span aria-hidden="true">←</span> Back</button>
+              <button disabled={busy || !selectedCategoriesAvailable || !canReviewPayment} className="inline-flex min-h-11 w-full min-w-[220px] items-center justify-center gap-2 rounded-lg bg-[#ed3b36] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#d92f2b] disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto">{busy ? "Preparing review..." : <>Review Registration <span aria-hidden="true">›</span></>}</button>
+            </div> : step === 3 ? <div className="mx-auto flex w-full max-w-5xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button type="button" onClick={() => { setStep(2); setMessage(""); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Back to waiver</button>
+              <button disabled={busy || !selectedCategoriesAvailable} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300">Continue to Payment <span aria-hidden="true">›</span></button>
+            </div> : step === 4 ? null : <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
               {step === 1 && <button
                 type="button"
                 onClick={addRegistrant}
                 disabled={registrants.length >= 10}
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#0b2b5b] px-4 py-2.5 text-sm font-bold text-[#0b2b5b] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-[#0b2b5b] px-4 py-2.5 text-sm font-bold text-[#0b2b5b] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 + Add another registrant{registrants.length >= 10 ? " (maximum 10)" : ""}
               </button>}
               <button
                 disabled={busy || (step === 1 ? registrants.some((registrant) => !registrant.categoryId) : !selectedCategoriesAvailable)}
-                className="min-h-11 min-w-[220px] rounded-lg bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="min-h-11 w-full min-w-[220px] rounded-lg bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
               >
                 {busy
                   ? step === 1 ? "Continuing..." : "Opening secure payment..."
@@ -916,7 +962,7 @@ export default function RegisterPage({
                       : step === 1 ? "Continue" : `Continue to payment · ${peso(selectedTotal)}`}
               </button>
             </div>}
-            {message && !(step === 3 && registrationSaved) && (
+            {message && !(step === 4 && registrationSaved) && (
               <p role="status" aria-live="polite" className="text-center text-sm text-slate-600">
                 {message}
                 {registrationHref && <> <Link href={registrationHref} className="font-semibold text-orange-700 underline underline-offset-2">Open My Races</Link></>}

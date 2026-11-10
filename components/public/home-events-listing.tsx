@@ -9,15 +9,6 @@ function formatEventDate(value: string) {
   return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }).format(date);
 }
 
-function eventDateParts(value: string) {
-  const date = new Date(`${value.slice(0, 10)}T00:00:00+08:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  return {
-    month: new Intl.DateTimeFormat('en-PH', { month: 'short', timeZone: 'Asia/Manila' }).format(date).toUpperCase(),
-    day: new Intl.DateTimeFormat('en-PH', { day: 'numeric', timeZone: 'Asia/Manila' }).format(date),
-  };
-}
-
 function EventActions({ event }: { event: PublicEventCard }) {
   const detailsHref = `/events/${event.slug}`;
   const primaryActionClass = 'inline-flex min-h-12 w-fit items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-[#111827] transition hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2';
@@ -37,7 +28,6 @@ function EventActions({ event }: { event: PublicEventCard }) {
 
 function EventCard({ event }: { event: PublicEventCard }) {
   const location = event.venue ?? event.address ?? 'Location to be announced';
-  const dateParts = eventDateParts(event.event_date);
   const categories = Array.from(new Set(event.category_labels
     .flatMap(({ distance_km }) => distance_km === null ? [] : [`${distance_km}K`])));
   const visibleCategories = categories.slice(0, 3);
@@ -46,10 +36,6 @@ function EventCard({ event }: { event: PublicEventCard }) {
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2">
       <div className="relative aspect-[16/9] overflow-hidden rounded-t-2xl bg-gradient-to-br from-[#09204a] via-[#163c70] to-orange-700">
         {event.banner_url ? <img src={event.banner_url} alt={`${event.name} event poster`} loading="lazy" className={`h-full w-full ${event.poster_fallback ? 'object-contain p-2' : 'object-cover transition duration-300 group-hover:scale-[1.02]'}`} /> : <div aria-label="RaceDeck event poster placeholder" className="grid h-full place-items-center bg-[radial-gradient(circle_at_82%_18%,rgba(249,115,22,.38),transparent_28%),linear-gradient(125deg,#071b41,#173d71_72%,#a9441b)]"><span className="text-xs font-bold uppercase tracking-[0.18em] text-orange-100">RaceDeck PH</span></div>}
-        {dateParts && <time dateTime={event.event_date} aria-label={formatEventDate(event.event_date)} className="absolute left-3 top-3 z-[1] flex w-[60px] flex-col overflow-hidden rounded-xl bg-white text-center shadow-md ring-1 ring-black/10">
-          <span className="bg-amber-400 px-2 py-1 text-xs font-extrabold leading-4 tracking-wide text-[#111827]">{dateParts.month}</span>
-          <span className="py-1 text-2xl font-extrabold leading-7 text-[#0a234b]">{dateParts.day}</span>
-        </time>}
       </div>
       <div className="flex flex-1 flex-col p-5">
         <h3 className="break-words text-lg font-bold leading-tight text-[#0a234b]"><Link href={`/events/${event.slug}`} className="line-clamp-2 rounded-sm transition hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500">{event.name}</Link></h3>

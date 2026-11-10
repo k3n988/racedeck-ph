@@ -109,7 +109,7 @@ a[href="/auth/logout"]:hover {
 .content-editor .ProseMirror ol[data-number-style="upper-roman"] { list-style-type: upper-roman; }
 
 /* Keep the public homepage's featured event row close to the shared header. */
-main.min-h-screen.bg-\[\#f6f7fa\] > section:first-child {
+main.min-h-screen.bg-\[\#f6f7fa\] > section:first-child:has(.home-hero) {
   gap: 0 !important;
   padding-top: 0 !important;
 }
