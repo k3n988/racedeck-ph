@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireOrganizerPermission } from '@/lib/auth/organizer-access';
 import { createClient } from '@/lib/supabase/server';
-import { eventPlatformLinkIsValid, eventPhoneIsValid, type EventSocialLinks } from '@/lib/events/event-social-links';
+import { eventPlatformLinkIsValid, type EventSocialLinks } from '@/lib/events/event-social-links';
 
 const schema = z.object({ action: z.enum(['submit', 'publish']) });
 
@@ -17,8 +17,8 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     if (eventError) return NextResponse.json({ error: 'Event contact details could not be checked.' }, { status: 500 });
     if (!event) return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
     const contact = (event.social_links ?? {}) as EventSocialLinks;
-    if (!eventPlatformLinkIsValid('facebook', contact.facebook ?? '') || !contact.phone?.trim() || !eventPhoneIsValid(contact.phone)) {
-      return NextResponse.json({ error: 'Add a valid Facebook link and phone number in Event Details before submitting for review.' }, { status: 409 });
+    if (!eventPlatformLinkIsValid('facebook', contact.facebook ?? '')) {
+      return NextResponse.json({ error: 'Add a valid Facebook link in Event Details before submitting for review.' }, { status: 409 });
     }
   }
 

@@ -1,4 +1,5 @@
 export const optionalEventLinkPlatforms = [
+  { key: 'phone', label: 'Phone number' },
   { key: 'website', label: 'Website' },
   { key: 'instagram', label: 'Instagram' },
   { key: 'tiktok', label: 'TikTok' },
@@ -7,10 +8,11 @@ export const optionalEventLinkPlatforms = [
 ] as const;
 
 export type OptionalEventLinkPlatform = (typeof optionalEventLinkPlatforms)[number]['key'];
-export type EventSocialLinks = { facebook?: string; phone?: string } & Partial<Record<OptionalEventLinkPlatform, string>>;
+export type EventSocialLinks = { facebook?: string } & Partial<Record<OptionalEventLinkPlatform, string>>;
 
 const linkLabels: Record<OptionalEventLinkPlatform | 'facebook', string> = {
   facebook: 'Facebook',
+  phone: 'Phone number',
   website: 'Website',
   instagram: 'Instagram',
   tiktok: 'TikTok',
@@ -29,9 +31,10 @@ export function eventLinkIsValid(value: string): boolean {
 }
 
 export function eventPlatformLinkIsValid(platform: OptionalEventLinkPlatform | 'facebook', value: string): boolean {
+  if (platform === 'phone') return Boolean(value.trim()) && eventPhoneIsValid(value);
   if (!value.trim() || !eventLinkIsValid(value)) return false;
   if (platform === 'website') return true;
-  const hosts: Record<Exclude<OptionalEventLinkPlatform, 'website'> | 'facebook', readonly string[]> = {
+  const hosts: Record<Exclude<OptionalEventLinkPlatform, 'website' | 'phone'> | 'facebook', readonly string[]> = {
     facebook: ['facebook.com', 'fb.com', 'fb.me'],
     instagram: ['instagram.com'],
     tiktok: ['tiktok.com'],
@@ -51,7 +54,7 @@ export function parseEventSocialLinks(raw: unknown): { links: EventSocialLinks; 
   if (typeof raw !== 'object' || Array.isArray(raw)) return { links: {}, error: 'Invalid event contact links.' };
   const input = raw as Record<string, unknown>;
   const links: EventSocialLinks = {};
-  for (const key of ['facebook', ...optionalEventLinkPlatforms.map((platform) => platform.key)] as const) {
+  for (const key of ['facebook', 'website', 'instagram', 'tiktok', 'youtube', 'x'] as const) {
     const value = input[key];
     if (value == null || value === '') continue;
     if (typeof value !== 'string' || value.trim().length > 2048 || !eventPlatformLinkIsValid(key, value)) {

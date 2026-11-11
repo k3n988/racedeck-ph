@@ -6,8 +6,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { ContentEditor } from "@/components/organizer/content-editor";
 import { OptionalEventLinks } from "@/components/organizer/optional-event-links";
-import { eventPlatformLinkIsValid, eventPhoneIsValid, type OptionalEventLinkPlatform } from "@/lib/events/event-social-links";
-import { Check, Maximize2, X } from "lucide-react";
+import { eventPlatformLinkIsValid, type OptionalEventLinkPlatform } from "@/lib/events/event-social-links";
+import { Check, Eye, Maximize2, X } from "lucide-react";
 import { BannerFrameEditor, type BannerFrame } from "@/components/organizer/banner-frame-editor";
 import { manilaDateTimeToIso } from "@/lib/events/category-pricing";
 import { variantOptionsPayload } from "@/lib/events/variant-options";
@@ -31,7 +31,7 @@ type Category = {
   cutoff: string;
   kitItems: KitItem[];
 };
-type CategoryGroup = { id: string; name: string; kitItems: KitItem[] };
+type CategoryGroup = { id: string; name: string };
 type UploadValue = { url: string; file: File | null };
 type Sponsor = { name: string; logo: UploadValue };
 type RegistrationQuestion = {
@@ -97,7 +97,7 @@ const steps = [
   "Sponsors & Review",
 ];
 const input =
-  "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100";
+  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 caret-slate-900 outline-none [color-scheme:light] placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-100 disabled:text-slate-500";
 const emptyUpload = (): UploadValue => ({ url: "", file: null });
 const emptyKitItem = (kind: KitItem["kind"] = "product"): KitItem => ({ kind, name: "", description: "", variants: [], variantSlots: {}, productImages: [], referenceImage: emptyUpload() });
 const emptyMerchandiseItem = (): MerchandiseItem => ({ name: "", description: "", unitPrice: "", variants: [], variantSlots: {}, images: [] });
@@ -107,7 +107,6 @@ const hasValidOptionalVariantSlots = (variants: string[], variantSlots: Record<s
 });
 const hasRichContent = (value: string) => Boolean(value.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim());
 const toEventSlug = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const isOptionalPhoneValid = eventPhoneIsValid;
 const previewPeso = (value: string) => value.trim() && Number.isFinite(Number(value))
   ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(value))
   : "Set a price";
@@ -147,6 +146,7 @@ function TextField({
   maxLength,
   step,
   placeholder,
+  hint,
 }: {
   label: string;
   value: string;
@@ -159,6 +159,7 @@ function TextField({
   maxLength?: number;
   step?: string;
   placeholder?: string;
+  hint?: string;
 }) {
   return (
     <label className="block text-sm font-semibold text-slate-700">
@@ -178,6 +179,7 @@ function TextField({
         className={`${input} ${error ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""}`}
       />
       {error && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{error}</span>}
+      {hint && <span className="mt-1.5 block text-xs font-normal leading-5 text-slate-500">{hint}</span>}
     </label>
   );
 }
@@ -274,8 +276,7 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
   };
   return <article className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="mb-3 flex items-center justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Race kit item</h4><p className="text-xs text-slate-500">Add an informational inclusion or a product with selectable options.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
-    <label className="block max-w-sm text-sm font-semibold text-slate-700">Item type<select value={item.kind} onChange={(event) => { if (event.target.value === "inclusion") { item.productImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); }); if (item.referenceImage.url.startsWith("blob:")) URL.revokeObjectURL(item.referenceImage.url); } onChange({ ...item, kind: event.target.value as KitItem["kind"], variants: [], variantSlots: {}, productImages: [], referenceImage: emptyUpload() }); }} className={input}><option value="product">Product with options (singlet, shirt, etc.)</option><option value="inclusion">Plain text inclusion (no size or image)</option></select></label>
-    <div className="mt-3 grid gap-3 md:grid-cols-2">
+    <div className="grid gap-3 md:grid-cols-2">
       <label className="block text-sm font-semibold text-slate-700">{item.kind === "inclusion" ? "Inclusion name" : "Product name"}<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder={item.kind === "inclusion" ? "e.g. E-certificate or Sports headband" : "e.g. Race singlet"} maxLength={160} className={input} /></label>
       <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder={item.kind === "inclusion" ? "Add details only if the inclusion needs clarification" : "Add fabric, fit, or other helpful details"} maxLength={1000} className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">You can leave this blank if the name, size options, and photos give participants enough information.</span></label>
     </div>
@@ -320,7 +321,6 @@ export default function CreateEventPage() {
     slug: "",
     tagline: "",
     facebook: "",
-    phone: "",
     description: "",
     eventDate: "",
     assemblyTime: "",
@@ -398,7 +398,7 @@ export default function CreateEventPage() {
     setEventPages((current) =>
       current.map((page) => (page.id === id ? { ...page, ...changes } : page)),
     );
-  const addCategoryGroup = () => setCategoryGroups((current) => [...current, { id: crypto.randomUUID(), name: "", kitItems: [] }]);
+  const addCategoryGroup = () => setCategoryGroups((current) => [...current, { id: crypto.randomUUID(), name: "" }]);
   const addDistanceToGroup = (group: CategoryGroup) => setCategories((current) => [...current, emptyCategory(group.id, group.name)]);
   const updateCategoryGroup = (groupId: string, changes: Partial<CategoryGroup>) => {
     setCategoryGroups((current) => current.map((group) => group.id === groupId ? { ...group, ...changes } : group));
@@ -438,6 +438,7 @@ export default function CreateEventPage() {
     [categories],
   );
   const categoryStarted = (category: Category) => Boolean(category.name.trim() || category.distance.trim() || category.capacity.trim() || category.fee.trim() || category.earlyBirdEnabled || category.earlyBirdFee.trim() || category.earlyBirdDeadline || category.registrationOpen || category.registrationClose || category.gunStart.trim() || category.cutoff.trim() || category.kitItems.some((item) => item.name.trim()));
+  const categoryHasRequiredInclusion = (category: Category) => category.kitItems.some((item) => Boolean(item.name.trim()));
   const categoryIsValid = (category: Category) => {
     const opensLocal = category.registrationOpen || (form.registrationOpen ? `${form.registrationOpen}T00:00` : '');
     const closesLocal = category.registrationClose || (form.registrationClose ? `${form.registrationClose}T23:59` : '');
@@ -466,6 +467,7 @@ export default function CreateEventPage() {
       category.name.trim().length <= 120 && category.distance.trim() && Number.isFinite(Number(category.distance)) && Number(category.distance) > 0 && Number(category.distance) <= 9999.99 &&
       (!category.capacity.trim() || (Number.isInteger(Number(category.capacity)) && Number(category.capacity) > 0 && Number(category.capacity) <= 2147483647)) &&
       category.fee.trim() && Number.isFinite(Number(category.fee)) && Number(category.fee) >= 0 && Number(category.fee) <= 99999999.99 &&
+      categoryHasRequiredInclusion(category) &&
       categoryScheduleValid &&
       earlyBirdPriceValid &&
       earlyBirdWindowValid,
@@ -477,7 +479,7 @@ export default function CreateEventPage() {
   const registrationWindowValid = Boolean(form.registrationOpen && form.registrationClose && form.registrationOpen <= form.registrationClose && form.eventDate && form.registrationClose <= form.eventDate);
   const registrationFieldsValid = (!form.registrationOpen && !form.registrationClose) || registrationWindowValid;
   const optionalLinksValid = Object.entries(optionalLinks).every(([key, value]) => eventPlatformLinkIsValid(key as OptionalEventLinkPlatform, value ?? ""));
-  const contactFieldsValid = eventPlatformLinkIsValid("facebook", form.facebook) && Boolean(form.phone.trim()) && isOptionalPhoneValid(form.phone) && optionalLinksValid;
+  const contactFieldsValid = eventPlatformLinkIsValid("facebook", form.facebook) && optionalLinksValid;
   const capacityValid = capacity === null || capacity <= 2147483647;
   const registrationQuestionsReady = registrationQuestions.length <= 30 && registrationQuestions.every((question) => {
     const label = question.label.trim();
@@ -492,6 +494,14 @@ export default function CreateEventPage() {
   const categorySections: Array<{ group: CategoryGroup | null; entries: typeof categoryEntries }> = categoryMode === "groups"
     ? categoryGroups.map((group) => ({ group, entries: categoryEntries.filter(({ category }) => category.groupId === group.id) }))
     : [{ group: null, entries: categoryEntries }];
+  const previewCategorySections = categorySections
+    .map(({ group, entries }) => ({ group, entries: entries.filter(({ category }) => categoryStarted(category)) }))
+    .filter(({ group, entries }) => Boolean(
+      entries.length
+      || group?.name.trim(),
+    ));
+  const previewMerchandise = merchandise.filter((item) => Boolean(item.name.trim()));
+  const hasParticipantPreviewContent = previewCategorySections.length > 0 || previewMerchandise.length > 0;
   const missing = [
     (!form.name.trim() || form.name.trim().length > 160) && "an event name (up to 160 characters)",
     (!form.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) && "a valid public event URL slug",
@@ -501,7 +511,6 @@ export default function CreateEventPage() {
     categoryMode === "groups" && categoryGroups.some((group) => !group.name.trim() || !categories.some((category) => category.groupId === group.id)) && "add a name and at least one distance to every category group",
     !registrationFieldsValid && "a valid registration date range",
     !eventPlatformLinkIsValid("facebook", form.facebook) && "a valid Facebook URL",
-    (!form.phone.trim() || !isOptionalPhoneValid(form.phone)) && "a valid phone number",
     !optionalLinksValid && "valid optional links",
     !capacityValid && "a total capacity below 2,147,483,647",
     !registrationQuestionsReady && "complete or remove unfinished registration questions",
@@ -509,12 +518,12 @@ export default function CreateEventPage() {
   const ready = missing.length === 0;
   const submissionChecks = [
     { label: "Event name", complete: Boolean(form.name.trim() && form.name.trim().length <= 160) },
-    { label: "Event date is today or later (Manila time)", complete: Boolean(form.eventDate && form.eventDate >= manilaToday) },
+    { label: "Event date is today or later", complete: Boolean(form.eventDate && form.eventDate >= manilaToday) },
     { label: "Venue and complete address", complete: Boolean(form.venue.trim() && form.address.trim()) },
     { label: "Event description", complete: hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || form.description) },
     { label: "Registration opening and closing dates are valid", complete: registrationWindowValid },
-    { label: "At least one complete race category", complete: categoriesReady },
-    { label: "Facebook link and phone number are provided; any extra links are valid", complete: contactFieldsValid },
+    { label: "Race categories and inclusions are complete", complete: categoriesReady },
+    { label: "Facebook link is provided; any extra contact links are valid", complete: contactFieldsValid },
     { label: "Total category capacity is within the supported limit", complete: capacityValid },
     { label: "Registration questions are complete (if added)", complete: registrationQuestionsReady },
   ];
@@ -528,10 +537,9 @@ export default function CreateEventPage() {
     ready && submissionReady,
   ];
   const validImage = (upload: UploadValue) => !upload.file || (upload.file.size > 0 && upload.file.size <= 10 * 1024 * 1024 && ["image/jpeg", "image/png", "image/webp"].includes(upload.file.type));
-  const hasPhysicalRaceKit = [
-    ...categories.flatMap((category) => category.kitItems),
-    ...categoryGroups.flatMap((group) => group.kitItems),
-  ].some((item) => item.kind === "product" && Boolean(item.name.trim()));
+  const hasPhysicalRaceKit = categories
+    .flatMap((category) => category.kitItems)
+    .some((item) => item.kind === "product" && Boolean(item.name.trim()));
   const validateSetupStep = (stepIndex: number): string[] => {
     if (stepIndex === 0) {
       const errors: string[] = [];
@@ -540,8 +548,6 @@ export default function CreateEventPage() {
       if (!form.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) errors.push("Public URL slug must use lowercase letters, numbers, and single hyphens (up to 180 characters).");
       if (!form.facebook.trim()) errors.push("Enter the event Facebook link.");
       else if (!eventPlatformLinkIsValid("facebook", form.facebook)) errors.push("Facebook link must point to Facebook (for example, https://facebook.com/your-page).");
-      if (!form.phone.trim()) errors.push("Enter the event phone number.");
-      else if (!isOptionalPhoneValid(form.phone)) errors.push("Phone number must contain 7 to 15 digits and only standard phone characters.");
       if (!optionalLinksValid) errors.push("Complete or remove each optional link. The URL must match its selected platform.");
       if (!validImage(form.logo)) errors.push("Event logo must be a JPG, PNG, or WEBP image up to 10 MB.");
       if (!validImage(form.banner)) errors.push("Banner must be a JPG, PNG, or WEBP image up to 10 MB.");
@@ -550,7 +556,7 @@ export default function CreateEventPage() {
     if (stepIndex === 1) {
       const errors: string[] = [];
       if (!form.eventDate) errors.push("Choose the event date.");
-      else if (form.eventDate < manilaToday) errors.push("Event date cannot be in the past (Manila time).");
+      else if (form.eventDate < manilaToday) errors.push("Event date cannot be in the past.");
       if ((form.registrationOpen || form.registrationClose) && !registrationWindowValid) errors.push("Enter both registration dates, set opening before closing, and close registration no later than the event date.");
       if (Boolean(form.venue.trim()) !== Boolean(form.address.trim())) errors.push("Enter both the venue name and complete address, or leave both blank while saving a draft.");
       return errors;
@@ -569,13 +575,14 @@ export default function CreateEventPage() {
         if (!category.distance.trim() || !Number.isFinite(Number(category.distance)) || Number(category.distance) <= 0 || Number(category.distance) > 9999.99) errors.push(`Category ${number}: enter a distance greater than 0 and no more than 9,999.99 km.`);
         if (category.capacity.trim() && (!Number.isInteger(Number(category.capacity)) || Number(category.capacity) <= 0 || Number(category.capacity) > 2147483647)) errors.push(`Category ${number}: capacity must be a positive whole number or left blank for unlimited slots.`);
         if (!category.fee.trim() || !Number.isFinite(Number(category.fee)) || Number(category.fee) < 0 || Number(category.fee) > 99999999.99) errors.push(`Category ${number}: enter a registration fee from PHP 0 to PHP 99,999,999.99.`);
+        if (!categoryHasRequiredInclusion(category)) errors.push(`Category ${number}: add at least one simple inclusion or included product.`);
         if (Boolean(category.registrationOpen) !== Boolean(category.registrationClose)) errors.push(`Category ${number}: enter both distance registration dates, or leave both blank to use the event schedule.`);
         if (category.registrationOpen && category.registrationClose && category.registrationOpen >= category.registrationClose) errors.push(`Category ${number}: distance registration must close after it opens.`);
         if (category.registrationClose && form.eventDate && category.registrationClose.slice(0, 10) > form.eventDate) errors.push(`Category ${number}: registration cannot close after the event date.`);
         if (category.earlyBirdEnabled) {
           if (!category.earlyBirdFee.trim() || !Number.isFinite(Number(category.earlyBirdFee)) || Number(category.earlyBirdFee) < 0 || Number(category.earlyBirdFee) >= Number(category.fee)) errors.push(`Category ${number}: early bird price must be a valid amount lower than the regular price.`);
           const deadline = manilaDateTimeToIso(category.earlyBirdDeadline);
-          if (!deadline) errors.push(`Category ${number}: choose a valid early bird deadline in Manila time.`);
+          if (!deadline) errors.push(`Category ${number}: choose a valid early bird deadline.`);
           else {
             const deadlineLocal = category.earlyBirdDeadline;
             const opensAt = category.registrationOpen || (form.registrationOpen ? `${form.registrationOpen}T00:00` : "");
@@ -590,7 +597,7 @@ export default function CreateEventPage() {
       });
       if (hasDuplicateCategoryNames) errors.push(categoryMode === "groups" ? "A race distance is duplicated within its group. Change the distance or group." : "A race distance is duplicated. Change the distance.");
       if (!capacityValid) errors.push("Combined category capacity exceeds the supported maximum. Lower one or more category capacities.");
-      const kitItems = [...categories.flatMap((category) => category.kitItems), ...categoryGroups.flatMap((group) => group.kitItems)];
+      const kitItems = categories.flatMap((category) => category.kitItems);
       kitItems.forEach((item, index) => {
         const started = Boolean(item.name.trim() || item.description.trim() || item.variants.length || item.productImages.length || item.referenceImage.file || item.referenceImage.url);
         if (started && !item.name.trim()) errors.push(`Race kit item ${index + 1}: add an inclusion or product name, or remove the incomplete item.`);
@@ -795,7 +802,7 @@ export default function CreateEventPage() {
       setStep(2);
       return;
     }
-    const incompleteKit = [...categories.flatMap((category) => category.kitItems), ...categoryGroups.flatMap((group) => group.kitItems)].some((item) => item.name.trim() && item.kind === "product" && (item.variants.length > 40 || !hasValidOptionalVariantSlots(item.variants, item.variantSlots) || item.productImages.length > 8));
+    const incompleteKit = categories.flatMap((category) => category.kitItems).some((item) => item.name.trim() && item.kind === "product" && (item.variants.length > 40 || !hasValidOptionalVariantSlots(item.variants, item.variantSlots) || item.productImages.length > 8));
     if (incompleteKit) {
       updateAttemptedStep(2);
       setMessage("");
@@ -819,7 +826,6 @@ export default function CreateEventPage() {
           address: form.address.trim() || null,
           social_links: {
             facebook: form.facebook.trim(),
-            phone: form.phone.trim(),
             ...Object.fromEntries(Object.entries(optionalLinks).map(([key, value]) => [key, value.trim()])),
           },
           registration_opens_at: form.registrationOpen
@@ -895,9 +901,8 @@ export default function CreateEventPage() {
         const contentBody = await contentResponse.json().catch(() => ({}));
         if (!contentResponse.ok) throw new Error(contentBody.error ?? "Event content could not be saved.");
       }
-      // Group inclusions are attached to every distance in the group. Reuse
-      // uploaded asset URLs across those category kits instead of uploading
-      // the same image once per distance.
+      // Reuse uploaded asset URLs when an organizer selects the same local
+      // file for more than one category item.
       const uploadedKitAssets = new Map<File, Promise<string>>();
       for (const category of categories) {
         const categoryGroup = categoryMode === "groups" ? categoryGroups.find((group) => group.id === category.groupId) : null;
@@ -927,10 +932,7 @@ export default function CreateEventPage() {
           throw new Error(
             categoryBody.error ?? "A category could not be saved.",
           );
-        const items = (categoryGroup ? categoryGroup.kitItems : category.kitItems).filter((item) => item.name.trim());
-        // Keep category-level additions even if the organizer toggled the
-        // shared-kit option after entering them. Shared and category-specific
-        // items intentionally combine during registration.
+        const items = category.kitItems.filter((item) => item.name.trim());
         if (items.length) await saveKit(eventId, categoryBody.id, `${categoryGroup?.name.trim() ? `${categoryGroup.name.trim()} · ` : ""}${Number(category.distance)}K Race Kit`, items, uploadedKitAssets);
       }
       for (let index = 0; index < registrationQuestions.length; index += 1) {
@@ -1121,15 +1123,6 @@ export default function CreateEventPage() {
                   maxLength={2048}
                   error={attemptedSteps[0] && !form.facebook.trim() ? "Facebook link is required." : form.facebook.trim() && !eventPlatformLinkIsValid("facebook", form.facebook) ? "Enter a Facebook link starting with https:// or http://." : undefined}
                 />
-                <TextField
-                  label="Phone number"
-                  type="tel"
-                  required
-                  value={form.phone}
-                  onChange={(value) => update("phone", value)}
-                  maxLength={24}
-                  error={attemptedSteps[0] && !form.phone.trim() ? "Phone number is required." : form.phone.trim() && !isOptionalPhoneValid(form.phone) ? "Use 7 to 15 digits; letters are not allowed." : undefined}
-                />
               </div>
               <div className="mt-5"><OptionalEventLinks links={optionalLinks} onChange={setOptionalLinks} /></div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1176,13 +1169,14 @@ export default function CreateEventPage() {
                   onChange={(value) => update("eventDate", value)}
                   min={manilaToday}
                   required
-                  error={attemptedSteps[1] && !form.eventDate ? "Event date is required." : attemptedSteps[1] && form.eventDate < manilaToday ? "Choose today or a future date (Manila time)." : undefined}
+                  error={attemptedSteps[1] && !form.eventDate ? "Event date is required." : attemptedSteps[1] && form.eventDate < manilaToday ? "Choose today or a future date." : undefined}
                 />
                 <TextField
                   label="Assembly time (optional)"
                   type="time"
                   value={form.assemblyTime}
                   onChange={(value) => update("assemblyTime", value)}
+                  hint="Participant arrival time before the race starts."
                 />
                 <TextField
                   label="Registration open"
@@ -1205,15 +1199,15 @@ export default function CreateEventPage() {
                   )}
                 {form.registrationClose && form.eventDate && form.registrationClose > form.eventDate && <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">Registration must close no later than the event date.</p>}
               </div>
-              <p className="text-xs text-slate-500">Set both registration dates before submitting for review. Date fields use Manila local time.</p>
+              <p className="text-xs text-slate-500">Set both registration dates before submitting for review.</p>
               <TextField label="Venue name" value={form.venue} onChange={(value) => update("venue", value)} />
-              <label className="block text-sm font-semibold">
+              <label className="block text-sm font-semibold text-slate-700">
                 Complete address
                 <textarea
                   value={form.address}
                   onChange={(event) => update("address", event.target.value)}
                   placeholder="Enter the complete event location and address"
-                  className={`${input} min-h-28`}
+                  className={`${input} min-h-32 resize-y leading-6`}
                 />
               </label>
             </div>
@@ -1221,24 +1215,23 @@ export default function CreateEventPage() {
           {step === 2 && (
             <div className="mt-6 flex-1 space-y-5">
               <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="font-bold text-[#071b41]">How should participants choose their race option?</h3>
-                  <p className="mt-1 text-sm text-slate-600">Choose the format first. You can add prices, inclusions, and distances after selecting it.</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <button type="button" disabled={categories.length > 0 || categoryGroups.length > 0} onClick={() => setCategoryMode("groups")} className={`rounded-xl border p-4 text-left disabled:cursor-not-allowed ${categoryMode === "groups" ? "border-[#071b41] bg-white ring-2 ring-slate-200" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-                      <span className="block font-bold text-[#071b41]">Group + distances</span>
-                      <span className="mt-1 block text-sm font-normal text-slate-600">Create a group such as Regular, add distances inside it, and set inclusions for that group.</span>
-                    </button>
-                    <button type="button" disabled={categories.length > 0 || categoryGroups.length > 0} onClick={() => setCategoryMode("distances")} className={`rounded-xl border p-4 text-left disabled:cursor-not-allowed ${categoryMode === "distances" ? "border-[#071b41] bg-white ring-2 ring-slate-200" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-                      <span className="block font-bold text-[#071b41]">Distances only</span>
-                      <span className="mt-1 block text-sm font-normal text-slate-600">Add 3K, 5K, or 10K options directly, each with its own price and inclusions.</span>
-                    </button>
+                <fieldset className="border-b border-slate-200 pb-4">
+                  <legend className="text-base font-semibold text-slate-800">How should participants choose their race option? <span className="text-orange-600">*</span></legend>
+                  <div className="mt-3 space-y-3">
+                    <label className={`flex w-fit items-center gap-3 text-base text-slate-700 ${categories.length > 0 || categoryGroups.length > 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                      <input type="radio" name="category-mode" value="groups" checked={categoryMode === "groups"} disabled={categories.length > 0 || categoryGroups.length > 0} onChange={() => setCategoryMode("groups")} className="h-5 w-5 shrink-0 accent-orange-600" />
+                      <span>Group + distances</span>
+                    </label>
+                    <label className={`flex w-fit items-center gap-3 text-base text-slate-700 ${categories.length > 0 || categoryGroups.length > 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+                      <input type="radio" name="category-mode" value="distances" checked={categoryMode === "distances"} disabled={categories.length > 0 || categoryGroups.length > 0} onChange={() => setCategoryMode("distances")} className="h-5 w-5 shrink-0 accent-orange-600" />
+                      <span>Distances only</span>
+                    </label>
                   </div>
                   {(categories.length > 0 || categoryGroups.length > 0) && <p className="mt-2 text-xs text-slate-500">The format is locked after you add a group or distance. Remove all options to change it.</p>}
-                </div>
+                </fieldset>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-orange-600">1 · Race options</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-orange-600">Race options</p>
                     <h3 className="mt-1 text-lg font-black text-[#071b41]">Categories &amp; distances</h3>
                     <p className="mt-1 max-w-3xl text-sm text-slate-600">Choose whether to organize options into named groups or list each race distance on its own.</p>
                   </div>
@@ -1252,9 +1245,7 @@ export default function CreateEventPage() {
                       <button type="button" onClick={() => addDistanceToGroup(group)} className="min-h-10 rounded-lg border border-orange-300 px-4 py-2 text-sm font-bold text-orange-700">+ Add distance</button>
                       <button type="button" onClick={() => { setCategoryGroups((current) => current.filter((entry) => entry.id !== group.id)); setCategories((current) => current.filter((category) => category.groupId !== group.id)); }} className="min-h-10 rounded-lg px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50">Remove group</button>
                     </div>
-                    <p className="mt-2 text-xs text-slate-500">Every distance in this group shares the group name and included items. Each distance keeps its own price, capacity, and schedule.</p>
                   </div>}
-                  {group && entries.length === 0 && <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center"><p className="text-sm font-semibold text-slate-700">No distances in this group yet</p><button type="button" onClick={() => addDistanceToGroup(group)} className="mt-2 rounded-lg bg-[#071b41] px-4 py-2 text-sm font-bold text-white">Add first distance</button></div>}
                   {entries.map(({ category, index }) => (
                 <div
                   key={index}
@@ -1264,10 +1255,6 @@ export default function CreateEventPage() {
                     <div>
                       <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Race option {index + 1}</p>
                       <p className="mt-0.5 font-bold text-[#071b41]">{group?.name.trim() ? `${group.name.trim()} · ` : ""}{category.distance.trim() ? `${category.distance} km` : "Distance not set"}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 text-xs font-semibold text-slate-700">
-                      <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">{previewPeso(category.fee)}</span>
-                      <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">{category.capacity.trim() ? `${category.capacity} slots` : "Unlimited slots"}</span>
                     </div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1332,8 +1319,8 @@ export default function CreateEventPage() {
                       }
                       required
                     />
-                    <TextField label="Distance registration opens (Manila time, optional)" type="datetime-local" value={category.registrationOpen} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, registrationOpen: value } : item))} error={Boolean(category.registrationOpen) !== Boolean(category.registrationClose) ? "Enter both distance-level dates, or leave both blank to use the event schedule." : undefined} />
-                    <TextField label="Distance registration closes (Manila time, optional)" type="datetime-local" value={category.registrationClose} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, registrationClose: value } : item))} error={Boolean(category.registrationOpen && category.registrationClose && (category.registrationOpen >= category.registrationClose || (form.eventDate && category.registrationClose.slice(0, 10) > form.eventDate))) ? "Closing must be after opening and no later than event day." : undefined} />
+                    <TextField label="Distance registration opens" type="datetime-local" value={category.registrationOpen} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, registrationOpen: value } : item))} error={Boolean(category.registrationOpen) !== Boolean(category.registrationClose) ? "Enter both distance-level dates, or leave both blank to use the event schedule." : undefined} />
+                    <TextField label="Distance registration closes" type="datetime-local" value={category.registrationClose} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, registrationClose: value } : item))} error={Boolean(category.registrationOpen && category.registrationClose && (category.registrationOpen >= category.registrationClose || (form.eventDate && category.registrationClose.slice(0, 10) > form.eventDate))) ? "Closing must be after opening and no later than event day." : undefined} />
                     <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Set both dates to override this distance&apos;s registration window. Leave both blank to use the event&apos;s dates.</p>
                     <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-white p-4">
                       <label className="flex min-h-6 cursor-pointer items-center gap-2 text-sm font-bold text-[#071b41]">
@@ -1342,7 +1329,7 @@ export default function CreateEventPage() {
                       </label>
                       {category.earlyBirdEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <TextField label="Early Bird price (PHP)" type="number" min="0" max="99999999.99" step="0.01" value={category.earlyBirdFee} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdFee: value } : item))} required />
-                        <TextField label="Early Bird deadline (Manila time)" type="datetime-local" value={category.earlyBirdDeadline} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdDeadline: value } : item))} required />
+                        <TextField label="Early Bird deadline" type="datetime-local" value={category.earlyBirdDeadline} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdDeadline: value } : item))} required />
                         <p className="-mt-2 text-xs leading-5 text-slate-600 sm:col-span-2">Participants pay the Early Bird price before the deadline. At the deadline, checkout automatically switches to the regular price. The deadline must fall within this event&apos;s registration window.</p>
                       </div>}
                     </div>
@@ -1365,17 +1352,16 @@ export default function CreateEventPage() {
                     />
                     <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Category start and course cut-off times are optional. Leave them blank when the category follows the event schedule.</p>
                   </div>
-                  {categoryMode === "distances" && <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-orange-600">Included in this distance</p>
-                    <h3 className="mt-1 font-bold text-[#071b41]">Race kit &amp; inclusions</h3>
-                    <p className="mt-1 text-sm text-slate-600">Add plain-text benefits (such as an e-certificate) or products that need a size or option (such as a singlet).</p>
-                    {category.kitItems.length === 0 && <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">No distance-specific items added.</p>}
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 className="font-bold text-[#071b41]">Inclusions for {[group?.name.trim(), category.distance.trim() ? `${category.distance}K` : ""].filter(Boolean).join(" · ") || "this race option"} <span className="text-orange-600">*</span></h3>
+                    <p className="mt-1 text-sm text-slate-600">These items are included for this race option. Participants choose product sizes during registration.</p>
                     {category.kitItems.map((item, itemIndex) => <KitItemEditor key={itemIndex} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
+                    {attemptedSteps[2] && !categoryHasRequiredInclusion(category) && <p className="mt-3 text-sm font-semibold text-red-600" role="alert">Add at least one simple inclusion or included product.</p>}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("inclusion")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add simple inclusion</button>
                       <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("product")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add product with choices</button>
                     </div>
-                  </div>}
+                  </div>
                   <button
                     type="button"
                     onClick={() =>
@@ -1389,16 +1375,6 @@ export default function CreateEventPage() {
                   </button>
                 </div>
               ))}
-                  {group && <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h4 className="font-bold text-[#071b41]">Inclusions for {group.name.trim() || "this group"}</h4>
-                    <p className="mt-1 text-sm text-slate-600">These items are included for every distance in this group. Participants choose product sizes during registration.</p>
-                    {group.kitItems.length === 0 && <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">No group inclusions added yet.</p>}
-                    {group.kitItems.map((item, itemIndex) => <KitItemEditor key={itemIndex} item={item} onChange={(value) => updateCategoryGroup(group.id, { kitItems: group.kitItems.map((entry, index) => index === itemIndex ? value : entry) })} onRemove={() => updateCategoryGroup(group.id, { kitItems: group.kitItems.filter((_, index) => index !== itemIndex) })} />)}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => updateCategoryGroup(group.id, { kitItems: [...group.kitItems, emptyKitItem("inclusion")] })} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add simple inclusion</button>
-                      <button type="button" onClick={() => updateCategoryGroup(group.id, { kitItems: [...group.kitItems, emptyKitItem("product")] })} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add product with choices</button>
-                    </div>
-                  </div>}
                 </div>
               ))}
               {categoryMode === "groups" ? <button type="button" onClick={addCategoryGroup} className="rounded-lg border border-orange-300 px-4 py-2 text-sm font-bold text-orange-700">+ {categoryGroups.length === 0 ? "Add first group" : "Add another group"}</button> : categoryMode === "distances" && <button
@@ -1413,7 +1389,7 @@ export default function CreateEventPage() {
               </section>
               {hasPhysicalRaceKit && <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-orange-700">2 ? Race kit pickup</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-orange-700">Race kit pickup</p>
                   <h3 className="mt-1 font-bold text-[#071b41]">Race kit claiming locations</h3>
                   <p className="mt-1 max-w-3xl text-sm text-slate-600">Add pickup places participants can choose during registration. Configure included items under each category or group above. Optional merchandise stays separate below.</p>
                 </div>
@@ -1466,21 +1442,26 @@ export default function CreateEventPage() {
               </section>}
 
               <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-orange-700">3 · Optional add-ons</p><h3 className="mt-1 text-lg font-black text-[#071b41]">Additional merchandise</h3><p className="mt-1 max-w-2xl text-sm text-slate-600">Optional paid products sold separately from each category’s included race kit. Participants can choose these during registration.</p></div><button type="button" onClick={() => setMerchandise((current) => [...current, emptyMerchandiseItem()])} className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white hover:bg-orange-700">+ Add merchandise</button></div>
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-orange-700">Optional add-ons</p><h3 className="mt-1 text-lg font-black text-[#071b41]">Additional merchandise</h3><p className="mt-1 max-w-2xl text-sm text-slate-600">Optional paid products sold separately from each category’s included race kit. Participants can choose these during registration.</p></div><button type="button" onClick={() => setMerchandise((current) => [...current, emptyMerchandiseItem()])} className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white hover:bg-orange-700">+ Add merchandise</button></div>
                 {merchandise.length === 0 ? <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-white p-5 text-center text-sm text-slate-500">No additional merchandise. Your category inclusions remain unchanged.</div> : <div className="mt-4 space-y-3">{merchandise.map((item, index) => <MerchandiseEditor key={index} item={item} onChange={(value) => setMerchandise((current) => current.map((entry, itemIndex) => itemIndex === index ? value : entry))} onRemove={() => setMerchandise((current) => current.filter((_, itemIndex) => itemIndex !== index))} />)}</div>}
               </section>
               <section aria-labelledby="race-options-preview" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="border-b border-slate-200 pb-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-orange-600">Participant view</p>
-                  <h3 id="race-options-preview" className="mt-1 text-lg font-black text-[#071b41]">Review race options</h3>
-                  <p className="mt-1 text-sm text-slate-600">Check the distances, prices, inclusions, and add-ons participants will see. Live availability and the final price are checked again at checkout.</p>
+                  <h3 id="race-options-preview" className="text-lg font-black text-[#071b41]">Participant view</h3>
                 </div>
-                {categories.length === 0 ? <p className="py-5 text-sm text-slate-600">Add a distance above to preview registration options.</p> : <div className="mt-4 space-y-3">
-                  {categorySections.map(({ group, entries }) => (
+                {!hasParticipantPreviewContent ? (
+                  <div className="mt-4 flex min-h-32 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60" role="status">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <Eye aria-hidden="true" className="h-7 w-7" strokeWidth={1.75} />
+                      <p className="text-sm font-medium text-slate-500">Participant options will appear here</p>
+                    </div>
+                  </div>
+                ) : <div className="mt-4 space-y-3">
+                  {previewCategorySections.map(({ group, entries }) => (
                     <div key={group?.id ?? "preview-distances"} className="space-y-3">
                       {group && <h4 className="rounded-lg bg-slate-100 px-3 py-2 font-bold text-[#071b41]">{group.name.trim() || "Untitled group"}</h4>}
                       {entries.map(({ category, index }) => {
-                        const included = group ? group.kitItems : category.kitItems;
+                        const included = category.kitItems;
                         return <article key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div><h5 className="font-bold text-[#071b41]">{category.distance.trim() ? `${category.distance}K` : `Distance ${index + 1}`}</h5><p className="mt-1 text-sm text-slate-600">{category.capacity.trim() ? `${category.capacity} registration slots` : "No category slot limit"}</p></div>
@@ -1494,7 +1475,7 @@ export default function CreateEventPage() {
                   ))}
                 </div>}
                 {hasPhysicalRaceKit && kitClaimingLocations.length > 0 && <p className="mt-4 text-sm text-slate-700"><strong>Pickup choices:</strong> {kitClaimingLocations.join(" · ")}</p>}
-                {merchandise.length > 0 && <div className="mt-4 border-t border-slate-200 pt-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Optional paid add-ons</p><ul className="mt-1 list-inside list-disc text-sm text-slate-700">{merchandise.filter((item) => item.name.trim()).map((item, index) => <li key={index}>{item.name.trim()} · {previewPeso(item.unitPrice)}{item.variants.length > 0 ? ` · ${item.variants.join(", ")}` : ""}</li>)}</ul></div>}
+                {previewMerchandise.some((item) => item.name.trim()) && <div className="mt-4 border-t border-slate-200 pt-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Optional paid add-ons</p><ul className="mt-1 list-inside list-disc text-sm text-slate-700">{previewMerchandise.filter((item) => item.name.trim()).map((item, index) => <li key={index}>{item.name.trim()} · {previewPeso(item.unitPrice)}{item.variants.length > 0 ? ` · ${item.variants.join(", ")}` : ""}</li>)}</ul></div>}
               </section>
             </div>
           )}

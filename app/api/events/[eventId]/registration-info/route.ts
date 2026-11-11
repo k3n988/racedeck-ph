@@ -16,13 +16,55 @@ const jsonNoStore = (body: unknown, init?: ResponseInit) => NextResponse.json(bo
   headers: { 'Cache-Control': 'no-store, max-age=0', ...init?.headers },
 });
 
+const bannerFrameColumns = ['banner_position_x', 'banner_position_y', 'banner_zoom'] as const;
+type RegistrationEvent = {
+  id: string;
+  organization_id: string;
+  name: string;
+  banner_url: string | null;
+  banner_position_x?: number | null;
+  banner_position_y?: number | null;
+  banner_zoom?: number | null;
+  event_date: string;
+  assembly_time: string | null;
+  venue: string | null;
+  address: string | null;
+  registration_opens_at: string | null;
+  registration_closes_at: string | null;
+  registration_availability: string;
+  overall_capacity: number | null;
+};
+
+function isMissingBannerFrameColumn(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? '';
+  return (error.code === '42703' || error.code === 'PGRST204') &&
+    bannerFrameColumns.some((column) => message.includes(column));
+}
+
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const admin = createAdminClient() as unknown as SupabaseClient;
   const eventColumns = 'id,organization_id,name,banner_url,banner_position_x,banner_position_y,banner_zoom,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity';
+  const legacyEventColumns = 'id,organization_id,name,banner_url,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity';
   const isEventId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.eventId);
-  const eventLookup = admin.from('events').select(eventColumns);
-  const { data: event, error: eventError } = await (isEventId ? eventLookup.eq('id', params.eventId) : eventLookup.eq('slug', params.eventId))
-    .eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
+  const loadEvent = (projection: string) => {
+    const eventLookup = admin.from('events').select(projection);
+    return (isEventId ? eventLookup.eq('id', params.eventId) : eventLookup.eq('slug', params.eventId))
+      .eq('lifecycle_status', 'published').eq('review_status', 'approved').maybeSingle();
+  };
+  let eventResult = await loadEvent(eventColumns);
+  if (isMissingBannerFrameColumn(eventResult.error)) {
+    console.warn('Registration banner framing columns are not available yet; using centered banner framing.');
+    eventResult = await loadEvent(legacyEventColumns);
+  }
+  const eventError = eventResult.error;
+  const eventData = eventResult.data as unknown as RegistrationEvent | null;
+  const event = eventData ? {
+    ...eventData,
+    banner_position_x: Number(eventData.banner_position_x ?? 50),
+    banner_position_y: Number(eventData.banner_position_y ?? 50),
+    banner_zoom: Number(eventData.banner_zoom ?? 1),
+  } : null;
   if (eventError) {
     console.error('Unable to load public event for registration', eventError);
     return jsonNoStore({ error: 'Event registration details could not be loaded. Please try again.' }, { status: 500 });

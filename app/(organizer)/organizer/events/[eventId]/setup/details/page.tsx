@@ -97,7 +97,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
       setPreviewUrl(body.event.banner_url ?? '');
       setBannerFrame({ x: body.event.banner_position_x ?? 50, y: body.event.banner_position_y ?? 50, zoom: body.event.banner_zoom ?? 1 });
       setDescription(body.event.description ?? '');
-      setOptionalLinks(Object.fromEntries((['website', 'instagram', 'tiktok', 'youtube', 'x'] as const).filter((key) => body.event.social_links?.[key]).map((key) => [key, body.event.social_links[key]])));
+      setOptionalLinks(Object.fromEntries((['phone', 'website', 'instagram', 'tiktok', 'youtube', 'x'] as const).filter((key) => body.event.social_links?.[key]).map((key) => [key, body.event.social_links[key]])));
       setPreviewFailed(false);
       setMessage('');
     } catch (error) {
@@ -122,11 +122,9 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
     if (profileEditable) {
       values.social_links = {
         facebook: typeof values.facebook === 'string' ? values.facebook : '',
-        phone: typeof values.phone === 'string' ? values.phone : '',
         ...optionalLinks,
       };
       delete values.facebook;
-      delete values.phone;
     }
     try {
       const response = await fetch(`/api/organizer/events/${params.eventId}`, {
@@ -183,10 +181,9 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
         </div>
       </Section>
 
-      <Section title="Contact links" description="Add the required Facebook page and contact number. Choose any additional links below." icon={Globe2}>
+      <Section title="Contact links" description="Add the required Facebook page and any optional contact links." icon={Globe2}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Facebook page URL" name="facebook" type="url" defaultValue={event.social_links?.facebook ?? ''} disabled={!profileEditable} required hint="Link to the event or organizer Facebook page." />
-          <Field label="Phone number" name="phone" type="tel" defaultValue={event.social_links?.phone ?? ''} disabled={!profileEditable} required hint="Participants can tap this number to call." />
         </div>
         <div className="mt-5"><OptionalEventLinks links={optionalLinks} onChange={setOptionalLinks} disabled={!profileEditable} /></div>
       </Section>
@@ -197,7 +194,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
           <Field label="Venue name" name="venue" defaultValue={event.venue} disabled={!profileEditable} hint="Example: Bacolod City Government Center" />
           <Field label="Street address and city" name="address" defaultValue={event.address} disabled={!profileEditable} />
           <Field label="Public event start time" name="start_time" type="time" defaultValue={timeValue(event.start_time)} disabled={!profileEditable} />
-          <Field label="Assembly time" name="assembly_time" type="time" defaultValue={timeValue(event.assembly_time)} disabled={!profileEditable} />
+          <Field label="Assembly time" name="assembly_time" type="time" defaultValue={timeValue(event.assembly_time)} disabled={!profileEditable} hint="Participant arrival time before the race starts." />
           <Field label="Gun start" name="gun_start_time" type="time" defaultValue={timeValue(event.gun_start_time)} disabled={!profileEditable} />
           <Field label="Course cutoff" name="cutoff_time" type="time" defaultValue={timeValue(event.cutoff_time)} disabled={!profileEditable} />
         </div>
