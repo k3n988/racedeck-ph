@@ -165,12 +165,7 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
           </button>
         </div>
 
-        <div className="shrink-0 px-6 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-300">Organizer Portal</p>
-          <p className="mt-1 text-xs text-white/50">Race operations workspace</p>
-        </div>
-
-        <nav className="scrollbar-hidden min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 pb-5" aria-label="Main menu">
+        <nav className="scrollbar-hidden min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 pb-5 pt-4" aria-label="Main menu">
           {navigationGroups.map((group, index) => (
             <div key={`${group.label ?? 'main'}-${index}`}>
               {group.label && <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{group.label}</p>}

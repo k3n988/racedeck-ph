@@ -9,10 +9,31 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
+const LEGACY_FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
+const BANNER_FRAME_COLUMNS = ['banner_position_x', 'banner_position_y', 'banner_zoom'] as const;
+type OrganizerEvent = Database['public']['Tables']['events']['Row'] & {
+  banner_position_x?: number | null;
+  banner_position_y?: number | null;
+  banner_zoom?: number | null;
+};
 const jsonNoStore = (body: unknown, init?: ResponseInit) => NextResponse.json(body, {
   ...init,
   headers: { 'Cache-Control': 'no-store, max-age=0', ...init?.headers },
 });
+function isMissingBannerFrameColumns(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? '';
+  return (error.code === '42703' || error.code === 'PGRST204')
+    && BANNER_FRAME_COLUMNS.some((column) => message.includes(column));
+}
+function withDefaultBannerFrame(event: OrganizerEvent) {
+  return {
+    ...event,
+    banner_position_x: event.banner_position_x ?? 50,
+    banner_position_y: event.banner_position_y ?? 50,
+    banner_zoom: event.banner_zoom ?? 1,
+  };
+}
 const sameInstant = (left: unknown, right: unknown) => {
   if (left == null || left === '') return right == null || right === '';
   if (right == null || right === '') return false;
@@ -31,9 +52,16 @@ function isMissingContentPagesTable(error: { code?: string; message?: string } |
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const auth = await requireOrganizerPermission('view_events', params.eventId);
   if ('response' in auth) return auth.response;
-  const { data, error } = await auth.admin.from('events').select(FIELDS).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).maybeSingle();
+  const admin = auth.admin as unknown as SupabaseClient<any>;
+  const loadEvent = async (fields: string) => await admin.from('events').select(fields).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).maybeSingle() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
+  let { data, error } = await loadEvent(FIELDS);
+  if (isMissingBannerFrameColumns(error)) {
+    console.warn('Organizer event banner framing columns are unavailable; using centered framing until the migration is applied.');
+    ({ data, error } = await loadEvent(LEGACY_FIELDS));
+  }
   if (error) return errorResponse(error, 'Loading organizer event');
   if (!data) return jsonNoStore({ error: 'Event not found' }, { status: 404 });
+  data = withDefaultBannerFrame(data);
   const [{ data: registrations }, { data: payments }, { data: categories, error: categoriesError }] = await Promise.all([
     auth.admin.from('registrations').select('id,status,created_at').eq('event_id', params.eventId).order('created_at', { ascending: false }).limit(1000),
     auth.admin.from('payments').select('amount_paid,status,created_at').eq('event_id', params.eventId).order('created_at', { ascending: false }).limit(1000),
@@ -149,11 +177,23 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
         return NextResponse.json({ error: 'Set valid registration dates in order, closing no later than the event day.' }, { status: 400 });
       }
     }
-    const { data, error } = await auth.admin.from('events').update(update).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).select(FIELDS).single();
+    const admin = auth.admin as unknown as SupabaseClient<any>;
+    const performUpdate = async (payload: Record<string, unknown>, fields: string) => await admin.from('events').update(payload).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).select(fields).single() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
+    let { data, error } = await performUpdate(update as Record<string, unknown>, FIELDS);
+    let bannerFrameSaved = true;
+    if (isMissingBannerFrameColumns(error)) {
+      const compatibleUpdate = { ...update } as Record<string, unknown>;
+      for (const column of BANNER_FRAME_COLUMNS) delete compatibleUpdate[column];
+      bannerFrameSaved = !BANNER_FRAME_COLUMNS.some((column) => column in update);
+      console.warn('Saving event details without banner framing because the database migration is not available yet.');
+      ({ data, error } = await performUpdate(compatibleUpdate, LEGACY_FIELDS));
+      if (!error && data) data = withDefaultBannerFrame(data);
+    }
     if (error) {
       console.error('[Updating organizer event]', error);
       return NextResponse.json({ error: error.code === '23505' ? 'Event slug already exists' : process.env.NODE_ENV === 'development' ? `Event update failed: ${error.message}` : 'Event could not be updated' }, { status: error.code === '23505' ? 409 : 500 });
     }
+    if (!data) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     const expectedOpening = 'registration_opens_at' in update ? update.registration_opens_at : current.registration_opens_at;
     const expectedClosing = 'registration_closes_at' in update ? update.registration_closes_at : current.registration_closes_at;
     if (!sameInstant(data.registration_opens_at, expectedOpening)
@@ -163,7 +203,7 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
       console.error('[Updating organizer event] Database returned values different from the submitted settings', { eventId: params.eventId });
       return NextResponse.json({ error: 'The database did not save the requested registration settings. Please retry or contact RaceDeck support.' }, { status: 500 });
     }
-    return jsonNoStore({ event: data });
+    return jsonNoStore({ event: data, banner_frame_saved: bannerFrameSaved });
   } catch (error) {
     return errorResponse(error, 'Updating organizer event');
   }
@@ -195,8 +235,15 @@ export async function DELETE(_request: Request, { params }: { params: { eventId:
       return NextResponse.json({ error: 'This event has registrations or payments and cannot be deleted. Cancel or archive it instead.' }, { status: 409 });
     }
 
-    const { error } = await auth.admin.from('events').delete().eq('id', params.eventId).eq('organization_id', auth.membership.organization_id);
-    if (error) return errorResponse(error, 'Deleting organizer event');
+    const db = auth.admin as unknown as SupabaseClient<any>;
+    const { error } = await db.rpc('delete_organizer_draft_event', {
+      p_event_id: params.eventId,
+      p_organization_id: auth.membership.organization_id,
+    });
+    if (error) {
+      console.error('[Deleting organizer event]', error);
+      return NextResponse.json({ error: error.code === 'P0001' ? error.message : error.code === 'PGRST202' ? 'Draft deletion is unavailable until the pending Supabase migration is applied.' : 'Draft event could not be deleted. Check for linked registrations or other protected records.' }, { status: error.code === 'P0001' ? 409 : 500 });
+    }
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return errorResponse(error, 'Deleting organizer event');

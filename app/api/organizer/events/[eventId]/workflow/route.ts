@@ -20,6 +20,15 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     if (!eventPlatformLinkIsValid('facebook', contact.facebook ?? '')) {
       return NextResponse.json({ error: 'Add a valid Facebook link in Event Details before submitting for review.' }, { status: 409 });
     }
+    const [{ data: categories, error: categoriesError }, { data: kits, error: kitsError }] = await Promise.all([
+      access.admin.from('race_categories').select('id').eq('event_id', params.eventId),
+      access.admin.from('race_kit_configs').select('category_id,status,race_kit_items(item_name,is_active)').eq('event_id', params.eventId),
+    ]);
+    if (categoriesError || kitsError) return NextResponse.json({ error: 'Event inclusions could not be checked. Please try again.' }, { status: 500 });
+    const configuredCategories = new Set((kits ?? []).filter((kit) => kit.status === 'active' && kit.category_id && kit.race_kit_items?.some((item) => item.is_active && item.item_name?.trim())).map((kit) => kit.category_id));
+    if (!(categories ?? []).length || (categories ?? []).some((category) => !configuredCategories.has(category.id))) {
+      return NextResponse.json({ error: 'Add and save at least one inclusion for every race category before submitting for review.' }, { status: 409 });
+    }
   }
 
   const supabase = await createClient();

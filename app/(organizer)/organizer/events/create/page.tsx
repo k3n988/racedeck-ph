@@ -7,7 +7,7 @@ import Image from "next/image";
 import { ContentEditor } from "@/components/organizer/content-editor";
 import { OptionalEventLinks } from "@/components/organizer/optional-event-links";
 import { eventPlatformLinkIsValid, type OptionalEventLinkPlatform } from "@/lib/events/event-social-links";
-import { Check, Eye, Maximize2, X } from "lucide-react";
+import { Check, Maximize2, X } from "lucide-react";
 import { BannerFrameEditor, type BannerFrame } from "@/components/organizer/banner-frame-editor";
 import { manilaDateTimeToIso } from "@/lib/events/category-pricing";
 import { variantOptionsPayload } from "@/lib/events/variant-options";
@@ -25,8 +25,6 @@ type Category = {
   earlyBirdEnabled: boolean;
   earlyBirdFee: string;
   earlyBirdDeadline: string;
-  registrationOpen: string;
-  registrationClose: string;
   gunStart: string;
   cutoff: string;
   kitItems: KitItem[];
@@ -107,17 +105,6 @@ const hasValidOptionalVariantSlots = (variants: string[], variantSlots: Record<s
 });
 const hasRichContent = (value: string) => Boolean(value.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim());
 const toEventSlug = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const previewPeso = (value: string) => value.trim() && Number.isFinite(Number(value))
-  ? new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(value))
-  : "Set a price";
-const previewDate = (value: string) => {
-  if (!value) return "Not set";
-  const date = manilaDateTimeToIso(value);
-  return date ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(date)) : "Invalid date";
-};
-const previewEventDate = (value: string) => value
-  ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" }).format(new Date(`${value}T12:00:00+08:00`))
-  : "Event date not set";
 const emptyCategory = (groupId: string | null = null, name = ""): Category => ({
   name,
   groupId,
@@ -127,8 +114,6 @@ const emptyCategory = (groupId: string | null = null, name = ""): Category => ({
   earlyBirdEnabled: false,
   earlyBirdFee: "",
   earlyBirdDeadline: "",
-  registrationOpen: "",
-  registrationClose: "",
   gunStart: "",
   cutoff: "",
   kitItems: [],
@@ -275,10 +260,10 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
     setVariantDraft("");
   };
   return <article className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="mb-3 flex items-center justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Race kit item</h4><p className="text-xs text-slate-500">Add an informational inclusion or a product with selectable options.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="mb-3 flex items-center justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">{item.kind === "inclusion" ? "Simple inclusion" : "Included product"}</h4>{item.kind === "product" && <p className="text-xs text-slate-500">Product with selectable options.</p>}</div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
+    <div className={item.kind === "inclusion" ? "max-w-xl" : "grid gap-3 md:grid-cols-2"}>
       <label className="block text-sm font-semibold text-slate-700">{item.kind === "inclusion" ? "Inclusion name" : "Product name"}<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder={item.kind === "inclusion" ? "e.g. E-certificate or Sports headband" : "e.g. Race singlet"} maxLength={160} className={input} /></label>
-      <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder={item.kind === "inclusion" ? "Add details only if the inclusion needs clarification" : "Add fabric, fit, or other helpful details"} maxLength={1000} className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">You can leave this blank if the name, size options, and photos give participants enough information.</span></label>
+      {item.kind === "product" && <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="Add fabric, fit, or other helpful details" maxLength={1000} className={input} /></label>}
     </div>
     {item.kind === "product" && <><div className="mt-4">
       <label className="block text-sm font-semibold text-slate-700">Available variants <span className="font-normal text-slate-400">(sizes, colors, or other options)</span></label>
@@ -286,11 +271,10 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
       <div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
     </div>
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
-      <Upload label="Product photos (front, back, details)" value={item.productImages} multiple onChange={(file, url) => onChange({ ...item, productImages: [...item.productImages, { file, url }] })} onRemove={(imageIndex) => { const image = item.productImages[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, productImages: item.productImages.filter((_, index) => index !== imageIndex) }); }} />
+      <Upload label="Product photos" value={item.productImages} multiple onChange={(file, url) => onChange({ ...item, productImages: [...item.productImages, { file, url }] })} onRemove={(imageIndex) => { const image = item.productImages[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, productImages: item.productImages.filter((_, index) => index !== imageIndex) }); }} />
       <Upload label="Size chart or reference guide" value={item.referenceImage} onChange={(file, url) => { if (item.referenceImage.url.startsWith("blob:")) URL.revokeObjectURL(item.referenceImage.url); onChange({ ...item, referenceImage: { file, url } }); }} onRemove={() => { if (item.referenceImage.url.startsWith("blob:")) URL.revokeObjectURL(item.referenceImage.url); onChange({ ...item, referenceImage: emptyUpload() }); }} />
     </div>
-    <p className="mt-2 text-xs text-slate-500">Use JPG, PNG, or WEBP images up to 10 MB each. Participants can choose a size or option when one is configured.</p></>}
-    {item.kind === "inclusion" && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">This item is shown as a bullet in the selected category’s inclusions. No size selection, product image, or size chart is required.</p>}
+    </>}
   </article>;
 }
 
@@ -437,21 +421,11 @@ export default function CreateEventPage() {
       : null,
     [categories],
   );
-  const categoryStarted = (category: Category) => Boolean(category.name.trim() || category.distance.trim() || category.capacity.trim() || category.fee.trim() || category.earlyBirdEnabled || category.earlyBirdFee.trim() || category.earlyBirdDeadline || category.registrationOpen || category.registrationClose || category.gunStart.trim() || category.cutoff.trim() || category.kitItems.some((item) => item.name.trim()));
+  const categoryStarted = (category: Category) => Boolean(category.name.trim() || category.distance.trim() || category.capacity.trim() || category.fee.trim() || category.earlyBirdEnabled || category.earlyBirdFee.trim() || category.earlyBirdDeadline || category.gunStart.trim() || category.cutoff.trim() || category.kitItems.some((item) => item.name.trim()));
   const categoryHasRequiredInclusion = (category: Category) => category.kitItems.some((item) => Boolean(item.name.trim()));
   const categoryIsValid = (category: Category) => {
-    const opensLocal = category.registrationOpen || (form.registrationOpen ? `${form.registrationOpen}T00:00` : '');
-    const closesLocal = category.registrationClose || (form.registrationClose ? `${form.registrationClose}T23:59` : '');
-    const categoryHasSchedule = Boolean(category.registrationOpen || category.registrationClose);
-    const categoryScheduleValid = !categoryHasSchedule || Boolean(
-      category.registrationOpen &&
-      category.registrationClose &&
-      category.registrationOpen < category.registrationClose &&
-      form.eventDate &&
-      category.registrationClose.slice(0, 10) <= form.eventDate &&
-      manilaDateTimeToIso(category.registrationOpen) &&
-      manilaDateTimeToIso(category.registrationClose),
-    );
+    const opensLocal = form.registrationOpen ? `${form.registrationOpen}T00:00` : '';
+    const closesLocal = form.registrationClose ? `${form.registrationClose}T23:59` : '';
     const earlyBirdPriceValid = !category.earlyBirdEnabled || Boolean(
       category.earlyBirdFee.trim() && Number.isFinite(Number(category.earlyBirdFee)) &&
       Number(category.earlyBirdFee) >= 0 && Number(category.earlyBirdFee) < Number(category.fee) &&
@@ -468,13 +442,11 @@ export default function CreateEventPage() {
       (!category.capacity.trim() || (Number.isInteger(Number(category.capacity)) && Number(category.capacity) > 0 && Number(category.capacity) <= 2147483647)) &&
       category.fee.trim() && Number.isFinite(Number(category.fee)) && Number(category.fee) >= 0 && Number(category.fee) <= 99999999.99 &&
       categoryHasRequiredInclusion(category) &&
-      categoryScheduleValid &&
       earlyBirdPriceValid &&
       earlyBirdWindowValid,
     );
   };
   const categoriesReady = Boolean(categoryMode) && categories.length > 0 && categories.every(categoryIsValid) && (categoryMode !== "groups" || categoryGroups.every((group) => group.name.trim() && categories.some((category) => category.groupId === group.id)));
-  const incompleteCategory = categories.some((category) => categoryStarted(category) && !categoryIsValid(category));
   const manilaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const registrationWindowValid = Boolean(form.registrationOpen && form.registrationClose && form.registrationOpen <= form.registrationClose && form.eventDate && form.registrationClose <= form.eventDate);
   const registrationFieldsValid = (!form.registrationOpen && !form.registrationClose) || registrationWindowValid;
@@ -494,19 +466,15 @@ export default function CreateEventPage() {
   const categorySections: Array<{ group: CategoryGroup | null; entries: typeof categoryEntries }> = categoryMode === "groups"
     ? categoryGroups.map((group) => ({ group, entries: categoryEntries.filter(({ category }) => category.groupId === group.id) }))
     : [{ group: null, entries: categoryEntries }];
-  const previewCategorySections = categorySections
-    .map(({ group, entries }) => ({ group, entries: entries.filter(({ category }) => categoryStarted(category)) }))
-    .filter(({ group, entries }) => Boolean(
-      entries.length
-      || group?.name.trim(),
-    ));
-  const previewMerchandise = merchandise.filter((item) => Boolean(item.name.trim()));
-  const hasParticipantPreviewContent = previewCategorySections.length > 0 || previewMerchandise.length > 0;
+  const categoryErrorName = (category: Category, index: number) => {
+    const groupName = categoryMode === "groups" ? categoryGroups.find((group) => group.id === category.groupId)?.name.trim() : "";
+    const distanceName = category.distance.trim() ? `${category.distance}K` : `Distance ${index + 1}`;
+    return [groupName, distanceName].filter(Boolean).join(" · ");
+  };
   const missing = [
     (!form.name.trim() || form.name.trim().length > 160) && "an event name (up to 160 characters)",
     (!form.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) && "a valid public event URL slug",
     !form.eventDate && "event date",
-    incompleteCategory && "complete or remove the unfinished race category",
     !categoryMode && "choose how to organize race categories",
     categoryMode === "groups" && categoryGroups.some((group) => !group.name.trim() || !categories.some((category) => category.groupId === group.id)) && "add a name and at least one distance to every category group",
     !registrationFieldsValid && "a valid registration date range",
@@ -517,15 +485,15 @@ export default function CreateEventPage() {
   ].filter(Boolean) as string[];
   const ready = missing.length === 0;
   const submissionChecks = [
-    { label: "Event name", complete: Boolean(form.name.trim() && form.name.trim().length <= 160) },
-    { label: "Event date is today or later", complete: Boolean(form.eventDate && form.eventDate >= manilaToday) },
-    { label: "Venue and complete address", complete: Boolean(form.venue.trim() && form.address.trim()) },
-    { label: "Event description", complete: hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || form.description) },
-    { label: "Registration opening and closing dates are valid", complete: registrationWindowValid },
-    { label: "Race categories and inclusions are complete", complete: categoriesReady },
-    { label: "Facebook link is provided; any extra contact links are valid", complete: contactFieldsValid },
-    { label: "Total category capacity is within the supported limit", complete: capacityValid },
-    { label: "Registration questions are complete (if added)", complete: registrationQuestionsReady },
+    { label: "Event name", stepIndex: 0, complete: Boolean(form.name.trim() && form.name.trim().length <= 160) },
+    { label: "Event date is today or later", stepIndex: 1, complete: Boolean(form.eventDate && form.eventDate >= manilaToday) },
+    { label: "Venue and complete address", stepIndex: 1, complete: Boolean(form.venue.trim() && form.address.trim()) },
+    { label: "Event description", stepIndex: 3, complete: Boolean((eventPages.find((page) => page.id === "event-details")?.content || form.description).replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').trim()) },
+    { label: "Registration opening and closing dates are valid", stepIndex: 1, complete: registrationWindowValid },
+    { label: "Race categories and inclusions are complete", stepIndex: 2, complete: categoriesReady },
+    { label: "Facebook link is provided; any extra contact links are valid", stepIndex: 0, complete: contactFieldsValid },
+    { label: "Total category capacity is within the supported limit", stepIndex: 2, complete: capacityValid },
+    { label: "Registration questions are complete (if added)", stepIndex: 4, complete: registrationQuestionsReady },
   ];
   const submissionReady = submissionChecks.every((check) => check.complete);
   const fieldCompletedSteps = [
@@ -565,65 +533,68 @@ export default function CreateEventPage() {
       const errors: string[] = [];
       if (!categoryMode) errors.push("Choose whether to organize this event with category groups or by distance only.");
       if (categoryMode === "groups") categoryGroups.forEach((group, index) => {
-        if (!group.name.trim()) errors.push(`Group ${index + 1}: enter a group name.`);
-        if (!categories.some((category) => category.groupId === group.id)) errors.push(`Group ${index + 1}: add at least one race distance.`);
+        const groupLabel = group.name.trim() || `Group ${index + 1}`;
+        if (!group.name.trim()) errors.push(`${groupLabel}: enter a group name.`);
+        if (!categories.some((category) => category.groupId === group.id)) errors.push(`${groupLabel}: add at least one race distance.`);
       });
       if (!categories.length) errors.push("Add at least one race category.");
       categories.forEach((category, index) => {
-        const number = index + 1;
-        if (category.name.trim().length > 120) errors.push(`Category ${number}: group name must be 120 characters or fewer.`);
-        if (!category.distance.trim() || !Number.isFinite(Number(category.distance)) || Number(category.distance) <= 0 || Number(category.distance) > 9999.99) errors.push(`Category ${number}: enter a distance greater than 0 and no more than 9,999.99 km.`);
-        if (category.capacity.trim() && (!Number.isInteger(Number(category.capacity)) || Number(category.capacity) <= 0 || Number(category.capacity) > 2147483647)) errors.push(`Category ${number}: capacity must be a positive whole number or left blank for unlimited slots.`);
-        if (!category.fee.trim() || !Number.isFinite(Number(category.fee)) || Number(category.fee) < 0 || Number(category.fee) > 99999999.99) errors.push(`Category ${number}: enter a registration fee from PHP 0 to PHP 99,999,999.99.`);
-        if (!categoryHasRequiredInclusion(category)) errors.push(`Category ${number}: add at least one simple inclusion or included product.`);
-        if (Boolean(category.registrationOpen) !== Boolean(category.registrationClose)) errors.push(`Category ${number}: enter both distance registration dates, or leave both blank to use the event schedule.`);
-        if (category.registrationOpen && category.registrationClose && category.registrationOpen >= category.registrationClose) errors.push(`Category ${number}: distance registration must close after it opens.`);
-        if (category.registrationClose && form.eventDate && category.registrationClose.slice(0, 10) > form.eventDate) errors.push(`Category ${number}: registration cannot close after the event date.`);
+        const categoryLabel = categoryErrorName(category, index);
+        if (category.name.trim().length > 120) errors.push(`${categoryLabel}: group name must be 120 characters or fewer.`);
+        if (!category.distance.trim() || !Number.isFinite(Number(category.distance)) || Number(category.distance) <= 0 || Number(category.distance) > 9999.99) errors.push(`${categoryLabel}: enter a distance greater than 0 and no more than 9,999.99 km.`);
+        if (category.capacity.trim() && (!Number.isInteger(Number(category.capacity)) || Number(category.capacity) <= 0 || Number(category.capacity) > 2147483647)) errors.push(`${categoryLabel}: capacity must be a positive whole number or left blank for unlimited slots.`);
+        if (!category.fee.trim() || !Number.isFinite(Number(category.fee)) || Number(category.fee) < 0 || Number(category.fee) > 99999999.99) errors.push(`${categoryLabel}: enter a registration fee from PHP 0 to PHP 99,999,999.99.`);
+        if (!categoryHasRequiredInclusion(category)) errors.push(`${categoryLabel}: add at least one named simple inclusion or included product in this distance’s Inclusions section.`);
         if (category.earlyBirdEnabled) {
-          if (!category.earlyBirdFee.trim() || !Number.isFinite(Number(category.earlyBirdFee)) || Number(category.earlyBirdFee) < 0 || Number(category.earlyBirdFee) >= Number(category.fee)) errors.push(`Category ${number}: early bird price must be a valid amount lower than the regular price.`);
+          if (!category.earlyBirdFee.trim() || !Number.isFinite(Number(category.earlyBirdFee)) || Number(category.earlyBirdFee) < 0 || Number(category.earlyBirdFee) >= Number(category.fee)) errors.push(`${categoryLabel}: Early Bird price must be a valid amount lower than the regular registration fee.`);
           const deadline = manilaDateTimeToIso(category.earlyBirdDeadline);
-          if (!deadline) errors.push(`Category ${number}: choose a valid early bird deadline.`);
+          if (!deadline) errors.push(`${categoryLabel}: choose a valid Early Bird deadline.`);
           else {
             const deadlineLocal = category.earlyBirdDeadline;
-            const opensAt = category.registrationOpen || (form.registrationOpen ? `${form.registrationOpen}T00:00` : "");
-            const closesAt = category.registrationClose || (form.registrationClose ? `${form.registrationClose}T23:59` : "");
-            if (opensAt && deadlineLocal <= opensAt) errors.push(`Category ${number}: the early bird deadline must be after its registration opening date.`);
-            if (closesAt && deadlineLocal > closesAt) errors.push(`Category ${number}: the early bird deadline cannot be after its registration closing date.`);
-            if (form.eventDate && deadlineLocal >= `${form.eventDate}T23:59`) errors.push(`Category ${number}: the early bird deadline must be before the event date ends.`);
+            const opensAt = form.registrationOpen ? `${form.registrationOpen}T00:00` : "";
+            const closesAt = form.registrationClose ? `${form.registrationClose}T23:59` : "";
+            if (opensAt && deadlineLocal <= opensAt) errors.push(`${categoryLabel}: Early Bird deadline must be after event registration opens.`);
+            if (closesAt && deadlineLocal > closesAt) errors.push(`${categoryLabel}: Early Bird deadline must be on or before event registration closes.`);
+            if (form.eventDate && deadlineLocal >= `${form.eventDate}T23:59`) errors.push(`${categoryLabel}: Early Bird deadline must be before the event date ends.`);
           }
         }
-        if (category.gunStart && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.gunStart)) errors.push(`Category ${number}: enter a valid 24-hour start time.`);
-        if (category.cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.cutoff)) errors.push(`Category ${number}: enter a valid 24-hour cut-off time.`);
+        if (category.gunStart && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.gunStart)) errors.push(`${categoryLabel}: enter a valid 24-hour start time.`);
+        if (category.cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.cutoff)) errors.push(`${categoryLabel}: enter a valid 24-hour cut-off time.`);
       });
       if (hasDuplicateCategoryNames) errors.push(categoryMode === "groups" ? "A race distance is duplicated within its group. Change the distance or group." : "A race distance is duplicated. Change the distance.");
       if (!capacityValid) errors.push("Combined category capacity exceeds the supported maximum. Lower one or more category capacities.");
-      const kitItems = categories.flatMap((category) => category.kitItems);
-      kitItems.forEach((item, index) => {
+      categories.forEach((category, categoryIndex) => category.kitItems.forEach((item, itemIndex) => {
+        const itemLabel = `${categoryErrorName(category, categoryIndex)} · ${item.kind === "inclusion" ? `Simple inclusion ${itemIndex + 1}` : `Included product ${itemIndex + 1}`}${item.name.trim() ? ` “${item.name.trim()}”` : ""}`;
         const started = Boolean(item.name.trim() || item.description.trim() || item.variants.length || item.productImages.length || item.referenceImage.file || item.referenceImage.url);
-        if (started && !item.name.trim()) errors.push(`Race kit item ${index + 1}: add an inclusion or product name, or remove the incomplete item.`);
-        if (item.name.trim().length > 160) errors.push(`Race kit item ${index + 1}: name must be 160 characters or fewer.`);
-        if (item.description.trim().length > 1000) errors.push(`Race kit item ${index + 1}: description must be 1,000 characters or fewer.`);
+        if (started && !item.name.trim()) errors.push(`${itemLabel}: enter a name or remove this empty item.`);
+        if (item.name.trim().length > 160) errors.push(`${itemLabel}: name must be 160 characters or fewer.`);
+        if (item.description.trim().length > 1000) errors.push(`${itemLabel}: description must be 1,000 characters or fewer.`);
         if (item.kind === "product") {
-          if (item.variants.length > 40) errors.push(`Race kit item ${index + 1}: use no more than 40 variants.`);
-          if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`Race kit item ${index + 1}: any slot count entered must be a whole number from 0 to 1,000,000.`);
-          if (item.productImages.length > 8) errors.push(`Race kit item ${index + 1}: upload no more than 8 product photos.`);
-          if (!item.productImages.every(validImage) || !validImage(item.referenceImage)) errors.push(`Race kit item ${index + 1}: images must be JPG, PNG, or WEBP and no larger than 10 MB each.`);
+          if (item.variants.some((variant) => !variant.trim())) errors.push(`${itemLabel}: remove or complete each blank choice.`);
+          if (new Set(item.variants.map((variant) => variant.trim().toLowerCase())).size !== item.variants.length) errors.push(`${itemLabel}: remove duplicate choices.`);
+          if (item.variants.length > 40) errors.push(`${itemLabel}: use no more than 40 choices.`);
+          if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`${itemLabel}: each entered slot count must be a whole number from 0 to 1,000,000.`);
+          if (item.productImages.length > 8) errors.push(`${itemLabel}: upload no more than 8 product photos.`);
+          if (!item.productImages.every(validImage) || !validImage(item.referenceImage)) errors.push(`${itemLabel}: images must be JPG, PNG, or WEBP and no larger than 10 MB each.`);
         }
-      });
+      }));
       if (hasPhysicalRaceKit && kitClaimingLocationDraft.trim()) errors.push("Race kit claiming: add the typed location to the options list or clear the input.");
       if (hasPhysicalRaceKit && kitClaimingLocations.length > 40) errors.push("Race kit claiming: use no more than 40 pickup locations.");
       if (hasPhysicalRaceKit && kitClaimingLocations.some((location) => location.length > 160)) errors.push("Race kit claiming: each pickup location must be 160 characters or fewer.");
       merchandise.forEach((item, index) => {
+        const itemLabel = `Optional merchandise ${index + 1}${item.name.trim() ? ` “${item.name.trim()}”` : ""}`;
         const started = Boolean(item.name.trim() || item.description.trim() || item.unitPrice.trim() || item.variants.length || item.images.length);
-        if (started && !item.name.trim()) errors.push(`Merchandise ${index + 1}: enter a product name or remove the incomplete item.`);
-        if (item.name.trim().length > 160) errors.push(`Merchandise ${index + 1}: name must be 160 characters or fewer.`);
-        if (item.description.trim().length > 1000) errors.push(`Merchandise ${index + 1}: description must be 1,000 characters or fewer.`);
-        if (started && (!item.unitPrice.trim() || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 || Number(item.unitPrice) > 1000000)) errors.push(`Merchandise ${index + 1}: enter a price greater than PHP 0 and no more than PHP 1,000,000.`);
-        if (item.variants.some((variant) => variant.length > 80)) errors.push(`Merchandise ${index + 1}: each variant must be 80 characters or fewer.`);
-        if (item.variants.length > 40) errors.push(`Merchandise ${index + 1}: use no more than 40 variants.`);
-        if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`Merchandise ${index + 1}: any slot count entered must be a whole number from 0 to 1,000,000.`);
-        if (item.images.length > 8) errors.push(`Merchandise ${index + 1}: upload no more than 8 photos.`);
-        if (!item.images.every(validImage)) errors.push(`Merchandise ${index + 1}: images must be JPG, PNG, or WEBP and no larger than 10 MB each.`);
+        if (started && !item.name.trim()) errors.push(`${itemLabel}: enter a product name or remove this empty item.`);
+        if (item.name.trim().length > 160) errors.push(`${itemLabel}: name must be 160 characters or fewer.`);
+        if (item.description.trim().length > 1000) errors.push(`${itemLabel}: description must be 1,000 characters or fewer.`);
+        if (started && (!item.unitPrice.trim() || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) <= 0 || Number(item.unitPrice) > 1000000)) errors.push(`${itemLabel}: enter a price greater than PHP 0 and no more than PHP 1,000,000.`);
+        if (item.variants.some((variant) => variant.length > 80)) errors.push(`${itemLabel}: each choice must be 80 characters or fewer.`);
+        if (item.variants.some((variant) => !variant.trim())) errors.push(`${itemLabel}: remove or complete each blank choice.`);
+        if (new Set(item.variants.map((variant) => variant.trim().toLowerCase())).size !== item.variants.length) errors.push(`${itemLabel}: remove duplicate choices.`);
+        if (item.variants.length > 40) errors.push(`${itemLabel}: use no more than 40 choices.`);
+        if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`${itemLabel}: each entered slot count must be a whole number from 0 to 1,000,000.`);
+        if (item.images.length > 8) errors.push(`${itemLabel}: upload no more than 8 photos.`);
+        if (!item.images.every(validImage)) errors.push(`${itemLabel}: images must be JPG, PNG, or WEBP and no larger than 10 MB each.`);
       });
       return errors;
     }
@@ -676,6 +647,12 @@ export default function CreateEventPage() {
     return [];
   };
   const currentStepErrors = validateSetupStep(step);
+  const finalStepFeedback = steps.map((title, index) => ({
+    title,
+    index,
+    errors: validateSetupStep(index),
+    unmetChecks: submissionChecks.filter((check) => check.stepIndex === index && !check.complete).map((check) => check.label),
+  })).filter((entry) => entry.errors.length > 0 || entry.unmetChecks.length > 0);
   const updateAttemptedStep = (index: number) => setAttemptedSteps((current) => current.map((attempted, currentIndex) => currentIndex === index ? true : attempted).concat(current.length <= index ? [true] : []));
   const navigateToStep = (target: number) => {
     if (busy) return;
@@ -892,6 +869,9 @@ export default function CreateEventPage() {
       });
       const detailsBody = await detailsResponse.json().catch(() => ({}));
       if (!detailsResponse.ok) throw new Error(detailsBody.error ?? "Event description could not be saved.");
+      if (detailsBody.banner_frame_saved === false && (bannerFrame.x !== 50 || bannerFrame.y !== 50 || bannerFrame.zoom !== 1)) {
+        throw new Error("The selected banner position was not saved. Apply the pending Supabase banner framing migration, then reopen the draft to set its position.");
+      }
       if (savedPages.some((page) => page.type === "custom" || page.content.trim())) {
         const contentResponse = await fetch(`/api/organizer/events/${eventId}/content-pages`, {
           method: "PUT",
@@ -918,8 +898,6 @@ export default function CreateEventPage() {
               registration_fee: Number(category.fee),
               early_bird_fee: category.earlyBirdEnabled ? Number(category.earlyBirdFee) : null,
               early_bird_deadline: category.earlyBirdEnabled ? manilaDateTimeToIso(category.earlyBirdDeadline) : null,
-              registration_opens_at: category.registrationOpen ? manilaDateTimeToIso(category.registrationOpen) : null,
-              registration_closes_at: category.registrationClose ? manilaDateTimeToIso(category.registrationClose) : null,
               max_slots: category.capacity.trim() ? Number(category.capacity) : null,
               gun_start_time: category.gunStart || null,
               cutoff_time: category.cutoff || null,
@@ -1073,7 +1051,7 @@ export default function CreateEventPage() {
             );
           })}
         </aside>
-        <section className="flex w-full min-w-0 max-w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:min-h-[700px] [&>*]:min-w-0">
+        <section onBlurCapture={() => updateAttemptedStep(step)} className="flex w-full min-w-0 max-w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:min-h-[700px] [&>*]:min-w-0">
           <p className="text-xs font-bold uppercase tracking-widest text-orange-600">
             Step {step + 1} of {steps.length}
           </p>
@@ -1299,7 +1277,7 @@ export default function CreateEventPage() {
                     <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Leave capacity blank for unlimited registration slots.</p>
                     <div className="sm:col-span-2 border-t border-slate-200 pt-4">
                       <h4 className="text-sm font-bold text-[#071b41]">Pricing &amp; registration dates</h4>
-                      <p className="mt-1 text-xs text-slate-500">Set a regular fee, then optionally add an early-bird price and a distance-specific registration window.</p>
+                      <p className="mt-1 text-xs text-slate-500">Set a regular fee and optionally add an early-bird price.</p>
                     </div>
                     <TextField
                       label="Registration Fee (PHP)"
@@ -1319,20 +1297,16 @@ export default function CreateEventPage() {
                       }
                       required
                     />
-                    <TextField label="Distance registration opens" type="datetime-local" value={category.registrationOpen} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, registrationOpen: value } : item))} error={Boolean(category.registrationOpen) !== Boolean(category.registrationClose) ? "Enter both distance-level dates, or leave both blank to use the event schedule." : undefined} />
-                    <TextField label="Distance registration closes" type="datetime-local" value={category.registrationClose} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, registrationClose: value } : item))} error={Boolean(category.registrationOpen && category.registrationClose && (category.registrationOpen >= category.registrationClose || (form.eventDate && category.registrationClose.slice(0, 10) > form.eventDate))) ? "Closing must be after opening and no later than event day." : undefined} />
-                    <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Set both dates to override this distance&apos;s registration window. Leave both blank to use the event&apos;s dates.</p>
-                    <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-white p-4">
-                      <label className="flex min-h-6 cursor-pointer items-center gap-2 text-sm font-bold text-[#071b41]">
+                    <div className="flex min-h-[72px] items-center">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-[#071b41]">
                         <input type="checkbox" checked={category.earlyBirdEnabled} onChange={(event) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdEnabled: event.target.checked, earlyBirdFee: event.target.checked ? item.earlyBirdFee : "", earlyBirdDeadline: event.target.checked ? item.earlyBirdDeadline : "" } : item))} className="h-4 w-4 accent-orange-600" />
-                        Offer optional Early Bird pricing
+                        Early Bird pricing
                       </label>
-                      {category.earlyBirdEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    </div>
+                    {category.earlyBirdEnabled && <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
                         <TextField label="Early Bird price (PHP)" type="number" min="0" max="99999999.99" step="0.01" value={category.earlyBirdFee} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdFee: value } : item))} required />
                         <TextField label="Early Bird deadline" type="datetime-local" value={category.earlyBirdDeadline} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdDeadline: value } : item))} required />
-                        <p className="-mt-2 text-xs leading-5 text-slate-600 sm:col-span-2">Participants pay the Early Bird price before the deadline. At the deadline, checkout automatically switches to the regular price. The deadline must fall within this event&apos;s registration window.</p>
-                      </div>}
-                    </div>
+                    </div>}
                     <div className="sm:col-span-2 border-t border-slate-200 pt-4">
                       <h4 className="text-sm font-bold text-[#071b41]">Race-day timing <span className="font-normal text-slate-500">(optional)</span></h4>
                     </div>
@@ -1355,7 +1329,16 @@ export default function CreateEventPage() {
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                     <h3 className="font-bold text-[#071b41]">Inclusions for {[group?.name.trim(), category.distance.trim() ? `${category.distance}K` : ""].filter(Boolean).join(" · ") || "this race option"} <span className="text-orange-600">*</span></h3>
                     <p className="mt-1 text-sm text-slate-600">These items are included for this race option. Participants choose product sizes during registration.</p>
-                    {category.kitItems.map((item, itemIndex) => <KitItemEditor key={itemIndex} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
+                    {category.kitItems.some((item) => item.kind === "inclusion") && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                      <h4 className="text-sm font-bold text-[#071b41]">Simple inclusions</h4>
+                      <div className="mt-2 space-y-2">
+                        {category.kitItems.map((item, itemIndex) => item.kind === "inclusion" && <div key={itemIndex} className="flex items-center gap-2">
+                          <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">Inclusion name<input value={item.name} onChange={(event) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? { ...kit, name: event.target.value } : kit) } : entry))} placeholder="e.g. Finisher medal" maxLength={160} className={input} /></label>
+                          <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} className="mt-5 shrink-0 rounded-lg px-2.5 py-2 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button>
+                        </div>)}
+                      </div>
+                    </div>}
+                    {category.kitItems.map((item, itemIndex) => item.kind === "product" && <KitItemEditor key={itemIndex} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
                     {attemptedSteps[2] && !categoryHasRequiredInclusion(category) && <p className="mt-3 text-sm font-semibold text-red-600" role="alert">Add at least one simple inclusion or included product.</p>}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("inclusion")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add simple inclusion</button>
@@ -1390,11 +1373,11 @@ export default function CreateEventPage() {
               {hasPhysicalRaceKit && <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-orange-700">Race kit pickup</p>
-                  <h3 className="mt-1 font-bold text-[#071b41]">Race kit claiming locations</h3>
-                  <p className="mt-1 max-w-3xl text-sm text-slate-600">Add pickup places participants can choose during registration. Configure included items under each category or group above. Optional merchandise stays separate below.</p>
+                  <h3 className="mt-1 font-bold text-[#071b41]">Pickup locations</h3>
+                  <p className="mt-1 max-w-3xl text-sm text-slate-600">Add locations for race kit pickup. Participants select one during registration.</p>
                 </div>
                   <div>
-                    <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="kit-claiming-location">Claiming place options</label>
+                    <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="kit-claiming-location">Add a pickup location</label>
                     <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
                       <input
                         id="kit-claiming-location"
@@ -1411,7 +1394,7 @@ export default function CreateEventPage() {
                             }
                           }
                         }}
-                        placeholder="e.g. Bacolod City Government Center ? race day"
+                        placeholder="e.g. Bacolod City Government Center - race day"
                         className={`${input} mt-0 min-h-11 flex-1`}
                       />
                       <button
@@ -1424,19 +1407,19 @@ export default function CreateEventPage() {
                           setKitClaimingLocationDraft("");
                         }}
                         className="min-h-11 rounded-lg border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >+ Add place</button>
+                      >+ Add location</button>
                     </div>
                     {kitClaimingLocations.length ? (
-                      <ul className="mt-3 flex flex-wrap gap-2" aria-label="Race kit claiming place options">
+                      <ul className="mt-3 flex flex-wrap gap-2" aria-label="Pickup locations">
                         {kitClaimingLocations.map((location, index) => (
                           <li key={`${location}-${index}`} className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700">
                             <span className="break-words">{location}</span>
-                            <button type="button" onClick={() => setKitClaimingLocations((current) => current.filter((_, optionIndex) => optionIndex !== index))} aria-label={`Remove ${location}`} className="font-bold text-orange-700">?</button>
+                            <button type="button" onClick={() => setKitClaimingLocations((current) => current.filter((_, optionIndex) => optionIndex !== index))} aria-label={`Remove ${location}`} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-orange-50 hover:text-orange-700"><X size={14} aria-hidden="true" /></button>
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500">No claiming places added. The pickup dropdown will appear in participant registration after you add at least one place.</p>
+                      <p className="mt-3 text-sm text-slate-500">No pickup locations added yet.</p>
                     )}
                   </div>
               </section>}
@@ -1444,38 +1427,6 @@ export default function CreateEventPage() {
               <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-orange-700">Optional add-ons</p><h3 className="mt-1 text-lg font-black text-[#071b41]">Additional merchandise</h3><p className="mt-1 max-w-2xl text-sm text-slate-600">Optional paid products sold separately from each category’s included race kit. Participants can choose these during registration.</p></div><button type="button" onClick={() => setMerchandise((current) => [...current, emptyMerchandiseItem()])} className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white hover:bg-orange-700">+ Add merchandise</button></div>
                 {merchandise.length === 0 ? <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-white p-5 text-center text-sm text-slate-500">No additional merchandise. Your category inclusions remain unchanged.</div> : <div className="mt-4 space-y-3">{merchandise.map((item, index) => <MerchandiseEditor key={index} item={item} onChange={(value) => setMerchandise((current) => current.map((entry, itemIndex) => itemIndex === index ? value : entry))} onRemove={() => setMerchandise((current) => current.filter((_, itemIndex) => itemIndex !== index))} />)}</div>}
-              </section>
-              <section aria-labelledby="race-options-preview" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <div className="border-b border-slate-200 pb-3">
-                  <h3 id="race-options-preview" className="text-lg font-black text-[#071b41]">Participant view</h3>
-                </div>
-                {!hasParticipantPreviewContent ? (
-                  <div className="mt-4 flex min-h-32 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60" role="status">
-                    <div className="flex flex-col items-center gap-2 text-slate-400">
-                      <Eye aria-hidden="true" className="h-7 w-7" strokeWidth={1.75} />
-                      <p className="text-sm font-medium text-slate-500">Participant options will appear here</p>
-                    </div>
-                  </div>
-                ) : <div className="mt-4 space-y-3">
-                  {previewCategorySections.map(({ group, entries }) => (
-                    <div key={group?.id ?? "preview-distances"} className="space-y-3">
-                      {group && <h4 className="rounded-lg bg-slate-100 px-3 py-2 font-bold text-[#071b41]">{group.name.trim() || "Untitled group"}</h4>}
-                      {entries.map(({ category, index }) => {
-                        const included = category.kitItems;
-                        return <article key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div><h5 className="font-bold text-[#071b41]">{category.distance.trim() ? `${category.distance}K` : `Distance ${index + 1}`}</h5><p className="mt-1 text-sm text-slate-600">{category.capacity.trim() ? `${category.capacity} registration slots` : "No category slot limit"}</p></div>
-                            <div className="text-right"><p className="font-bold text-[#071b41]">{previewPeso(category.fee)} <span className="text-xs font-normal text-slate-500">regular</span></p>{category.earlyBirdEnabled && <p className="mt-1 text-sm text-orange-700">{previewPeso(category.earlyBirdFee)} early bird until {previewDate(category.earlyBirdDeadline)}</p>}</div>
-                          </div>
-                          <p className="mt-2 text-xs text-slate-600">Registration: {category.registrationOpen ? previewDate(category.registrationOpen) : previewEventDate(form.registrationOpen)} to {category.registrationClose ? previewDate(category.registrationClose) : previewEventDate(form.registrationClose)}</p>
-                          {included.length > 0 && <div className="mt-3 border-t border-slate-200 pt-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Included</p><ul className="mt-1 list-inside list-disc text-sm text-slate-700">{included.filter((item) => item.name.trim()).map((item, itemIndex) => <li key={itemIndex}>{item.name.trim()}{item.kind === "product" && item.variants.length > 0 ? ` · choose ${item.variants.join(", ")}` : ""}</li>)}</ul></div>}
-                        </article>;
-                      })}
-                    </div>
-                  ))}
-                </div>}
-                {hasPhysicalRaceKit && kitClaimingLocations.length > 0 && <p className="mt-4 text-sm text-slate-700"><strong>Pickup choices:</strong> {kitClaimingLocations.join(" · ")}</p>}
-                {previewMerchandise.some((item) => item.name.trim()) && <div className="mt-4 border-t border-slate-200 pt-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Optional paid add-ons</p><ul className="mt-1 list-inside list-disc text-sm text-slate-700">{previewMerchandise.filter((item) => item.name.trim()).map((item, index) => <li key={index}>{item.name.trim()} · {previewPeso(item.unitPrice)}{item.variants.length > 0 ? ` · ${item.variants.join(", ")}` : ""}</li>)}</ul></div>}
               </section>
             </div>
           )}
@@ -1736,6 +1687,14 @@ export default function CreateEventPage() {
                 </ul>
                 <p className={`mt-3 font-semibold ${submissionReady ? "text-emerald-700" : "text-amber-700"}`}>{submissionReady ? "Event details are complete for review." : "Some required event details are still missing."}</p>
                 {missing.length > 0 && <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Fix before creating the draft: {missing.join(", ")}.</p>}
+                {finalStepFeedback.length > 0 && <div role="alert" className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p className="font-bold">Complete these items before submitting for review:</p>
+                  {finalStepFeedback.map(({ title, index, errors, unmetChecks }) => <div key={title} className="rounded-lg border border-amber-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold">Step {index + 1}: {title}</h4><button type="button" onClick={() => { setStep(index); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100">Go to step</button></div>
+                    {unmetChecks.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{unmetChecks.map((check) => <li key={check}>{check}</li>)}</ul>}
+                    {errors.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{errors.map((error, errorIndex) => <li key={`${errorIndex}-${error}`}>{error}</li>)}</ul>}
+                  </div>)}
+                </div>}
                 <p className="mt-2 text-xs leading-5 text-slate-600">RaceDeck can accept the review request only when your organization is approved and active. You can save this as a draft and finish optional setup later.</p>
               </div>
               <button

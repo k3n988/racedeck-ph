@@ -114,6 +114,21 @@ export async function POST(request: Request) {
       }
     }
 
+    // The wizard saves related setup only after the event row exists. Check
+    // feature columns first so an older hosted schema cannot create a draft
+    // that immediately fails during category, question, or banner saving.
+    const featureChecks = [
+      { label: 'race category pricing and groups', query: () => auth.admin.from('race_categories').select('category_group_name,registration_opens_at,registration_closes_at,early_bird_fee,early_bird_deadline').limit(0) },
+      { label: 'registration question sections', query: () => auth.admin.from('event_registration_fields').select('section_key').limit(0) },
+      { label: 'banner positioning', query: () => auth.admin.from('events').select('banner_position_x,banner_position_y,banner_zoom').limit(0) },
+    ];
+    const featureResults = await Promise.all(featureChecks.map(async (check) => ({ label: check.label, error: (await check.query()).error })));
+    const unavailable = featureResults.filter((result) => result.error);
+    if (unavailable.length) {
+      console.error('[Creating organizer event] Supabase schema is incomplete', unavailable);
+      return NextResponse.json({ error: `Event setup is unavailable until pending Supabase migrations are applied: ${unavailable.map((result) => result.label).join(', ')}.` }, { status: 503 });
+    }
+
     const { data, error } = await auth.admin.from('events').insert({
       organization_id: auth.membership.organization_id,
       name,

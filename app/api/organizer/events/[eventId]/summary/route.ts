@@ -25,12 +25,14 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
       .maybeSingle();
     if (error) return errorResponse(error, 'Loading organizer event summary');
     if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-    const [{ data: categories, error: categoriesError }, { data: organization, error: organizationError }] = await Promise.all([
+    const [{ data: categories, error: categoriesError }, { data: organization, error: organizationError }, { data: kits, error: kitsError }] = await Promise.all([
       auth.admin.from('race_categories').select('id,name,distance_km,registration_fee,max_slots,confirmed_count,registration_availability').eq('event_id', params.eventId),
       auth.admin.from('organizations').select('verification_status,account_status').eq('id', event.organization_id).maybeSingle(),
+      auth.admin.from('race_kit_configs').select('category_id,status,race_kit_items(item_name,is_active)').eq('event_id', params.eventId),
     ]);
     if (categoriesError) return errorResponse(categoriesError, 'Checking event setup readiness');
     if (organizationError) return errorResponse(organizationError, 'Checking organizer readiness');
+    if (kitsError) return errorResponse(kitsError, 'Checking race kit inclusions');
 
     const plainDescription = (event.description ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
     const eventEnd = Date.parse(`${event.event_date}T00:00:00+08:00`) + 24 * 60 * 60 * 1000;
@@ -42,6 +44,8 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
       && Number.isFinite(Number(category.registration_fee)) && Number(category.registration_fee) >= 0
       && (category.max_slots == null || (Number.isInteger(category.max_slots) && category.max_slots > 0))
     ));
+    const categoryIdsWithInclusions = new Set((kits ?? []).filter((kit) => kit.status === 'active' && kit.category_id && kit.race_kit_items?.some((item) => item.is_active && item.item_name?.trim())).map((kit) => kit.category_id));
+    const inclusionsReady = (categories ?? []).length > 0 && (categories ?? []).every((category) => categoryIdsWithInclusions.has(category.id));
     const organizationReady = organization?.verification_status === 'approved' && organization.account_status === 'active';
     const eventDetailsReady = Boolean(event.name.trim() && plainDescription && event.venue?.trim() && event.address?.trim());
     const contact = (event.social_links ?? {}) as EventSocialLinks;
@@ -52,6 +56,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
       { label: 'Event contact', href: 'setup/details', complete: contactReady, detail: contactReady ? 'Facebook contact is set.' : 'Add a valid Facebook URL.' },
       { label: 'Event date and registration schedule', href: 'settings', complete: upcoming && validSchedule, detail: !upcoming ? 'The event date must be today or later (Philippine time).' : !validSchedule ? 'Set opening and closing dates in order, ending by the event day.' : 'Dates are valid and use Philippine time.' },
       { label: 'At least one complete category', href: 'setup/categories-pricing', complete: completeCategories, detail: completeCategories ? `${categories?.length ?? 0} complete race ${categories?.length === 1 ? 'category' : 'categories'}.` : 'Add a category with a name, distance, fee, and valid capacity.' },
+      { label: 'Inclusions for every category', href: 'setup/categories-pricing', complete: inclusionsReady, detail: inclusionsReady ? 'Every race category has a saved inclusion.' : 'Add and save at least one simple inclusion or included product for each category.' },
       { label: 'Organizer approved and active', href: 'settings', complete: organizationReady, detail: organizationReady ? 'The organization can submit events for review.' : 'The organization must be approved and active before event submission.' },
     ];
     const eventForAvailability = { ...event, registration_availability: event.registration_availability, event_date: event.event_date };
