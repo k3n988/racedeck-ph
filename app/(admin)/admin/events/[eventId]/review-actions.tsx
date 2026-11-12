@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -64,6 +65,6 @@ export default function EventReviewActions({ eventId, reviewStatus, reviewBlocke
       <p className="mt-1 text-sm text-slate-600">{decision === 'approved' ? 'The organizer can publish this event after approval. It will not go public automatically.' : decision === 'needs_changes' ? 'The organizer can edit the event and submit it again.' : 'The organizer will see your rejection and feedback.'}</p>
       <div className="mt-3 flex gap-2"><button type="button" disabled={busy || reviewBlocked || (decision !== 'approved' && !feedback.trim())} onClick={() => void submit()} className="rounded-lg bg-[#071b41] px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Saving…' : 'Confirm decision'}</button><button type="button" disabled={busy} onClick={() => setDecision(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button></div>
     </div>}
-    {message && <p role={error ? 'alert' : 'status'} className={`mt-3 text-sm ${error ? 'text-red-700' : 'text-emerald-700'}`}>{message}</p>}
+    {message && <ToastFeedback message={String(message)} tone="error"><p role={error ? 'alert' : 'status'} className={`mt-3 text-sm ${error ? 'text-red-700' : 'text-emerald-700'}`}>{message}</p></ToastFeedback>}
   </section>;
 }

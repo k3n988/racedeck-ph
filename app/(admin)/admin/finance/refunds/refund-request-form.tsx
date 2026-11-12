@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 
@@ -68,7 +69,7 @@ export default function RefundRequestForm({ payment }: { payment: PaymentPreview
       <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Internal note<input value={notes} maxLength={255} onChange={(event) => { setNotes(event.target.value); resetRequest(); }} placeholder="Optional" className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal normal-case" /></label>
       <button type="submit" disabled={!confirmed || !validAmount || submitting} className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Request refund'}</button>
       <label className="flex items-start gap-2 text-sm text-slate-700 sm:col-span-2 xl:col-span-4"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" /><span>I verified this payment, amount, participant, and reason. I understand a submitted request may move money.</span></label>
-      {message && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 sm:col-span-2 xl:col-span-4">{message}</p>}
+      {message && <ToastFeedback message={String(message)} tone="error"><p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 sm:col-span-2 xl:col-span-4">{message}</p></ToastFeedback>}
     </form>}
   </section>;
 }

@@ -1,3 +1,4 @@
+import { ToastFeedback } from '@/components/toast-feedback';
 import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { AdminPage, DataTable, EmptyState, StatCard, StatusBadge } from '@/components/admin/admin-ui';
@@ -43,7 +44,7 @@ export default async function AdminContentPage({ searchParams }: { searchParams?
 
   return <AdminPage eyebrow="Platform / Content" title="Content Management" description="" compactTop>
     {searchParams?.notice === 'saved' && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Content saved.</p>}
-    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Content could not be loaded. Refresh the page to try again.</p>}
+    {error && <ToastFeedback message={String(error)} tone="error"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Content could not be loaded. Refresh the page to try again.</p></ToastFeedback>}
     <section className="grid gap-3 sm:grid-cols-3"><StatCard label="Content blocks" value={total ?? '—'} /><StatCard label="Published" value={published ?? '—'} tone="green" /><StatCard label="Needs publishing" value={Math.max(0, (total ?? 0) - (published ?? 0))} tone="amber" /></section>
     {edit && <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div><h2 className="font-bold text-[#071b41]">Edit content block</h2><p className="text-sm text-slate-500">Changes take effect on public pages after publishing.</p></div>{editor(edit)}</section>}
     <details className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" open={searchParams?.edit ? false : undefined}><summary className="cursor-pointer font-bold text-[#071b41]">Create content block</summary><p className="mb-4 mt-2 text-sm text-slate-500">Published content is immediately visible to public visitors. Preview and verify copy and links before publishing.</p>{editor()}</details>

@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RotateCw } from 'lucide-react';
@@ -20,5 +21,5 @@ export default function ProcessQueueButton() {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Email queue could not be processed.'); }
     finally { setWorking(false); }
   }
-  return <div className="flex flex-col items-end gap-2"><button type="button" disabled={working} onClick={processQueue} className="inline-flex items-center gap-2 rounded-lg bg-[#071b41] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#102b5c] disabled:opacity-60"><RotateCw size={16} className={working ? 'animate-spin' : ''} aria-hidden="true" />{working ? 'Processing…' : 'Process email queue'}</button>{message && <p role="status" className="max-w-md text-right text-xs text-slate-600">{message}</p>}</div>;
+  return <div className="flex flex-col items-end gap-2"><button type="button" disabled={working} onClick={processQueue} className="inline-flex items-center gap-2 rounded-lg bg-[#071b41] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#102b5c] disabled:opacity-60"><RotateCw size={16} className={working ? 'animate-spin' : ''} aria-hidden="true" />{working ? 'Processing…' : 'Process email queue'}</button>{message && <ToastFeedback message={String(message)} tone="info"><p role="status" className="max-w-md text-right text-xs text-slate-600">{message}</p></ToastFeedback>}</div>;
 }

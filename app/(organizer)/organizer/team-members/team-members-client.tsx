@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, MailPlus, Search, Shield, UsersRound, X } from 'lucide-react';
@@ -124,7 +125,7 @@ export default function TeamMembersClient({ members, roles, events, canManage, c
             {!allEvents && <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-3">{events.length ? events.map(event => <label key={event.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-slate-700 hover:bg-slate-50"><input type="checkbox" checked={access.includes(event.id)} onChange={() => toggleEvent(event.id)} className="h-4 w-4 accent-orange-600"/>{event.name}</label>) : <p className="p-2 text-sm text-slate-500">There are no events to assign yet.</p>}</div>}
           </fieldset>
           {mode === 'edit' && <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3"><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} className="mt-0.5 h-4 w-4 accent-orange-600"/><span><span className="block text-sm font-semibold text-slate-800">Active membership</span><span className="text-xs text-slate-500">Inactive members can no longer access this organization.</span></span></label>}
-          {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+          {error && <ToastFeedback message={String(error)} tone="error"><p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p></ToastFeedback>}
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setMode(null)} className="min-h-10 rounded-lg border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button><button type="submit" disabled={busy || !role || (!allEvents && (!events.length || !access.length))} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 text-sm font-bold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50">{mode === 'invite' ? <MailPlus size={16}/> : <Check size={16}/>} {busy ? 'Saving…' : mode === 'invite' ? 'Send invitation link' : 'Save changes'}</button></div>
         </form>
       </section>

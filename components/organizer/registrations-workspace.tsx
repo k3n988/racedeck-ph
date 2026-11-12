@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BadgeCheck, CheckCircle2, CircleDollarSign, ClipboardList, Search, UsersRound } from 'lucide-react';
@@ -138,7 +139,7 @@ export default function RegistrationsWorkspace() {
 
   return (
     <main className="min-h-full w-full min-w-0 space-y-4 bg-[#f4f6fa] p-4 pt-3 sm:p-6 sm:pt-4 xl:p-7 xl:pt-4">
-      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => void load()} className="rounded-lg border border-red-300 bg-white px-3 py-2 font-bold">Try again</button></div>}
+      {error && <ToastFeedback message={String(error)} tone="error"><div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => void load()} className="rounded-lg border border-red-300 bg-white px-3 py-2 font-bold">Try again</button></div></ToastFeedback>}
 
       {!error && <>
         <section aria-label="Registration summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

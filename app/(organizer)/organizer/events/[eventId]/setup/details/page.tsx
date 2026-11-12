@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
@@ -170,7 +171,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
     {profileLocked && <div role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><p className="font-bold">Editing is paused during review</p><p className="mt-1">RaceDeck is reviewing the current version. Editing will be available again when the review is complete.</p></div>}
     {event.lifecycle_status !== 'draft' && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><p className="font-bold">Live event updates</p><p className="mt-1">Changes saved here update the public event page right away. Please notify registered participants when a change affects their plans.</p></div>}
 
-    {message && <p role="status" className={`rounded-xl border p-3 text-sm ${message.includes('saved') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{message}</p>}
+    {message && <ToastFeedback message={String(message)} tone="error"><p role="status" className={`rounded-xl border p-3 text-sm ${message.includes('saved') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{message}</p></ToastFeedback>}
 
     <form onSubmit={submit} className="space-y-4">
       <Section title="Public event information" description="Name, URL, and description displayed on the public event page." icon={ImageIcon}>

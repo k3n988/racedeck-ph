@@ -1,5 +1,6 @@
 "use client";
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { FormEvent, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -36,6 +37,6 @@ export default function OrganizerRegisterPage() {
     <input required type="email" autoComplete="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full rounded border p-3" />
     <input required minLength={8} type="password" autoComplete="new-password" placeholder="Password (8+ characters)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full rounded border p-3" />
     <button disabled={busy} className="w-full rounded bg-black p-3 text-white disabled:opacity-50">{busy ? "Creating…" : "Create organizer account"}</button>
-    {message && <p role="status" className="text-sm">{message}</p>}<p className="text-sm">Already registered? <a href="/login" className="underline">Sign in</a></p>
+    {message && <ToastFeedback message={String(message)} tone="info"><p role="status" className="text-sm">{message}</p></ToastFeedback>}<p className="text-sm">Already registered? <a href="/login" className="underline">Sign in</a></p>
   </form></main>;
 }

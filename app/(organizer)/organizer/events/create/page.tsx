@@ -1,5 +1,6 @@
 "use client";
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -163,7 +164,7 @@ function TextField({
         aria-invalid={Boolean(error)}
         className={`${input} ${error ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""}`}
       />
-      {error && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{error}</span>}
+      {error && <ToastFeedback message={String(error)} tone="error"><span role="alert" className="mt-1 block text-xs font-medium text-red-700">{error}</span></ToastFeedback>}
       {hint && <span className="mt-1.5 block text-xs font-normal leading-5 text-slate-500">{hint}</span>}
     </label>
   );
@@ -1016,12 +1017,12 @@ export default function CreateEventPage() {
   return (
     <main className="mx-auto w-full min-w-0 max-w-[1500px] space-y-6 p-4 sm:p-6">
       {message && (
-        <p
+        <ToastFeedback message={String(message)} tone="info"><p
           role="status"
           className="rounded-lg bg-orange-50 p-3 text-sm text-orange-800"
         >
           {message}
-        </p>
+        </p></ToastFeedback>
       )}
       {draftEventId && <Link href={`/organizer/events/${draftEventId}`} className="inline-block rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-bold text-orange-700">Open saved draft</Link>}
       <div className="grid w-full min-w-0 items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">

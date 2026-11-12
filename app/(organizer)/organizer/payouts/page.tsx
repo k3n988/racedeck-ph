@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, FileSearch, Search, WalletCards, X } from 'lucide-react';
@@ -164,7 +165,7 @@ export default function PayoutsPage() {
   ];
 
   return <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
-    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReload((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div>}
+    {error && <ToastFeedback message={String(error)} tone="error"><div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReload((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div></ToastFeedback>}
 
     <section aria-label="Payout summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {summaryCards.map(({ title, icon: Icon, key }) => <article key={title} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -201,7 +202,7 @@ export default function PayoutsPage() {
         <section><h3 className="text-sm font-bold text-[#0b2348]">Reconciliation</h3>{selected.reconciliation ? <div className="mt-3 rounded-xl border border-slate-200 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-slate-800">{selected.reconciliation.reference}</p><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${selected.reconciliation.status === 'reviewed' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{selected.reconciliation.status === 'reviewed' && <CheckCircle2 size={13} aria-hidden="true" />}{selected.reconciliation.status}</span></div>{selected.reconciliation.status === 'reviewed' ? <dl className="mt-2 divide-y divide-slate-100"> <DetailRow label="Organizer payable" value={money(selected.reconciliation.organizer_payable_amount, selected.currency)} /><DetailRow label="Payouts sent" value={money(selected.reconciliation.payouts_sent_amount, selected.currency)} /><DetailRow label="Remaining payable" value={money(selected.reconciliation.remaining_payable_amount, selected.currency)} /><DetailRow label="Discrepancy" value={`${money(selected.reconciliation.discrepancy_amount, selected.currency)} · ${selected.reconciliation.discrepancy_status}`} /><DetailRow label="Reconciled" value={date(selected.reconciliation.reconciled_at)} /></dl> : <p className="mt-2 text-sm leading-6 text-slate-600">Reconciliation figures are hidden until finance review is complete.</p>}</div> : <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">No reconciliation record is linked to this payout.</p>}</section>
       </div>
     </aside></div>}
-    <div aria-live="polite" aria-atomic="true" className="fixed bottom-5 right-5 z-[120]">{toast && <p role="status" className="rounded-lg bg-[#0b2348] px-4 py-3 text-sm font-semibold text-white shadow-lg">{toast}</p>}</div>
+    <div aria-live="polite" aria-atomic="true" className="fixed bottom-5 right-5 z-[120]">{toast && <ToastFeedback message={String(toast)} tone="info"><p role="status" className="rounded-lg bg-[#0b2348] px-4 py-3 text-sm font-semibold text-white shadow-lg">{toast}</p></ToastFeedback>}</div>
   </main>;
 }
 

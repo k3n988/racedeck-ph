@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Handshake, Plus, Trash2 } from 'lucide-react';
 
@@ -91,7 +92,7 @@ export function PartnersManager({ eventId, disabled = false }: { eventId: string
       <div><h2 id="partners-manager-title" className="font-bold text-[#071b41]">Sponsors &amp; partners</h2><p className="mt-1 text-sm text-slate-500">Saved sponsors display automatically below the registration panel on the public event page.</p></div>
     </div>
 
-    {message && <p role="status" className={`mb-4 rounded-lg border p-3 text-sm ${/could not|failed/i.test(message) ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{message}</p>}
+    {message && <ToastFeedback message={String(message)} tone="error"><p role="status" className={`mb-4 rounded-lg border p-3 text-sm ${/could not|failed/i.test(message) ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{message}</p></ToastFeedback>}
 
     {loading ? <div className="h-16 animate-pulse rounded-lg bg-slate-100" aria-label="Loading sponsors" /> : partners.length ? <ul className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {partners.map((partner) => <li key={partner.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-3">

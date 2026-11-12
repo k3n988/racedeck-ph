@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { BadgeCheck, CalendarDays, ChartNoAxesCombined, CircleDollarSign, ClipboardList, Coins, CreditCard, RotateCcw, Wallet } from 'lucide-react';
@@ -209,7 +210,7 @@ export default function ReportsDashboard({ initialEventId, initialFrom, initialT
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1"><div className="pb-2 text-xs text-slate-500"><span>Asia/Manila dates</span><span className="block">Scope: {eventFilterName || 'All authorized events'} · {reportPeriodLabel}</span></div>{hasEventFilter && <button type="button" onClick={clearEventFilter} className="min-h-11 whitespace-nowrap text-sm font-bold text-orange-700 underline underline-offset-2">Clear event</button>}</div>
     </section>
 
-    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div>}
+    {error && <ToastFeedback message={String(error)} tone="error"><div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReloadKey((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div></ToastFeedback>}
 
     <section aria-label="Report summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.filter((card) => !card.financial || payload?.financial_access !== false).map(({ label, value, note, Icon }) => <article key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="text-sm font-semibold text-slate-600">{label}</h2><p className="mt-2 truncate text-2xl font-extrabold text-[#0b2348]" title={loading || error ? undefined : value}>{loading ? <span className="inline-block h-8 w-28 animate-pulse rounded bg-slate-100" /> : error ? '—' : value}</p></div><span className="shrink-0 rounded-lg bg-orange-50 p-2.5 text-orange-600"><Icon aria-hidden="true" size={19} /></span></div><p className="mt-2 text-xs text-slate-500">{note}</p></article>)}
@@ -223,6 +224,6 @@ export default function ReportsDashboard({ initialEventId, initialFrom, initialT
     </section>
 
     {payload?.financial_access && <p className="text-xs text-slate-500"><RotateCcw className="mr-1 inline-block align-[-3px]" size={14} aria-hidden="true" />Net revenue is gross sales less successful refunds and recorded platform fees; it is not your payout.</p>}
-    <div aria-live="polite" aria-atomic="true" className="fixed bottom-5 right-5 z-[120]">{toast && <p role="status" className="rounded-lg bg-[#0b2348] px-4 py-3 text-sm font-semibold text-white shadow-lg">{toast}</p>}</div>
+    <div aria-live="polite" aria-atomic="true" className="fixed bottom-5 right-5 z-[120]">{toast && <ToastFeedback message={String(toast)} tone="info"><p role="status" className="rounded-lg bg-[#0b2348] px-4 py-3 text-sm font-semibold text-white shadow-lg">{toast}</p></ToastFeedback>}</div>
   </main>;
 }

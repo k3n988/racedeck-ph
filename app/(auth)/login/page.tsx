@@ -1,5 +1,6 @@
 "use client";
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -80,8 +81,8 @@ export default function LoginPage() {
             {busy ? "Signing in..." : "Sign in"}
           </button>
 
-          {registeredMessage && <p role="status" className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{registeredMessage}</p>}
-          {message && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{message}</p>}
+          {registeredMessage && <ToastFeedback message={registeredMessage} tone="success" />}
+          {message && <ToastFeedback message={String(message)} tone="error"><p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{message}</p></ToastFeedback>}
 
           <div className="text-sm"><a href="/forgot-password" className="font-medium text-slate-600 underline-offset-4 hover:text-orange-700 hover:underline">Forgot password?</a></div>
         </form>

@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Activity, CalendarClock, Clock3, Pencil, Plus, TicketCheck, Users, X } from 'lucide-react';
 import { isoToManilaDateTime, manilaDateTimeToIso } from '@/lib/events/category-pricing';
@@ -257,7 +258,7 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
             </label>
           </div>
           {editing && <p className="rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-900">Capacity cannot be set below the number of confirmed runners. Race kit products are managed in the Race Kit section.</p>}
-          {formError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{formError}</p>}
+          {formError && <ToastFeedback message={String(formError)} tone="error"><p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{formError}</p></ToastFeedback>}
           <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
             <button type="button" disabled={busy} onClick={() => setModal(false)} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
             <button type="submit" disabled={busy} className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-wait disabled:opacity-60">{busy ? 'Saving…' : editing ? 'Save category' : 'Add category'}</button>

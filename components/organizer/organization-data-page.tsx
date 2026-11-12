@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useEffect, useState } from 'react';
 
 type OrganizationDataPageProps = {
@@ -31,7 +32,7 @@ export default function OrganizationDataPage({ title, endpoint, columns, highlig
 
   return <main className="mx-auto max-w-7xl space-y-6 p-6">
     <h1 className="text-2xl font-semibold">{title}</h1>
-    {message && <p role="status">{message}</p>}
+    {message && <ToastFeedback message={String(message)} tone="info"><p role="status">{message}</p></ToastFeedback>}
     {summary && <section className="grid gap-4 md:grid-cols-4">{Object.entries(summary).map(([key, value]) => {
       const selected = key === highlightSummaryKey;
       return <div key={key} aria-current={selected ? 'true' : undefined} className={`rounded border p-4 ${selected ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-200' : ''}`}>

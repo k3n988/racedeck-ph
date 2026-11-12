@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -39,6 +40,6 @@ export default function OrganizerReviewActions({ organizationId, reviewStatus }:
     <p className="mt-1 text-right text-xs text-slate-500">{notes.length}/5000</p>
     <div className="mt-3 flex flex-wrap gap-2">{(['approved', 'needs_changes', 'rejected'] as const).map((option) => <button key={option} type="button" disabled={busy} onClick={() => { setDecision(option); setMessage(''); }} className={`rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50 ${decision === option ? option === 'approved' ? 'border-emerald-700 bg-emerald-700 text-white' : option === 'rejected' ? 'border-red-700 bg-red-700 text-white' : 'border-orange-600 bg-orange-600 text-white' : 'border-slate-300 text-slate-700 hover:border-orange-300'}`}>{labels[option]}</button>)}</div>
     {decision && <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-bold text-[#071b41]">Confirm: {labels[decision]}</p><p className="mt-1 text-sm text-slate-600">{decision === 'approved' ? 'This activates the organization and allows it to submit events.' : decision === 'needs_changes' ? 'The organizer can update and resubmit the application.' : 'The organizer will see your rejection reason.'}</p><div className="mt-3 flex gap-2"><button type="button" disabled={busy || (decision !== 'approved' && !notes.trim())} onClick={() => void submit()} className="rounded-lg bg-[#071b41] px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy ? 'Saving…' : 'Confirm decision'}</button><button type="button" disabled={busy} onClick={() => setDecision(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button></div></div>}
-    {message && <p role={isError ? 'alert' : 'status'} className={`mt-3 text-sm ${isError ? 'text-red-700' : 'text-emerald-700'}`}>{message}</p>}
+    {message && <ToastFeedback message={String(message)} tone="error"><p role={isError ? 'alert' : 'status'} className={`mt-3 text-sm ${isError ? 'text-red-700' : 'text-emerald-700'}`}>{message}</p></ToastFeedback>}
   </section>;
 }

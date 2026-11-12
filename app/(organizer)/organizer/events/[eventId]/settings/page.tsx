@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { effectiveRegistrationAvailability, registrationAvailabilityReason } from '@/lib/events/registration-availability';
 
@@ -214,7 +215,7 @@ export default function OrganizerEventSettingsPage({ params }: { params: { event
     }
   }
 
-  if (!event) return <main className="mx-auto max-w-3xl p-6"><p role={error ? 'alert' : 'status'} className={error ? 'text-sm text-red-700' : 'text-sm text-slate-600'}>{message}</p>{error && <button type="button" onClick={() => void load()} className="mt-3 rounded-lg border px-4 py-2 text-sm font-semibold">Try again</button>}</main>;
+  if (!event) return <main className="mx-auto max-w-3xl p-6"><p role={error ? 'alert' : 'status'} className={error ? 'text-sm text-red-700' : 'text-sm text-slate-600'}>{message}</p>{error && <ToastFeedback message={String(error)} tone="error"><button type="button" onClick={() => void load()} className="mt-3 rounded-lg border px-4 py-2 text-sm font-semibold">Try again</button></ToastFeedback>}</main>;
 
   const locked = event.review_status === 'pending_review';
   const availability = registrationSummary?.availability ?? effectiveRegistrationAvailability(event);
@@ -227,7 +228,7 @@ export default function OrganizerEventSettingsPage({ params }: { params: { event
       : 'border-amber-200 bg-amber-50 text-amber-950';
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      {message && <p role={error ? 'alert' : 'status'} aria-live="polite" className={`rounded-lg border p-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{message}</p>}
+      {message && <ToastFeedback message={String(message)} tone="error"><p role={error ? 'alert' : 'status'} aria-live="polite" className={`rounded-lg border p-3 text-sm ${error ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{message}</p></ToastFeedback>}
 
       {locked && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Settings are locked while RaceDeck reviews this event. You can edit them after the review is complete.</p>}
 

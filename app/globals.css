@@ -146,6 +146,29 @@ html:has(.home-hero) {
   to { opacity: 1; }
 }
 
+@keyframes racedeckToastIn {
+  from { opacity: 0; transform: translateY(-8px) translateX(8px); }
+  to { opacity: 1; transform: translateY(0) translateX(0); }
+}
+@keyframes racedeckToastOut {
+  to { opacity: 0; transform: translateY(-8px) translateX(8px); }
+}
+
+.racedeck-toast { animation: racedeckToastIn 180ms ease-out both; }
+.racedeck-toast-closing { animation: racedeckToastOut 180ms ease-in both; }
+.racedeck-toast-content > :first-child {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .racedeck-toast, .racedeck-toast-closing { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html:has(.events-discovery),
   html:has(.home-hero) {

@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BadgeCheck, CalendarDays, Check, CircleDollarSign, ClipboardList, CreditCard, Mail, Search, UsersRound, Wallet, X } from 'lucide-react';
 import { useRegistrationsHeader } from '@/components/organizer/registrations-header-context';
@@ -187,7 +188,7 @@ export default function PaymentsPage() {
 
   return (
     <main className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6">
-      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReloadToken((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div>}
+      {error && <ToastFeedback message={String(error)} tone="error"><div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><span>{error}</span><button type="button" onClick={() => setReloadToken((value) => value + 1)} className="min-h-10 rounded-lg border border-red-300 bg-white px-3.5 font-bold text-red-800 hover:bg-red-50">Try again</button></div></ToastFeedback>}
 
       <section aria-label="Payment summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map(({ title, value, note, Icon }) => <article key={title} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -260,7 +261,7 @@ export default function PaymentsPage() {
           </div>
         </aside>
       </div>}
-      <div aria-live="polite" aria-atomic="true" className="fixed bottom-5 right-5 z-[120]">{toast && <p role="status" className="rounded-lg bg-[#0b2348] px-4 py-3 text-sm font-semibold text-white shadow-lg">{toast}</p>}</div>
+      <div aria-live="polite" aria-atomic="true" className="fixed bottom-5 right-5 z-[120]">{toast && <ToastFeedback message={String(toast)} tone="info"><p role="status" className="rounded-lg bg-[#0b2348] px-4 py-3 text-sm font-semibold text-white shadow-lg">{toast}</p></ToastFeedback>}</div>
     </main>
   );
 }

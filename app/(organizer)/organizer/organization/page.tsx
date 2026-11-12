@@ -1,5 +1,6 @@
 'use client';
 
+import { ToastFeedback } from '@/components/toast-feedback';
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { ORGANIZATION_COUNTRY_CODES, ORGANIZATION_TIMEZONES } from '@/lib/organization/countries';
@@ -154,13 +155,13 @@ export default function OrganizationPage() {
         <span className="rounded-full bg-orange-50 px-3 py-1.5 text-xs font-bold text-orange-700">Organization profile</span>
       </header>
 
-      {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{notice}</p>}
+      {notice && <ToastFeedback message={String(notice)} tone="success"><p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{notice}</p></ToastFeedback>}
 
       {loading ? <div aria-label="Loading organization details" className="space-y-4"><div className="h-56 animate-pulse rounded-2xl bg-slate-200"/><div className="h-64 animate-pulse rounded-2xl bg-slate-200"/></div> : !loaded ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-800"><span>{error || 'Organization details could not be loaded.'}</span><button type="button" onClick={() => void load()} className="rounded-lg border border-red-300 bg-white px-4 py-2 font-bold">Try again</button></div>
       ) : (
         <form onSubmit={save} className="space-y-5">
-          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
+          {error && <ToastFeedback message={String(error)} tone="error"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p></ToastFeedback>}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
               <h2 className="text-lg font-bold text-[#0b2348]">Organization profile</h2>
