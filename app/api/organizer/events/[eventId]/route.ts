@@ -8,8 +8,8 @@ import { parseEventSocialLinks } from '@/lib/events/event-social-links';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
-const LEGACY_FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,is_featured,created_at,updated_at';
+const FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,registration_personal_fields,is_featured,created_at,updated_at';
+const LEGACY_FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,registration_personal_fields,is_featured,created_at,updated_at';
 const BANNER_FRAME_COLUMNS = ['banner_position_x', 'banner_position_y', 'banner_zoom'] as const;
 type OrganizerEvent = Database['public']['Tables']['events']['Row'] & {
   banner_position_x?: number | null;
@@ -52,7 +52,7 @@ function isMissingContentPagesTable(error: { code?: string; message?: string } |
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const auth = await requireOrganizerPermission('view_events', params.eventId);
   if ('response' in auth) return auth.response;
-  const admin = auth.admin as unknown as SupabaseClient<any>;
+  const admin = auth.admin as unknown as SupabaseClient<Database>;
   const loadEvent = async (fields: string) => await admin.from('events').select(fields).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).maybeSingle() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
   let { data, error } = await loadEvent(FIELDS);
   if (isMissingBannerFrameColumns(error)) {
@@ -125,7 +125,7 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if (current.review_status === 'pending_review') {
       return NextResponse.json({ error: 'Event details cannot be changed while RaceDeck is reviewing the event.' }, { status: 409 });
     }
-    const allowed = ['name', 'slug', 'description', 'banner_url', 'banner_position_x', 'banner_position_y', 'banner_zoom', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability'];
+    const allowed = ['name', 'slug', 'description', 'banner_url', 'banner_position_x', 'banner_position_y', 'banner_zoom', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability', 'registration_personal_fields'];
     const keys = Object.keys(body).filter((key) => allowed.includes(key));
     if (!keys.length) return NextResponse.json({ error: 'No event changes provided' }, { status: 400 });
     for (const key of ['registration_opens_at', 'registration_closes_at']) {
@@ -139,6 +139,10 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     }
     if (keys.includes('registration_availability') && !['not_yet_open', 'open', 'closed', 'sold_out'].includes(body.registration_availability)) {
       return NextResponse.json({ error: 'Invalid registration availability' }, { status: 400 });
+    }
+    const personalFieldKeys = ['first_name', 'middle_name', 'last_name', 'birthdate', 'gender', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship'];
+    if ('registration_personal_fields' in body && (!Array.isArray(body.registration_personal_fields) || body.registration_personal_fields.some((field: unknown) => typeof field !== 'string' || !personalFieldKeys.includes(field)))) {
+      return NextResponse.json({ error: 'Choose valid personal information fields to collect.' }, { status: 400 });
     }
     for (const key of ['banner_position_x', 'banner_position_y'] as const) {
       if (key in body && (!Number.isInteger(body[key]) || body[key] < 0 || body[key] > 100)) {
@@ -177,12 +181,12 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
         return NextResponse.json({ error: 'Set valid registration dates in order, closing no later than the event day.' }, { status: 400 });
       }
     }
-    const admin = auth.admin as unknown as SupabaseClient<any>;
-    const performUpdate = async (payload: Record<string, unknown>, fields: string) => await admin.from('events').update(payload).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).select(fields).single() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
-    let { data, error } = await performUpdate(update as Record<string, unknown>, FIELDS);
+    const admin = auth.admin as unknown as SupabaseClient<Database>;
+    const performUpdate = async (payload: Database['public']['Tables']['events']['Update'], fields: string) => await admin.from('events').update(payload).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).select(fields).single() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
+    let { data, error } = await performUpdate(update, FIELDS);
     let bannerFrameSaved = true;
     if (isMissingBannerFrameColumns(error)) {
-      const compatibleUpdate = { ...update } as Record<string, unknown>;
+      const compatibleUpdate = { ...update } as Database['public']['Tables']['events']['Update'];
       for (const column of BANNER_FRAME_COLUMNS) delete compatibleUpdate[column];
       bannerFrameSaved = !BANNER_FRAME_COLUMNS.some((column) => column in update);
       console.warn('Saving event details without banner framing because the database migration is not available yet.');
@@ -199,7 +203,8 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if (!sameInstant(data.registration_opens_at, expectedOpening)
       || !sameInstant(data.registration_closes_at, expectedClosing)
       || ('registration_availability' in update && data.registration_availability !== update.registration_availability)
-      || ('overall_capacity' in update && data.overall_capacity !== update.overall_capacity)) {
+      || ('overall_capacity' in update && data.overall_capacity !== update.overall_capacity)
+      || ('registration_personal_fields' in update && JSON.stringify(data.registration_personal_fields) !== JSON.stringify(update.registration_personal_fields))) {
       console.error('[Updating organizer event] Database returned values different from the submitted settings', { eventId: params.eventId });
       return NextResponse.json({ error: 'The database did not save the requested registration settings. Please retry or contact RaceDeck support.' }, { status: 500 });
     }
@@ -235,8 +240,12 @@ export async function DELETE(_request: Request, { params }: { params: { eventId:
       return NextResponse.json({ error: 'This event has registrations or payments and cannot be deleted. Cancel or archive it instead.' }, { status: 409 });
     }
 
-    const db = auth.admin as unknown as SupabaseClient<any>;
-    const { error } = await db.rpc('delete_organizer_draft_event', {
+    const db = auth.admin as unknown as SupabaseClient<Database>;
+    const deleteDraftEvent = db.rpc as unknown as (name: string, args: {
+      p_event_id: string;
+      p_organization_id: string;
+    }) => Promise<{ error: { code?: string; message?: string } | null }>;
+    const { error } = await deleteDraftEvent.call(db, 'delete_organizer_draft_event', {
       p_event_id: params.eventId,
       p_organization_id: auth.membership.organization_id,
     });

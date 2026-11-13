@@ -32,6 +32,7 @@ type RegistrationEvent = {
   registration_opens_at: string | null;
   registration_closes_at: string | null;
   registration_availability: string;
+  registration_personal_fields: string[];
   overall_capacity: number | null;
 };
 
@@ -44,8 +45,8 @@ function isMissingBannerFrameColumn(error: { code?: string; message?: string } |
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const admin = createAdminClient() as unknown as SupabaseClient;
-  const eventColumns = 'id,organization_id,name,banner_url,banner_position_x,banner_position_y,banner_zoom,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity';
-  const legacyEventColumns = 'id,organization_id,name,banner_url,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,overall_capacity';
+  const eventColumns = 'id,organization_id,name,banner_url,banner_position_x,banner_position_y,banner_zoom,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,registration_personal_fields,overall_capacity';
+  const legacyEventColumns = 'id,organization_id,name,banner_url,event_date,assembly_time,venue,address,registration_opens_at,registration_closes_at,registration_availability,registration_personal_fields,overall_capacity';
   const isEventId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.eventId);
   const loadEvent = (projection: string) => {
     const eventLookup = admin.from('events').select(projection);
@@ -64,6 +65,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     banner_position_x: Number(eventData.banner_position_x ?? 50),
     banner_position_y: Number(eventData.banner_position_y ?? 50),
     banner_zoom: Number(eventData.banner_zoom ?? 1),
+    registration_personal_fields: eventData.registration_personal_fields ?? ['first_name', 'middle_name', 'last_name', 'birthdate', 'gender', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship'],
   } : null;
   if (eventError) {
     console.error('Unable to load public event for registration', eventError);

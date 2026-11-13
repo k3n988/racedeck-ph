@@ -1427,6 +1427,7 @@ export type Database = {
           review_status: Database["public"]["Enums"]["event_review_status"]
           slug: string
           social_links: Json | null
+          registration_personal_fields: string[]
           start_time: string | null
           updated_at: string
           venue: string | null
@@ -1460,6 +1461,7 @@ export type Database = {
           review_status?: Database["public"]["Enums"]["event_review_status"]
           slug: string
           social_links?: Json | null
+          registration_personal_fields?: string[]
           start_time?: string | null
           updated_at?: string
           venue?: string | null
@@ -1493,6 +1495,7 @@ export type Database = {
           review_status?: Database["public"]["Enums"]["event_review_status"]
           slug?: string
           social_links?: Json | null
+          registration_personal_fields?: string[]
           start_time?: string | null
           updated_at?: string
           venue?: string | null

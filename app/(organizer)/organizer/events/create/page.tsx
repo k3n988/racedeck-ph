@@ -1,7 +1,7 @@
 "use client";
 
 import { ToastFeedback } from '@/components/toast-feedback';
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -33,6 +33,8 @@ type Category = {
 type CategoryGroup = { id: string; name: string };
 type UploadValue = { url: string; file: File | null };
 type Sponsor = { name: string; logo: UploadValue };
+
+const RACE_KIT_DELIVERY_OPTION = "Race Kit Delivery";
 type RegistrationQuestion = {
   id: string;
   section_key: 'additional' | 'health';
@@ -43,6 +45,19 @@ type RegistrationQuestion = {
   other_option: boolean;
   optionDraft: string;
 };
+const personalInformationFields = [
+  { key: "first_name", label: "First name", required: true },
+  { key: "middle_name", label: "Middle name", required: false },
+  { key: "last_name", label: "Last name", required: true },
+  { key: "birthdate", label: "Birthdate", required: true },
+  { key: "gender", label: "Gender", required: false },
+  { key: "email", label: "Email", required: true },
+  { key: "contact_number", label: "Contact number", required: true },
+  { key: "address", label: "Address", required: true },
+  { key: "emergency_contact", label: "Emergency contact person", required: true },
+  { key: "emergency_contact_phone", label: "Emergency contact phone", required: true },
+  { key: "emergency_contact_relationship", label: "Relationship to participant", required: true },
+] as const;
 function RegistrationQuestionPreview({ question }: { question: RegistrationQuestion }) {
   const [answer, setAnswer] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -133,6 +148,7 @@ function TextField({
   step,
   placeholder,
   hint,
+  onBlur,
 }: {
   label: string;
   value: string;
@@ -146,6 +162,7 @@ function TextField({
   step?: string;
   placeholder?: string;
   hint?: string;
+  onBlur?: () => void;
 }) {
   return (
     <label className="block text-sm font-semibold text-slate-700">
@@ -161,6 +178,7 @@ function TextField({
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
         aria-invalid={Boolean(error)}
         className={`${input} ${error ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""}`}
       />
@@ -179,6 +197,8 @@ function Upload({
   frame,
   onFrameChange,
   profilePreview = false,
+  required = false,
+  error,
 }: {
   label: string;
   value: UploadValue | UploadValue[];
@@ -189,6 +209,8 @@ function Upload({
   frame?: BannerFrame;
   onFrameChange?: (value: BannerFrame) => void;
   profilePreview?: boolean;
+  required?: boolean;
+  error?: string;
 }) {
   const [uploadError, setUploadError] = useState("");
   const [originalOpen, setOriginalOpen] = useState(false);
@@ -204,6 +226,7 @@ function Upload({
     <div>
       <label className="block text-sm font-semibold text-slate-700">
         {label}
+        {required && <span className="ml-1 text-orange-600">*</span>}
         <input
           type="file"
           multiple={multiple}
@@ -220,12 +243,14 @@ function Upload({
             files.forEach((file) => onChange(file, URL.createObjectURL(file)));
             event.currentTarget.value = "";
           }}
-          aria-invalid={Boolean(uploadError)}
-          className={`${input} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700`}
+          aria-required={required || undefined}
+          aria-invalid={Boolean(uploadError || error)}
+          className={`${input} ${uploadError || error ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700`}
         />
       </label>
       <p className="mt-1 text-xs text-slate-500">JPG, PNG, or WEBP · up to 10 MB{label.toLowerCase().includes("banner") ? " · landscape images work best" : label.toLowerCase().includes("logo") ? " · shown without cropping" : ""}</p>
       {uploadError && <p role="alert" className="mt-1 text-xs font-medium text-red-700">{uploadError}</p>}
+      {!uploadError && error && <p role="alert" className="mt-1 text-xs font-medium text-red-700">{error}</p>}
       <div className={`mt-2 flex flex-wrap gap-2 ${profilePreview ? "items-center justify-center" : ""}`}>
         {profilePreview && previews[0]?.url && <button type="button" onClick={() => setOriginalOpen(true)} aria-label="View original event logo" className="group relative rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200">
           <Image src={previews[0].url} alt={`${label} circular thumbnail`} width={112} height={112} unoptimized className="h-24 w-24 rounded-full border-2 border-white object-cover shadow-md ring-1 ring-slate-200 transition group-hover:brightness-90" />
@@ -268,8 +293,8 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
     </div>
     {item.kind === "product" && <><div className="mt-4">
       <label className="block text-sm font-semibold text-slate-700">Available variants <span className="font-normal text-slate-400">(sizes, colors, or other options)</span></label>
-      <div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.name.trim().toLowerCase() !== "race kit claiming" && <label className="text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label>}<button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} className="rounded px-2 py-1 text-slate-600 hover:bg-white" aria-label={`Remove ${variant}`}>×</button></div>)}</div>
-      <div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
+      <div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.name.trim().toLowerCase() !== "race kit claiming" && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label>}<button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} className="rounded px-2 py-1 text-slate-600 hover:bg-white" aria-label={`Remove ${variant}`}>×</button></div>)}</div>
+      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
     </div>
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
       <Upload label="Product photos" value={item.productImages} multiple onChange={(file, url) => onChange({ ...item, productImages: [...item.productImages, { file, url }] })} onRemove={(imageIndex) => { const image = item.productImages[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, productImages: item.productImages.filter((_, index) => index !== imageIndex) }); }} />
@@ -280,13 +305,15 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
 }
 
 function MerchandiseEditor({ item, onChange, onRemove }: { item: MerchandiseItem; onChange: (item: MerchandiseItem) => void; onRemove: () => void }) {
+  const descriptionId = useId();
   const [variantDraft, setVariantDraft] = useState("");
   const addVariant = () => { const variant = variantDraft.trim(); if (!variant || item.variants.some((value) => value.toLowerCase() === variant.toLowerCase())) return; onChange({ ...item, variants: [...item.variants, variant], variantSlots: { ...item.variantSlots, [variant]: "" } }); setVariantDraft(""); };
   return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="flex items-start justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">Additional merchandise</h4><p className="text-xs text-slate-500">Optional paid add-on available to every category.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
+    <div className="flex items-start justify-between gap-3"><div><p className="text-xs text-slate-500">Optional paid add-on available to every category.</p></div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
     <div className="mt-3 grid gap-3 md:grid-cols-2"><label className="block text-sm font-semibold text-slate-700">Product name<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder="e.g. Event finisher shirt" className={input} /></label><label className="block text-sm font-semibold text-slate-700">Price (PHP)<input type="number" min="0.01" step="0.01" value={item.unitPrice} onChange={(event) => onChange({ ...item, unitPrice: event.target.value })} placeholder="450.00" className={input} /></label></div>
-    <label className="mt-3 block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="Add fabric, fit, or other helpful details" className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">Leave blank if the product name, size options, and photos are enough.</span></label>
-    <div className="mt-3"><label className="block text-sm font-semibold text-slate-700">Variants <span className="font-normal text-slate-400">(optional, e.g. size or color)</span></label><div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span><label className="text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label><button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} aria-label={`Remove ${variant}`} className="rounded px-2 py-1 text-slate-600 hover:bg-white">×</button></div>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add option, e.g. Medium" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
+<div className="mt-3 grid min-w-0 gap-4 md:grid-cols-2"><div className="min-w-0"><label htmlFor={descriptionId} className="mb-1 block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span></label><div className="min-w-0"><input id={descriptionId} value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="Add fabric, fit, or other helpful details" type="text" maxLength={1000} className={`${input} mt-0 min-w-0`} /><span className="mt-1 block text-xs font-normal text-slate-500">Leave blank if the product name, size options, and photos are enough.</span></div></div>
+<div className="min-w-0"><label className="mb-1 block text-sm font-semibold text-slate-700">Variants <span className="font-normal text-slate-400">(optional, e.g. size or color)</span></label><div className="min-w-0"><div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add option, e.g. Medium" className={`${input} mt-0 min-w-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="min-h-11 shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div><div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span><label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label><button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} aria-label={`Remove ${variant}`} className="rounded px-2 py-1 text-slate-600 hover:bg-white">×</button></div>)}</div></div></div>
+    </div>
     <div className="mt-4"><Upload label="Merchandise photos" value={item.images} multiple onChange={(file, url) => onChange({ ...item, images: [...item.images, { file, url }] })} onRemove={(imageIndex) => { const image = item.images[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, images: item.images.filter((_, index) => index !== imageIndex) }); }} /></div>
   </article>;
 }
@@ -296,6 +323,8 @@ export default function CreateEventPage() {
   const [step, setStep] = useState(0);
   const [reviewedSteps, setReviewedSteps] = useState<boolean[]>(() => steps.map(() => false));
   const [attemptedSteps, setAttemptedSteps] = useState<boolean[]>([]);
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
+  const [submissionAttempted, setSubmissionAttempted] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [draftEventId, setDraftEventId] = useState<string | null>(null);
@@ -324,8 +353,10 @@ export default function CreateEventPage() {
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [kitClaimingLocations, setKitClaimingLocations] = useState<string[]>([]);
   const [kitClaimingLocationDraft, setKitClaimingLocationDraft] = useState("");
+  const [raceKitDeliveryEnabled, setRaceKitDeliveryEnabled] = useState(false);
   const [merchandise, setMerchandise] = useState<MerchandiseItem[]>([]);
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
+  const [registrationPersonalFields, setRegistrationPersonalFields] = useState<string[]>(personalInformationFields.map((field) => field.key));
   const [waiverTitle, setWaiverTitle] = useState(DEFAULT_PARTICIPANT_WAIVER_TITLE);
   const [waiverContent, setWaiverContent] = useState(DEFAULT_PARTICIPANT_WAIVER_CONTENT);
   const [posters, setPosters] = useState<UploadValue[]>([]);
@@ -349,6 +380,7 @@ export default function CreateEventPage() {
   const [activePage, setActivePage] = useState("event-details");
   const [showCustomTab, setShowCustomTab] = useState(false);
   const [customTabTitle, setCustomTabTitle] = useState("");
+  const customTabPopoverRef = useRef<HTMLDivElement>(null);
   const [sponsors, setSponsors] = useState<Record<string, Sponsor[]>>({
     "Presented By": [],
     "Official Partners": [],
@@ -371,10 +403,32 @@ export default function CreateEventPage() {
       });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (!showCustomTab) return;
+    const dismissPopover = (event: PointerEvent) => {
+      if (event.target instanceof Node && !customTabPopoverRef.current?.contains(event.target)) {
+        setShowCustomTab(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowCustomTab(false);
+        setCustomTabTitle("");
+      }
+    };
+    document.addEventListener("pointerdown", dismissPopover);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissPopover);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showCustomTab]);
   const update = <K extends keyof typeof form>(
     key: K,
     value: (typeof form)[K],
   ) => setForm((current) => ({ ...current, [key]: value }));
+  const touchField = (key: string) => setTouchedFields((current) => current[key] ? current : { ...current, [key]: true });
+  const shouldShowFieldError = (key: string, stepIndex: number) => Boolean(touchedFields[key] || attemptedSteps[stepIndex]);
   const addRegistrationQuestion = (section_key: RegistrationQuestion['section_key']) => setRegistrationQuestions((current) => [...current, {
     id: crypto.randomUUID(), section_key, label: '', field_type: section_key === 'health' ? 'multi_select' : 'radio', is_required: false, options: [], other_option: false, optionDraft: '',
   }]);
@@ -422,7 +476,6 @@ export default function CreateEventPage() {
       : null,
     [categories],
   );
-  const categoryStarted = (category: Category) => Boolean(category.name.trim() || category.distance.trim() || category.capacity.trim() || category.fee.trim() || category.earlyBirdEnabled || category.earlyBirdFee.trim() || category.earlyBirdDeadline || category.gunStart.trim() || category.cutoff.trim() || category.kitItems.some((item) => item.name.trim()));
   const categoryHasRequiredInclusion = (category: Category) => category.kitItems.some((item) => Boolean(item.name.trim()));
   const categoryIsValid = (category: Category) => {
     const opensLocal = form.registrationOpen ? `${form.registrationOpen}T00:00` : '';
@@ -447,9 +500,17 @@ export default function CreateEventPage() {
       earlyBirdWindowValid,
     );
   };
-  const categoriesReady = Boolean(categoryMode) && categories.length > 0 && categories.every(categoryIsValid) && (categoryMode !== "groups" || categoryGroups.every((group) => group.name.trim() && categories.some((category) => category.groupId === group.id)));
+  // Claiming is shared across both category modes: distances-only and
+  // group-with-distances both store included products on their distance rows.
+  // Optional merchandise uses the same participant pickup/delivery choice.
+  const hasPhysicalRaceKit = categories
+    .flatMap((category) => category.kitItems)
+    .some((item) => item.kind === "product" && Boolean(item.name.trim())) ||
+    merchandise.some((item) => Boolean(item.name.trim()));
+  const pickupLocationsReady = !hasPhysicalRaceKit || kitClaimingLocations.length > 0 || raceKitDeliveryEnabled;
+  const categoriesReady = Boolean(categoryMode) && categories.length > 0 && categories.every(categoryIsValid) && (categoryMode !== "groups" || categoryGroups.every((group) => group.name.trim() && categories.some((category) => category.groupId === group.id))) && pickupLocationsReady;
   const manilaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const registrationWindowValid = Boolean(form.registrationOpen && form.registrationClose && form.registrationOpen <= form.registrationClose && form.eventDate && form.registrationClose <= form.eventDate);
+  const registrationWindowValid = Boolean(form.registrationOpen && form.registrationClose && form.registrationOpen < form.registrationClose && form.eventDate && form.registrationClose <= form.eventDate);
   const registrationFieldsValid = (!form.registrationOpen && !form.registrationClose) || registrationWindowValid;
   const optionalLinksValid = Object.entries(optionalLinks).every(([key, value]) => eventPlatformLinkIsValid(key as OptionalEventLinkPlatform, value ?? ""));
   const contactFieldsValid = eventPlatformLinkIsValid("facebook", form.facebook) && optionalLinksValid;
@@ -506,19 +567,19 @@ export default function CreateEventPage() {
     ready && submissionReady,
   ];
   const validImage = (upload: UploadValue) => !upload.file || (upload.file.size > 0 && upload.file.size <= 10 * 1024 * 1024 && ["image/jpeg", "image/png", "image/webp"].includes(upload.file.type));
-  const hasPhysicalRaceKit = categories
-    .flatMap((category) => category.kitItems)
-    .some((item) => item.kind === "product" && Boolean(item.name.trim()));
   const validateSetupStep = (stepIndex: number): string[] => {
     if (stepIndex === 0) {
       const errors: string[] = [];
       if (!form.name.trim()) errors.push("Enter an event name.");
       else if (form.name.trim().length > 160) errors.push("Event name must be 160 characters or fewer.");
       if (!form.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) errors.push("Public URL slug must use lowercase letters, numbers, and single hyphens (up to 180 characters).");
+      if (!form.tagline.trim()) errors.push("Enter an event tagline.");
       if (!form.facebook.trim()) errors.push("Enter the event Facebook link.");
       else if (!eventPlatformLinkIsValid("facebook", form.facebook)) errors.push("Facebook link must point to Facebook (for example, https://facebook.com/your-page).");
       if (!optionalLinksValid) errors.push("Complete or remove each optional link. The URL must match its selected platform.");
+      if (!form.logo.url) errors.push("Upload an event logo or thumbnail.");
       if (!validImage(form.logo)) errors.push("Event logo must be a JPG, PNG, or WEBP image up to 10 MB.");
+      if (!form.banner.url) errors.push("Upload an event banner image.");
       if (!validImage(form.banner)) errors.push("Banner must be a JPG, PNG, or WEBP image up to 10 MB.");
       return errors;
     }
@@ -526,8 +587,11 @@ export default function CreateEventPage() {
       const errors: string[] = [];
       if (!form.eventDate) errors.push("Choose the event date.");
       else if (form.eventDate < manilaToday) errors.push("Event date cannot be in the past.");
-      if ((form.registrationOpen || form.registrationClose) && !registrationWindowValid) errors.push("Enter both registration dates, set opening before closing, and close registration no later than the event date.");
-      if (Boolean(form.venue.trim()) !== Boolean(form.address.trim())) errors.push("Enter both the venue name and complete address, or leave both blank while saving a draft.");
+      if (!form.registrationOpen) errors.push("Choose when registration opens.");
+      if (!form.registrationClose) errors.push("Choose when registration closes.");
+      if (form.registrationOpen && form.registrationClose && !registrationWindowValid) errors.push("Set registration opening before closing, and close registration no later than the event date.");
+      if (!form.venue.trim()) errors.push("Enter the venue name.");
+      if (!form.address.trim()) errors.push("Enter the complete event address.");
       return errors;
     }
     if (stepIndex === 2) {
@@ -580,8 +644,10 @@ export default function CreateEventPage() {
         }
       }));
       if (hasPhysicalRaceKit && kitClaimingLocationDraft.trim()) errors.push("Race kit claiming: add the typed location to the options list or clear the input.");
+      if (hasPhysicalRaceKit && kitClaimingLocations.length === 0 && !raceKitDeliveryEnabled) errors.push("Race kit claiming: add at least one pickup location or enable Race Kit Delivery for included products or optional merchandise.");
       if (hasPhysicalRaceKit && kitClaimingLocations.length > 40) errors.push("Race kit claiming: use no more than 40 pickup locations.");
       if (hasPhysicalRaceKit && kitClaimingLocations.some((location) => location.length > 160)) errors.push("Race kit claiming: each pickup location must be 160 characters or fewer.");
+      if (kitClaimingLocations.some((location) => location.toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase())) errors.push(`Race kit pickup: “${RACE_KIT_DELIVERY_OPTION}” is reserved for the delivery option. Choose a different pickup location name.`);
       merchandise.forEach((item, index) => {
         const itemLabel = `Optional merchandise ${index + 1}${item.name.trim() ? ` “${item.name.trim()}”` : ""}`;
         const started = Boolean(item.name.trim() || item.description.trim() || item.unitPrice.trim() || item.variants.length || item.images.length);
@@ -657,12 +723,34 @@ export default function CreateEventPage() {
   const updateAttemptedStep = (index: number) => setAttemptedSteps((current) => current.map((attempted, currentIndex) => currentIndex === index ? true : attempted).concat(current.length <= index ? [true] : []));
   const navigateToStep = (target: number) => {
     if (busy) return;
+    if (target > step && step <= 1) {
+      const errors = validateSetupStep(step);
+      if (errors.length > 0) {
+        updateAttemptedStep(step);
+        requestAnimationFrame(() => {
+          const firstInvalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+          firstInvalid?.focus({ preventScroll: true });
+          (firstInvalid ?? document.querySelector<HTMLElement>("[data-step-error]"))?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        return;
+      }
+    }
     setMessage("");
     setStep(target);
   };
   const continueToNextStep = () => {
     if (busy) return;
     setMessage("");
+    const errors = validateSetupStep(step);
+    if (errors.length > 0) {
+      updateAttemptedStep(step);
+      requestAnimationFrame(() => {
+        const firstInvalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+        firstInvalid?.focus({ preventScroll: true });
+        (firstInvalid ?? document.querySelector<HTMLElement>("[data-step-error]"))?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
     const nextStep = Math.min(steps.length - 1, step + 1);
     setReviewedSteps((current) => current.map((reviewed, index) => index === step ? true : reviewed));
     setStep(nextStep);
@@ -756,6 +844,7 @@ export default function CreateEventPage() {
       router.push(`/organizer/events/${draftEventId}`);
       return;
     }
+    setSubmissionAttempted(true);
     const firstInvalidStep = steps.findIndex((_, index) => validateSetupStep(index).length > 0);
     if (firstInvalidStep >= 0) {
       updateAttemptedStep(firstInvalidStep);
@@ -866,7 +955,7 @@ export default function CreateEventPage() {
       const detailsResponse = await fetch(`/api/organizer/events/${eventId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, banner_position_x: bannerFrame.x, banner_position_y: bannerFrame.y, banner_zoom: bannerFrame.zoom }),
+        body: JSON.stringify({ description, banner_position_x: bannerFrame.x, banner_position_y: bannerFrame.y, banner_zoom: bannerFrame.zoom, registration_personal_fields: registrationPersonalFields }),
       });
       const detailsBody = await detailsResponse.json().catch(() => ({}));
       if (!detailsResponse.ok) throw new Error(detailsBody.error ?? "Event description could not be saved.");
@@ -942,12 +1031,14 @@ export default function CreateEventPage() {
           if (!optionResponse.ok) throw new Error(savedOption.error ?? `An answer choice for “${question.label.trim()}” could not be saved.`);
         }
       }
-      if (hasPhysicalRaceKit && kitClaimingLocations.length) {
+      if (hasPhysicalRaceKit) {
         await saveKit(eventId, null, "Race Kit Claiming", [{
           kind: "product",
           name: "Race Kit Claiming",
-          description: "Choose where you plan to claim your included race kit.",
-          variants: kitClaimingLocations,
+          description: raceKitDeliveryEnabled
+            ? "Choose a pickup location or delivery to the address entered during registration."
+            : "Choose where you plan to claim your included race kit.",
+          variants: [...kitClaimingLocations, ...(raceKitDeliveryEnabled ? [RACE_KIT_DELIVERY_OPTION] : [])],
           variantSlots: {},
           productImages: [],
           referenceImage: emptyUpload(),
@@ -1025,7 +1116,7 @@ export default function CreateEventPage() {
         </p></ToastFeedback>
       )}
       {draftEventId && <Link href={`/organizer/events/${draftEventId}`} className="inline-block rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-bold text-orange-700">Open saved draft</Link>}
-      <div className="grid w-full min-w-0 items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid w-full min-w-0 items-start gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
         <aside className="h-fit w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
           <p className="px-3 pb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
             Event setup
@@ -1044,22 +1135,21 @@ export default function CreateEventPage() {
                 >
                   {complete ? <Check size={15} strokeWidth={3} /> : index + 1}
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className={`min-w-0 flex-1 ${index === 2 ? "whitespace-nowrap" : ""}`}>
                   {item}
-                  {index === 4 && registrationQuestions.length === 0 && <span className={`block text-xs font-normal ${step === index ? "text-slate-200" : "text-slate-500"}`}>Optional · no questions added</span>}
                 </span>
               </button>
             );
           })}
         </aside>
-        <section onBlurCapture={() => updateAttemptedStep(step)} className="flex w-full min-w-0 max-w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:min-h-[700px] [&>*]:min-w-0">
+        <section className="flex w-full min-w-0 max-w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 lg:min-h-[700px] [&>*]:min-w-0">
           <p className="text-xs font-bold uppercase tracking-widest text-orange-600">
             Step {step + 1} of {steps.length}
           </p>
           <h2 className="mt-1 text-2xl font-black text-[#071b41]">
             {steps[step]}
           </h2>
-          {attemptedSteps[step] && currentStepErrors.length > 0 && <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">Fix these items before continuing:</p><ul className="mt-2 list-disc space-y-1 pl-5">{currentStepErrors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
+          {attemptedSteps[step] && currentStepErrors.length > 0 && <div data-step-error role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">Fix these items before continuing:</p><ul className="mt-2 list-disc space-y-1 pl-5">{currentStepErrors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
           {step === 0 && (
             <div className="mt-6 flex-1 space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1072,7 +1162,8 @@ export default function CreateEventPage() {
                   }}
                   maxLength={160}
                   required
-                  error={attemptedSteps[0] && !form.name.trim() ? "Event name is required." : form.name.trim().length > 160 ? "Event name must be 160 characters or fewer." : undefined}
+                  onBlur={() => touchField("eventName")}
+                  error={shouldShowFieldError("eventName", 0) ? (!form.name.trim() ? "Event name is required." : form.name.trim().length > 160 ? "Event name must be 160 characters or fewer." : undefined) : undefined}
                 />
                 <TextField
                   label="Event URL slug"
@@ -1082,16 +1173,21 @@ export default function CreateEventPage() {
                     update("slug", toEventSlug(value));
                   }}
                   maxLength={180}
-                  error={form.slug && (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) ? "Use lowercase letters, numbers, and single hyphens." : undefined}
+                  onBlur={() => touchField("eventSlug")}
+                  error={shouldShowFieldError("eventSlug", 0) && (!form.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug) || form.slug.length > 180) ? "Use lowercase letters, numbers, and single hyphens (up to 180 characters)." : undefined}
                 />
-                <div className="-mt-3 space-y-1 text-xs text-slate-500 sm:col-span-2">
-                  <p>Participant registration URL</p>
-                  <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-medium text-slate-700">/register/{organizationSlug || "your-organization"}/{form.slug || "your-event-name"}</p>
+                <div className="-mt-3 flex min-w-0 items-center gap-3 text-xs text-slate-500 sm:col-span-2">
+                  <span className="shrink-0">Participant registration URL</span>
+                  <p className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-lg bg-slate-50 px-3 py-2 font-medium text-slate-700">/register/{organizationSlug || "your-organization"}/{form.slug || "your-event-name"}</p>
                 </div>
                 <TextField
                   label="Tagline"
                   value={form.tagline}
                   onChange={(value) => update("tagline", value)}
+                  maxLength={180}
+                  required
+                  onBlur={() => touchField("tagline")}
+                  error={shouldShowFieldError("tagline", 0) && !form.tagline.trim() ? "Event tagline is required." : undefined}
                 />
                 <TextField
                   label="Facebook link"
@@ -1100,14 +1196,17 @@ export default function CreateEventPage() {
                   value={form.facebook}
                   onChange={(value) => update("facebook", value)}
                   maxLength={2048}
-                  error={attemptedSteps[0] && !form.facebook.trim() ? "Facebook link is required." : form.facebook.trim() && !eventPlatformLinkIsValid("facebook", form.facebook) ? "Enter a Facebook link starting with https:// or http://." : undefined}
+                  onBlur={() => touchField("facebook")}
+                  error={shouldShowFieldError("facebook", 0) ? (!form.facebook.trim() ? "Facebook link is required." : !eventPlatformLinkIsValid("facebook", form.facebook) ? "Enter a valid Facebook page URL." : undefined) : undefined}
                 />
               </div>
               <div className="mt-5"><OptionalEventLinks links={optionalLinks} onChange={setOptionalLinks} /></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Upload
                   label="Event logo / thumbnail"
+                  required
                   value={form.logo}
+                  error={shouldShowFieldError("eventLogo", 0) && !form.logo.url ? "Upload an event logo or thumbnail before continuing." : undefined}
                   onChange={(file, url) => {
                     if (form.logo.url.startsWith("blob:")) URL.revokeObjectURL(form.logo.url);
                     update("logo", { file, url });
@@ -1120,7 +1219,9 @@ export default function CreateEventPage() {
                 />
                 <Upload
                   label="Banner image"
+                  required
                   value={form.banner}
+                  error={shouldShowFieldError("eventBanner", 0) && !form.banner.url ? "Upload an event banner image before continuing." : undefined}
                   onChange={(file, url) => {
                     if (form.banner.url.startsWith("blob:")) URL.revokeObjectURL(form.banner.url);
                     update("banner", { file, url });
@@ -1148,7 +1249,8 @@ export default function CreateEventPage() {
                   onChange={(value) => update("eventDate", value)}
                   min={manilaToday}
                   required
-                  error={attemptedSteps[1] && !form.eventDate ? "Event date is required." : attemptedSteps[1] && form.eventDate < manilaToday ? "Choose today or a future date." : undefined}
+                  onBlur={() => touchField("eventDate")}
+                  error={shouldShowFieldError("eventDate", 1) ? (!form.eventDate ? "Event date is required." : form.eventDate < manilaToday ? "Choose today or a future date." : undefined) : undefined}
                 />
                 <TextField
                   label="Assembly time (optional)"
@@ -1162,6 +1264,9 @@ export default function CreateEventPage() {
                   type="date"
                   value={form.registrationOpen}
                   onChange={(value) => update("registrationOpen", value)}
+                  required
+                  onBlur={() => touchField("registrationOpen")}
+                  error={shouldShowFieldError("registrationOpen", 1) ? (!form.registrationOpen ? "Registration opening date is required." : form.registrationClose && form.registrationOpen >= form.registrationClose ? "Choose an opening date before the closing date." : undefined) : undefined}
                   max={form.registrationClose || form.eventDate || undefined}
                 />
                 <TextField
@@ -1169,25 +1274,33 @@ export default function CreateEventPage() {
                   type="date"
                   value={form.registrationClose}
                   onChange={(value) => update("registrationClose", value)}
+                  required
+                  onBlur={() => touchField("registrationClose")}
+                  error={shouldShowFieldError("registrationClose", 1) ? (!form.registrationClose ? "Registration closing date is required." : form.registrationOpen && form.registrationClose <= form.registrationOpen ? "Choose a closing date after registration opens." : form.eventDate && form.registrationClose > form.eventDate ? "Registration must close no later than the event date." : undefined) : undefined}
                   max={form.eventDate || undefined}
                 />
-                {form.registrationOpen && form.registrationClose && form.registrationOpen > form.registrationClose && (
-                    <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">
-                      Registration must open before it closes.
-                    </p>
-                  )}
-                {form.registrationClose && form.eventDate && form.registrationClose > form.eventDate && <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">Registration must close no later than the event date.</p>}
+                {(shouldShowFieldError("registrationOpen", 1) || shouldShowFieldError("registrationClose", 1)) && form.registrationOpen && form.registrationClose && form.registrationOpen > form.registrationClose && (
+                  <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">
+                    Registration must open before it closes.
+                  </p>
+                )}
+                {(shouldShowFieldError("registrationOpen", 1) || shouldShowFieldError("registrationClose", 1)) && form.registrationClose && form.eventDate && form.registrationClose > form.eventDate && <p className="sm:col-span-2 rounded bg-red-50 p-3 text-sm text-red-700">Registration must close no later than the event date.</p>}
               </div>
               <p className="text-xs text-slate-500">Set both registration dates before submitting for review.</p>
-              <TextField label="Venue name" value={form.venue} onChange={(value) => update("venue", value)} />
+              <TextField label="Venue name" value={form.venue} onChange={(value) => update("venue", value)} required onBlur={() => touchField("venue")} error={shouldShowFieldError("venue", 1) && !form.venue.trim() ? "Venue name is required." : undefined} />
               <label className="block text-sm font-semibold text-slate-700">
-                Complete address
+                Complete address<span className="ml-1 text-orange-600">*</span>
                 <textarea
                   value={form.address}
                   onChange={(event) => update("address", event.target.value)}
+                  onBlur={() => touchField("address")}
+                  required
+                  aria-required="true"
+                  aria-invalid={Boolean(shouldShowFieldError("address", 1) && !form.address.trim())}
                   placeholder="Enter the complete event location and address"
-                  className={`${input} min-h-32 resize-y leading-6`}
+                  className={`${input} min-h-32 resize-y leading-6 ${shouldShowFieldError("address", 1) && !form.address.trim() ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""}`}
                 />
+                {shouldShowFieldError("address", 1) && !form.address.trim() && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">Complete address is required.</span>}
               </label>
             </div>
           )}
@@ -1211,7 +1324,6 @@ export default function CreateEventPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-orange-600">Race options</p>
-                    <h3 className="mt-1 text-lg font-black text-[#071b41]">Categories &amp; distances</h3>
                     <p className="mt-1 max-w-3xl text-sm text-slate-600">Choose whether to organize options into named groups or list each race distance on its own.</p>
                   </div>
                 </div>
@@ -1220,7 +1332,7 @@ export default function CreateEventPage() {
                 <div key={group?.id ?? "distance-options"} className={group ? "space-y-4 rounded-xl border border-slate-200 bg-white p-4" : "space-y-4"}>
                   {group && <div className="rounded-lg border border-slate-200 bg-white p-4">
                     <div className="flex flex-wrap items-end gap-3">
-                      <div className="min-w-60 flex-1"><TextField label={`Group ${categoryGroups.findIndex((entry) => entry.id === group.id) + 1} name`} value={group.name} maxLength={120} placeholder="e.g. Regular, Student, or VIP" error={attemptedSteps[2] && !group.name.trim() ? "Enter a name for this group." : undefined} onChange={(value) => updateCategoryGroup(group.id, { name: value })} /></div>
+                      <div className="min-w-60 flex-1"><TextField label={`Group ${categoryGroups.findIndex((entry) => entry.id === group.id) + 1} name`} value={group.name} maxLength={120} placeholder="e.g. Regular, Student, or VIP" error={shouldShowFieldError(`group-${group.id}-name`, 2) ? (!group.name.trim() ? "Enter a name for this group." : group.name.trim().length > 120 ? "Group name must be 120 characters or fewer." : undefined) : undefined} onBlur={() => touchField(`group-${group.id}-name`)} onChange={(value) => updateCategoryGroup(group.id, { name: value })} /></div>
                       <button type="button" onClick={() => addDistanceToGroup(group)} className="min-h-10 rounded-lg border border-orange-300 px-4 py-2 text-sm font-bold text-orange-700">+ Add distance</button>
                       <button type="button" onClick={() => { setCategoryGroups((current) => current.filter((entry) => entry.id !== group.id)); setCategories((current) => current.filter((category) => category.groupId !== group.id)); }} className="min-h-10 rounded-lg px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50">Remove group</button>
                     </div>
@@ -1247,6 +1359,8 @@ export default function CreateEventPage() {
                       max="9999.99"
                       step="0.01"
                       value={category.distance}
+                      onBlur={() => touchField(`category-${index}-distance`)}
+                      error={shouldShowFieldError(`category-${index}-distance`, 2) && (!category.distance.trim() || !Number.isFinite(Number(category.distance)) || Number(category.distance) <= 0 || Number(category.distance) > 9999.99) ? "Enter a distance greater than 0 and no more than 9,999.99 km." : undefined}
                       onChange={(value) =>
                         setCategories((current) =>
                           current.map((item, itemIndex) =>
@@ -1265,6 +1379,8 @@ export default function CreateEventPage() {
                       max="2147483647"
                       step="1"
                       value={category.capacity}
+                      onBlur={() => touchField(`category-${index}-capacity`)}
+                      error={shouldShowFieldError(`category-${index}-capacity`, 2) && Boolean(category.capacity.trim()) && (!Number.isInteger(Number(category.capacity)) || Number(category.capacity) <= 0 || Number(category.capacity) > 2147483647) ? "Use a positive whole number, or leave blank for unlimited slots." : undefined}
                       onChange={(value) =>
                         setCategories((current) =>
                           current.map((item, itemIndex) =>
@@ -1287,6 +1403,8 @@ export default function CreateEventPage() {
                       max="99999999.99"
                       step="0.01"
                       value={category.fee}
+                      onBlur={() => touchField(`category-${index}-fee`)}
+                      error={shouldShowFieldError(`category-${index}-fee`, 2) && (!category.fee.trim() || !Number.isFinite(Number(category.fee)) || Number(category.fee) < 0 || Number(category.fee) > 99999999.99) ? "Enter a fee from PHP 0 to PHP 99,999,999.99." : undefined}
                       onChange={(value) =>
                         setCategories((current) =>
                           current.map((item, itemIndex) =>
@@ -1300,13 +1418,13 @@ export default function CreateEventPage() {
                     />
                     <div className="flex min-h-[72px] items-center">
                       <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-[#071b41]">
-                        <input type="checkbox" checked={category.earlyBirdEnabled} onChange={(event) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdEnabled: event.target.checked, earlyBirdFee: event.target.checked ? item.earlyBirdFee : "", earlyBirdDeadline: event.target.checked ? item.earlyBirdDeadline : "" } : item))} className="h-4 w-4 accent-orange-600" />
+                        <input type="checkbox" checked={category.earlyBirdEnabled} onChange={(event) => { touchField(`category-${index}-early-bird`); setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdEnabled: event.target.checked, earlyBirdFee: event.target.checked ? item.earlyBirdFee : "", earlyBirdDeadline: event.target.checked ? item.earlyBirdDeadline : "" } : item)); }} className="h-4 w-4 accent-orange-600" />
                         Early Bird pricing
                       </label>
                     </div>
                     {category.earlyBirdEnabled && <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
-                        <TextField label="Early Bird price (PHP)" type="number" min="0" max="99999999.99" step="0.01" value={category.earlyBirdFee} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdFee: value } : item))} required />
-                        <TextField label="Early Bird deadline" type="datetime-local" value={category.earlyBirdDeadline} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdDeadline: value } : item))} required />
+                        <TextField label="Early Bird price (PHP)" type="number" min="0" max="99999999.99" step="0.01" value={category.earlyBirdFee} onBlur={() => touchField(`category-${index}-early-bird-fee`)} error={shouldShowFieldError(`category-${index}-early-bird-fee`, 2) && category.earlyBirdEnabled && (!category.earlyBirdFee.trim() || !Number.isFinite(Number(category.earlyBirdFee)) || Number(category.earlyBirdFee) < 0 || Number(category.earlyBirdFee) >= Number(category.fee)) ? "Enter an Early Bird price lower than the regular fee." : undefined} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdFee: value } : item))} required />
+                        <TextField label="Early Bird deadline" type="datetime-local" value={category.earlyBirdDeadline} onBlur={() => touchField(`category-${index}-early-bird-deadline`)} error={shouldShowFieldError(`category-${index}-early-bird-deadline`, 2) && category.earlyBirdEnabled && !manilaDateTimeToIso(category.earlyBirdDeadline) ? "Choose a valid Early Bird deadline." : undefined} onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, earlyBirdDeadline: value } : item))} required />
                     </div>}
                     <div className="sm:col-span-2 border-t border-slate-200 pt-4">
                       <h4 className="text-sm font-bold text-[#071b41]">Race-day timing <span className="font-normal text-slate-500">(optional)</span></h4>
@@ -1315,31 +1433,27 @@ export default function CreateEventPage() {
                       label="Category start time (optional)"
                       type="time"
                       value={category.gunStart}
+                      onBlur={() => touchField(`category-${index}-gun-start`)}
                       onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gunStart: value } : item))}
-                      error={category.gunStart && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.gunStart) ? "Enter a valid 24-hour time." : undefined}
+                      error={shouldShowFieldError(`category-${index}-gun-start`, 2) && category.gunStart && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.gunStart) ? "Enter a valid 24-hour time." : undefined}
                     />
                     <TextField
                       label="Category course cut-off (optional)"
                       type="time"
                       value={category.cutoff}
+                      onBlur={() => touchField(`category-${index}-cutoff`)}
                       onChange={(value) => setCategories((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, cutoff: value } : item))}
-                      error={category.cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.cutoff) ? "Enter a valid 24-hour time." : undefined}
+                      error={shouldShowFieldError(`category-${index}-cutoff`, 2) && category.cutoff && !/^([01]\d|2[0-3]):[0-5]\d$/.test(category.cutoff) ? "Enter a valid 24-hour time." : undefined}
                     />
                     <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">Category start and course cut-off times are optional. Leave them blank when the category follows the event schedule.</p>
                   </div>
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                     <h3 className="font-bold text-[#071b41]">Inclusions for {[group?.name.trim(), category.distance.trim() ? `${category.distance}K` : ""].filter(Boolean).join(" · ") || "this race option"} <span className="text-orange-600">*</span></h3>
                     <p className="mt-1 text-sm text-slate-600">These items are included for this race option. Participants choose product sizes during registration.</p>
-                    {category.kitItems.some((item) => item.kind === "inclusion") && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                      <h4 className="text-sm font-bold text-[#071b41]">Simple inclusions</h4>
-                      <div className="mt-2 space-y-2">
-                        {category.kitItems.map((item, itemIndex) => item.kind === "inclusion" && <div key={itemIndex} className="flex items-center gap-2">
-                          <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">Inclusion name<input value={item.name} onChange={(event) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? { ...kit, name: event.target.value } : kit) } : entry))} placeholder="e.g. Finisher medal" maxLength={160} className={input} /></label>
-                          <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} className="mt-5 shrink-0 rounded-lg px-2.5 py-2 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button>
-                        </div>)}
-                      </div>
-                    </div>}
-                    {category.kitItems.map((item, itemIndex) => item.kind === "product" && <KitItemEditor key={itemIndex} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
+                    {category.kitItems.map((item, itemIndex) => item.kind === "inclusion" ? <div key={`inclusion-${itemIndex}`} className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                      <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">Simple inclusion<input value={item.name} onChange={(event) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? { ...kit, name: event.target.value } : kit) } : entry))} placeholder="e.g. Finisher medal" maxLength={160} className={input} /></label>
+                      <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} className="mt-5 shrink-0 rounded-lg px-2.5 py-2 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button>
+                    </div> : <KitItemEditor key={`product-${itemIndex}`} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
                     {attemptedSteps[2] && !categoryHasRequiredInclusion(category) && <p className="mt-3 text-sm font-semibold text-red-600" role="alert">Add at least one simple inclusion or included product.</p>}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("inclusion")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add simple inclusion</button>
@@ -1371,15 +1485,14 @@ export default function CreateEventPage() {
                 + {categories.length === 0 ? "Add first distance" : "Add another distance"}
               </button>}
               </section>
-              {hasPhysicalRaceKit && <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              {categoryMode && <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-orange-700">Race kit pickup</p>
-                  <h3 className="mt-1 font-bold text-[#071b41]">Pickup locations</h3>
-                  <p className="mt-1 max-w-3xl text-sm text-slate-600">Add locations for race kit pickup. Participants select one during registration.</p>
                 </div>
+                <div className="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
                   <div>
-                    <label className="mt-4 block text-sm font-semibold text-slate-700" htmlFor="kit-claiming-location">Add a pickup location</label>
-                    <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-700" htmlFor="kit-claiming-location">Add a pickup location <span className="text-orange-600">*</span></label>
+                    <div className="flex gap-2">
                       <input
                         id="kit-claiming-location"
                         value={kitClaimingLocationDraft}
@@ -1389,27 +1502,39 @@ export default function CreateEventPage() {
                           if (event.key === "Enter") {
                             event.preventDefault();
                             const next = kitClaimingLocationDraft.trim();
-                            if (next && kitClaimingLocations.length < 40 && !kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) {
+                            if (next && next.toLowerCase() !== RACE_KIT_DELIVERY_OPTION.toLowerCase() && kitClaimingLocations.length < 40 && !kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) {
                               setKitClaimingLocations((current) => [...current, next]);
                               setKitClaimingLocationDraft("");
                             }
                           }
                         }}
                         placeholder="e.g. Bacolod City Government Center - race day"
-                        className={`${input} mt-0 min-h-11 flex-1`}
+                        className={`${input} mt-0 min-h-11 min-w-0 flex-1`}
                       />
-                      <button
-                        type="button"
-                        disabled={!kitClaimingLocationDraft.trim() || kitClaimingLocations.length >= 40 || kitClaimingLocations.some((location) => location.toLowerCase() === kitClaimingLocationDraft.trim().toLowerCase())}
-                        onClick={() => {
-                          const next = kitClaimingLocationDraft.trim();
-                          if (!next) return;
-                          setKitClaimingLocations((current) => [...current, next]);
-                          setKitClaimingLocationDraft("");
-                        }}
-                        className="min-h-11 rounded-lg border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >+ Add location</button>
                     </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!kitClaimingLocationDraft.trim() || kitClaimingLocationDraft.trim().toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase() || kitClaimingLocations.length >= 40 || kitClaimingLocations.some((location) => location.toLowerCase() === kitClaimingLocationDraft.trim().toLowerCase())}
+                    onClick={() => {
+                      const next = kitClaimingLocationDraft.trim();
+                      if (!next || next.toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase() || kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) return;
+                      setKitClaimingLocations((current) => [...current, next]);
+                      setKitClaimingLocationDraft("");
+                    }}
+                    className="min-h-11 rounded-lg border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >+ Add location</button>
+                  <label className="inline-flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-slate-800 lg:self-end lg:mb-3">
+                    <input
+                      type="checkbox"
+                      checked={raceKitDeliveryEnabled}
+                      onChange={(event) => setRaceKitDeliveryEnabled(event.target.checked)}
+                      className="h-4 w-4 shrink-0 accent-orange-600"
+                    />
+                    <span className="whitespace-nowrap">Enable Race Kit Delivery</span>
+                  </label>
+                  </div>
+                  {raceKitDeliveryEnabled && <p className="mt-2 text-sm text-slate-600">Participants will also see <span className="font-semibold text-[#071b41]">{RACE_KIT_DELIVERY_OPTION}</span> in the required pickup dropdown. Delivery uses the address entered during registration.</p>}
                     {kitClaimingLocations.length ? (
                       <ul className="mt-3 flex flex-wrap gap-2" aria-label="Pickup locations">
                         {kitClaimingLocations.map((location, index) => (
@@ -1420,75 +1545,91 @@ export default function CreateEventPage() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-3 text-sm text-slate-500">No pickup locations added yet.</p>
+                      <p className={`mt-3 text-sm ${attemptedSteps[2] && hasPhysicalRaceKit && !raceKitDeliveryEnabled ? "font-semibold text-red-600" : "text-slate-500"}`} role={attemptedSteps[2] && hasPhysicalRaceKit && !raceKitDeliveryEnabled ? "alert" : undefined}>{raceKitDeliveryEnabled ? "Delivery is enabled. Participants can choose Race Kit Delivery during registration." : hasPhysicalRaceKit ? attemptedSteps[2] ? "Add at least one pickup location or enable Race Kit Delivery before continuing." : "No pickup locations added yet. At least one pickup location or delivery option is required for these products." : "No pickup locations added. This becomes required if you add an included product or optional merchandise."}</p>
                     )}
-                  </div>
               </section>}
 
               <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-orange-700">Optional add-ons</p><h3 className="mt-1 text-lg font-black text-[#071b41]">Additional merchandise</h3><p className="mt-1 max-w-2xl text-sm text-slate-600">Optional paid products sold separately from each category’s included race kit. Participants can choose these during registration.</p></div><button type="button" onClick={() => setMerchandise((current) => [...current, emptyMerchandiseItem()])} className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white hover:bg-orange-700">+ Add merchandise</button></div>
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-orange-700">Optional add-ons</p><p className="mt-1 max-w-2xl text-sm text-slate-600">Optional paid products sold separately from each category’s included race kit. Participants can choose these during registration.</p></div><button type="button" onClick={() => setMerchandise((current) => [...current, emptyMerchandiseItem()])} className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white hover:bg-orange-700">+ Add merchandise</button></div>
                 {merchandise.length === 0 ? <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-white p-5 text-center text-sm text-slate-500">No additional merchandise. Your category inclusions remain unchanged.</div> : <div className="mt-4 space-y-3">{merchandise.map((item, index) => <MerchandiseEditor key={index} item={item} onChange={(value) => setMerchandise((current) => current.map((entry, itemIndex) => itemIndex === index ? value : entry))} onRemove={() => setMerchandise((current) => current.filter((_, itemIndex) => itemIndex !== index))} />)}</div>}
               </section>
             </div>
           )}
           {step === 3 && (
             <div className="mt-6 flex-1 space-y-5">
-              <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-                {eventPages.map((page) => (
-                  <button
-                    type="button"
-                    key={page.id}
-                    onClick={() => setActivePage(page.id)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-bold ${activePage === page.id ? "border-orange-500 bg-orange-50 text-orange-700" : "border-slate-200 text-slate-600"}`}
-                  >
-                    {page.title}
-                    {!page.visible && " (Hidden)"}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  disabled={eventPages.length >= 12}
-                  onClick={() => setShowCustomTab(true)}
-                  className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {eventPages.length >= 12 ? "Maximum tabs reached" : "+ Add Custom Tab"}
-                </button>
-              </div>
-              {showCustomTab && (
-                <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Tab Title
-                    <input
-                      value={customTabTitle}
-                      onChange={(event) =>
-                        setCustomTabTitle(event.target.value)
-                      }
-                      placeholder="International Runners' Guide"
-                      className={input}
-                    />
-                  </label>
-                  <div className="mt-3 flex gap-2">
+              <div className="relative">
+                <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+                  {eventPages.map((page) => (
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowCustomTab(false);
-                        setCustomTabTitle("");
-                      }}
-                      className="rounded-lg border px-3 py-2 text-sm font-bold"
+                      key={page.id}
+                      onClick={() => setActivePage(page.id)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-bold ${activePage === page.id ? "border-orange-500 bg-orange-50 text-orange-700" : "border-slate-200 text-slate-600"}`}
                     >
-                      Cancel
+                      {page.title}
+                      {!page.visible && " (Hidden)"}
                     </button>
+                  ))}
+                  <div ref={customTabPopoverRef} className="relative">
                     <button
                       type="button"
-                      disabled={!customTabTitle.trim()}
-                      onClick={addCustomTab}
-                      className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                      disabled={eventPages.length >= 12}
+                      aria-expanded={showCustomTab}
+                      aria-haspopup="dialog"
+                      onClick={() => setShowCustomTab((open) => !open)}
+                      className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Add Tab
+                      {eventPages.length >= 12 ? "Maximum tabs reached" : "+ Add Custom Tab"}
                     </button>
+                    {showCustomTab && (
+                      <div
+                        role="dialog"
+                        aria-label="Add custom content tab"
+                        className="absolute right-0 top-full z-50 mt-2 w-[min(36rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl ring-1 ring-slate-950/5"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">
+                            Tab title
+                            <input
+                              autoFocus
+                              value={customTabTitle}
+                              onChange={(event) => setCustomTabTitle(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" && customTabTitle.trim()) {
+                                  event.preventDefault();
+                                  addCustomTab();
+                                }
+                              }}
+                              placeholder="International Runners' Guide"
+                              className={`${input} mt-1.5`}
+                            />
+                          </label>
+                          <div className="flex shrink-0 gap-2 sm:pb-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCustomTab(false);
+                                setCustomTabTitle("");
+                              }}
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!customTabTitle.trim()}
+                              onClick={addCustomTab}
+                              className="rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Add tab
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
+              </div>
               {eventPages
                 .filter((page) => page.id === activePage)
                 .map((page) => (
@@ -1540,35 +1681,20 @@ export default function CreateEventPage() {
           {step === 4 && (
             <div className="mt-6 flex-1 space-y-5">
               <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <div className="bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#071b41]">Event Participant Waiver <span className="font-normal normal-case text-slate-500">(optional)</span></div>
-                <div className="space-y-4 p-4 sm:p-5">
-                  <p className="text-sm text-slate-600">A participant waiver is prefilled for this event and can be edited before publishing. The event title updates automatically in the default wording. This is separate from RaceDeck’s Terms and Conditions; clear both fields if you do not want to include an event waiver.</p>
-                  <label className="block text-sm font-semibold text-slate-700">Waiver title<input maxLength={240} value={waiverTitle} onChange={(event) => setWaiverTitle(event.target.value)} placeholder="Participant Waiver and Release Agreement" className={input} /></label>
-                  <label className="block text-sm font-semibold text-slate-700">Waiver content<textarea maxLength={50000} rows={14} value={eventWaiverContentForTitle(waiverContent, form.name)} onChange={(event) => setWaiverContent(event.target.value.replaceAll(form.name.trim() || "this event", EVENT_NAME_TOKEN))} placeholder="Enter the waiver participants must review and accept." className={`${input} font-normal leading-6`} /></label>
-                </div>
-              </section>
-              <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#071b41]">Personal Information</div>
                 <div className="p-4 sm:p-5">
-                  <p className="text-sm text-slate-600">Collected automatically for every participant. Add event-specific questions below; these standard fields cannot be duplicated.</p>
+                  <p className="text-sm text-slate-600">Choose which standard details to collect. Required fields stay required when selected; optional fields can be left blank. Add event-specific questions below.</p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {[
-                      { label: "First name", required: true },
-                      { label: "Middle name", required: false },
-                      { label: "Last name", required: true },
-                      { label: "Birthdate", required: true },
-                      { label: "Gender", required: false },
-                      { label: "Email", required: true },
-                      { label: "Contact number", required: true },
-                      { label: "Address", required: true },
-                      { label: "Emergency contact person", required: true },
-                      { label: "Emergency contact phone", required: true },
-                      { label: "Relationship to participant", required: true },
-                    ].map((field) => (
-                      <span key={field.label} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                      <input type="checkbox" checked={registrationPersonalFields.length === personalInformationFields.length} onChange={(event) => setRegistrationPersonalFields(event.target.checked ? personalInformationFields.map((field) => field.key) : [])} className="h-4 w-4 accent-orange-600" />
+                      Select all
+                    </label>
+                    {personalInformationFields.map((field) => (
+                      <label key={field.key} className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <input type="checkbox" checked={registrationPersonalFields.includes(field.key)} onChange={(event) => setRegistrationPersonalFields((current) => event.target.checked ? [...current, field.key] : current.filter((key) => key !== field.key))} className="h-4 w-4 accent-orange-600" />
                         <span>{field.label}</span>
                         <span className={`text-xs font-semibold ${field.required ? "text-orange-700" : "text-slate-500"}`}>{field.required ? "Required" : "Optional"}</span>
-                      </span>
+                      </label>
                     ))}
                   </div>
                 </div>
@@ -1596,7 +1722,7 @@ export default function CreateEventPage() {
                               <button type="button" onClick={() => setRegistrationQuestions((current) => current.filter((item) => item.id !== question.id))} className="rounded-lg px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Remove</button>
                             </div>
                             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                              <label className="block text-sm font-semibold text-slate-700">Question<input maxLength={160} value={question.label} onChange={(event) => updateRegistrationQuestion(question.id, { label: event.target.value })} placeholder={sectionKey === "health" ? "e.g. Select any medical conditions that apply" : "e.g. Which running club are you part of?"} className={input} /></label>
+                              <label className="block text-sm font-semibold text-slate-700">Question<input maxLength={160} value={question.label} onBlur={() => touchField(`question-${question.id}-label`)} aria-invalid={Boolean(shouldShowFieldError(`question-${question.id}-label`, 4) && (!question.label.trim() || question.label.trim().length > 160))} onChange={(event) => updateRegistrationQuestion(question.id, { label: event.target.value })} placeholder={sectionKey === "health" ? "e.g. Select any medical conditions that apply" : "e.g. Which running club are you part of?"} className={`${input} ${shouldShowFieldError(`question-${question.id}-label`, 4) && (!question.label.trim() || question.label.trim().length > 160) ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""}`} />{shouldShowFieldError(`question-${question.id}-label`, 4) && !question.label.trim() && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">Enter a question.</span>}{shouldShowFieldError(`question-${question.id}-label`, 4) && question.label.trim().length > 160 && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">Keep the question to 160 characters or fewer.</span>}</label>
                               <label className="block text-sm font-semibold text-slate-700">Answer type<select value={question.field_type} onChange={(event) => { const field_type = event.target.value as RegistrationQuestion["field_type"]; updateRegistrationQuestion(question.id, { field_type, ...(!["dropdown", "radio", "multi_select"].includes(field_type) ? { options: [], other_option: false, optionDraft: "" } : field_type !== "multi_select" ? { other_option: false } : {}) }); }} className={input}><option value="short_text">Short answer</option><option value="long_text">Paragraph</option><option value="yes_no">Yes / No</option><option value="dropdown">Dropdown list (choose one)</option><option value="radio">Radio choices (choose one)</option><option value="multi_select">Multiple-choice buttons (choose any)</option></select></label>
                             </div>
                             <label className="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={question.is_required} onChange={(event) => updateRegistrationQuestion(question.id, { is_required: event.target.checked })} className="h-4 w-4 accent-orange-600" /> Require participants to answer</label>
@@ -1638,6 +1764,8 @@ export default function CreateEventPage() {
                         <TextField
                           label="Sponsor name"
                           value={sponsor.name}
+                          onBlur={() => touchField(`sponsor-${tier}-${index}-name`)}
+                          error={shouldShowFieldError(`sponsor-${tier}-${index}-name`, 5) ? ((sponsor.logo.file || sponsor.logo.url) && !sponsor.name.trim() ? "Enter the sponsor name or remove the logo." : sponsor.name.trim().length > 160 ? "Sponsor name must be 160 characters or fewer." : undefined) : undefined}
                           onChange={(value) =>
                             editSponsor(tier, index, { name: value })
                           }
@@ -1686,9 +1814,10 @@ export default function CreateEventPage() {
                 <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                   {submissionChecks.map((check) => <li key={check.label} className={`flex items-center gap-2 ${check.complete ? "text-emerald-700" : "text-slate-600"}`}><span aria-hidden="true" className="font-bold">{check.complete ? "✓" : "○"}</span>{check.label}</li>)}
                 </ul>
-                <p className={`mt-3 font-semibold ${submissionReady ? "text-emerald-700" : "text-amber-700"}`}>{submissionReady ? "Event details are complete for review." : "Some required event details are still missing."}</p>
-                {missing.length > 0 && <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Fix before creating the draft: {missing.join(", ")}.</p>}
-                {finalStepFeedback.length > 0 && <div role="alert" className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                {submissionReady && <p className="mt-3 font-semibold text-emerald-700">Event details are complete for review.</p>}
+                {!submissionReady && !submissionAttempted && <p className="mt-3 text-sm text-slate-600">Required details will be checked when you create the draft. You can go back to any step to update your information.</p>}
+                {submissionAttempted && missing.length > 0 && <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Fix before creating the draft: {missing.join(", ")}.</p>}
+                {submissionAttempted && finalStepFeedback.length > 0 && <div role="alert" className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
                   <p className="font-bold">Complete these items before submitting for review:</p>
                   {finalStepFeedback.map(({ title, index, errors, unmetChecks }) => <div key={title} className="rounded-lg border border-amber-200 bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold">Step {index + 1}: {title}</h4><button type="button" onClick={() => { setStep(index); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100">Go to step</button></div>

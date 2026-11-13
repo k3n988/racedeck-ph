@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ArrowLeft, CalendarDays, ClipboardList, CreditCard, MapPin, PackageCheck, RefreshCw, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ClipboardList, CreditCard, MapPin, PackageCheck, RefreshCw, UserRound } from 'lucide-react';
+import { ToastFeedback } from '@/components/toast-feedback';
 
 type DetailData = {
   event: { id: string; name: string };
@@ -104,7 +105,7 @@ export default function RegistrationDetailPage({ params }: { params: { eventId: 
   // same hook order while the request transitions from pending to complete.
 
   if (loading) return <main className="mx-auto max-w-6xl space-y-5 p-5 sm:p-8" aria-busy="true"><div className="h-5 w-40 animate-pulse rounded bg-slate-200" /><div className="h-24 animate-pulse rounded-2xl bg-white" /><div className="h-72 animate-pulse rounded-2xl bg-white" /></main>;
-  if (error || !data || !row) return <main className="mx-auto max-w-4xl p-5 sm:p-8"><Link href={`/organizer/events/${params.eventId}/registrations`} className="inline-flex items-center gap-2 text-sm font-semibold text-orange-700 hover:underline"><ArrowLeft size={16} /> Back to registrations</Link><div role="alert" className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertCircle size={18} className="mt-0.5 shrink-0" /><p>{error || 'Participant profile could not be loaded.'}</p></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#0b2b5b] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#123b77]"><RefreshCw size={16} /> Try again</button></main>;
+  if (error || !data || !row) return <main className="mx-auto max-w-4xl p-5 sm:p-8"><Link href={`/organizer/events/${params.eventId}/registrations`} className="inline-flex items-center gap-2 text-sm font-semibold text-orange-700 hover:underline"><ArrowLeft size={16} /> Back to registrations</Link><ToastFeedback message={error || 'Participant profile could not be loaded.'} tone="auto"><div className="flex flex-wrap items-center justify-between gap-3"><span>{error || 'Participant profile could not be loaded.'}</span><button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-2 font-semibold underline underline-offset-2"><RefreshCw size={16} /> Try again</button></div></ToastFeedback></main>;
 
   const answers = data.answers ?? [];
   const healthAnswers = answers.filter((answer) => answer.event_registration_fields?.section_key === 'health');
@@ -126,7 +127,7 @@ export default function RegistrationDetailPage({ params }: { params: { eventId: 
         </div>
       </header>
 
-      {data.warnings?.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">Some optional information is unavailable.</p><ul className="mt-1 list-inside list-disc">{data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
+      {data.warnings?.length > 0 && <ToastFeedback message={`Some optional information is unavailable: ${data.warnings.join('; ')}`} tone="auto" />}
 
       {!data.canViewPii && <div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Your role can view registration operations, but participant personal information and answers are restricted.</div>}
 

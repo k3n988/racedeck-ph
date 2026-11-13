@@ -41,10 +41,13 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   const admin = createAdminClient();
   const db = admin as unknown as SupabaseClient;
   const isEventId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.eventId);
-  const eventLookup = admin.from('events').select('id,organization_id,name,event_date,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at');
+  const eventLookup = admin.from('events').select('id,organization_id,name,event_date,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at,registration_personal_fields');
   const { data: event } = await (isEventId ? eventLookup.eq('id', params.eventId) : eventLookup.eq('slug', params.eventId)).maybeSingle();
   const now = Date.now();
   if (!event || event.lifecycle_status !== 'published' || event.review_status !== 'approved') return NextResponse.json({ error: 'This event is not currently available for registration.' }, { status: 409 });
+  const defaultPersonalFields = ['first_name', 'middle_name', 'last_name', 'birthdate', 'gender', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship'];
+  const personalFields = new Set((event.registration_personal_fields as string[] | null) ?? defaultPersonalFields);
+  const requiredPersonalFields = new Set(['first_name', 'last_name', 'birthdate', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship']);
 
   const { data: existing } = await admin.from('payments').select('id,registration_id,gateway,checkout_url,status,amount_due,currency,registrations!inner(user_id,event_id,registration_number)').in('gateway', ['paymongo', 'pending_setup']).eq('idempotency_key', idempotencyKey).maybeSingle();
   if (existing) {
@@ -80,14 +83,19 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       emergency_contact_name: answers.emergency_contact?.trim() ?? '', emergency_contact_number: answers.emergency_contact_phone?.trim() ?? '',
       emergency_contact_relationship: answers.emergency_contact_relationship?.trim() ?? '',
     };
-    const required = Object.entries({ 'First name': participant.first_name, 'Last name': participant.last_name, Birthdate: participant.birthdate, Email: participant.email, 'Contact number': participant.mobile, Address: participant.address, 'Emergency contact person': participant.emergency_contact_name, 'Emergency contact phone': participant.emergency_contact_number, 'Emergency contact relationship': participant.emergency_contact_relationship }).find(([, value]) => !value);
-    if (required) return NextResponse.json({ error: `Registrant ${index + 1}: ${required[0]} is required` }, { status: 400 });
-    if (participant.gender && !['male', 'female', 'prefer_not_to_say'].includes(participant.gender)) return NextResponse.json({ error: `Registrant ${index + 1}: choose a valid gender option` }, { status: 400 });
-    if (participant.first_name.length > 100 || participant.middle_name.length > 100 || participant.last_name.length > 100 || participant.mobile.length > 40 || participant.emergency_contact_number.length > 40 || participant.address.length > 500 || participant.emergency_contact_name.length > 120 || participant.emergency_contact_relationship.length > 120) return NextResponse.json({ error: `Registrant ${index + 1}: please check the length of the participant details` }, { status: 400 });
-    if (!isEmergencyContactRelationship(participant.emergency_contact_relationship)) return NextResponse.json({ error: `Registrant ${index + 1}: choose a valid emergency contact relationship` }, { status: 400 });
-    if (!z.string().email().safeParse(participant.email).success) return NextResponse.json({ error: `Registrant ${index + 1}: enter a valid email address` }, { status: 400 });
-    const birthdate = Date.parse(`${participant.birthdate}T00:00:00Z`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(participant.birthdate) || !Number.isFinite(birthdate) || new Date(birthdate).toISOString().slice(0, 10) !== participant.birthdate || birthdate >= now) return NextResponse.json({ error: `Registrant ${index + 1}: enter a valid birthdate in the past` }, { status: 400 });
+    const valuesByField: Record<string, [string, string]> = {
+      first_name: ['First name', participant.first_name], last_name: ['Last name', participant.last_name], birthdate: ['Birthdate', participant.birthdate], email: ['Email', participant.email], contact_number: ['Contact number', participant.mobile], address: ['Address', participant.address], emergency_contact: ['Emergency contact person', participant.emergency_contact_name], emergency_contact_phone: ['Emergency contact phone', participant.emergency_contact_number], emergency_contact_relationship: ['Emergency contact relationship', participant.emergency_contact_relationship],
+    };
+    const required = Array.from(personalFields).find((field) => requiredPersonalFields.has(field) && !valuesByField[field]?.[1]);
+    if (required) return NextResponse.json({ error: `Registrant ${index + 1}: ${valuesByField[required]?.[0] ?? 'Personal information'} is required` }, { status: 400 });
+    if (personalFields.has('gender') && participant.gender && !['male', 'female', 'prefer_not_to_say'].includes(participant.gender)) return NextResponse.json({ error: `Registrant ${index + 1}: choose a valid gender option` }, { status: 400 });
+    if ((personalFields.has('first_name') && participant.first_name.length > 100) || (personalFields.has('middle_name') && participant.middle_name.length > 100) || (personalFields.has('last_name') && participant.last_name.length > 100) || (personalFields.has('contact_number') && participant.mobile.length > 40) || (personalFields.has('emergency_contact_phone') && participant.emergency_contact_number.length > 40) || (personalFields.has('address') && participant.address.length > 500) || (personalFields.has('emergency_contact') && participant.emergency_contact_name.length > 120) || (personalFields.has('emergency_contact_relationship') && participant.emergency_contact_relationship.length > 120)) return NextResponse.json({ error: `Registrant ${index + 1}: please check the length of the participant details` }, { status: 400 });
+    if (personalFields.has('emergency_contact_relationship') && participant.emergency_contact_relationship && !isEmergencyContactRelationship(participant.emergency_contact_relationship)) return NextResponse.json({ error: `Registrant ${index + 1}: choose a valid emergency contact relationship` }, { status: 400 });
+    if (personalFields.has('email') && participant.email && !z.string().email().safeParse(participant.email).success) return NextResponse.json({ error: `Registrant ${index + 1}: enter a valid email address` }, { status: 400 });
+    if (personalFields.has('birthdate') && participant.birthdate) {
+      const birthdate = Date.parse(`${participant.birthdate}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(participant.birthdate) || !Number.isFinite(birthdate) || new Date(birthdate).toISOString().slice(0, 10) !== participant.birthdate || birthdate >= now) return NextResponse.json({ error: `Registrant ${index + 1}: enter a valid birthdate in the past` }, { status: 400 });
+    }
     const answerError = validateRegistrationAnswers(fields ?? [], answers);
     if (answerError) return NextResponse.json({ error: `Registrant ${index + 1}: ${answerError}` }, { status: 400 });
     const categoryKits = (kits ?? []).filter((kit) => kit.category_id === registrant.category_id);
@@ -181,9 +189,9 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     const { data: row, error } = await admin.from('registrations').insert({
       registration_number: registrationNumber(), event_id: event.id, category_id: registrant.category_id,
       checkout_group_id: groupId, user_id: userId, hold_id: hold, status: 'pending_payment',
-      first_name: answers.first_name.trim(), middle_name: answers.middle_name?.trim() || null, last_name: answers.last_name.trim(), gender: answers.gender?.trim() || null, birthdate: answers.birthdate,
-      email: answers.email.trim().toLowerCase(), mobile: answers.contact_number.trim(), address: answers.address.trim(),
-      emergency_contact_name: answers.emergency_contact.trim(), emergency_contact_number: answers.emergency_contact_phone.trim(), emergency_contact_relationship: answers.emergency_contact_relationship.trim(),
+      first_name: personalFields.has('first_name') ? answers.first_name.trim() : '', middle_name: personalFields.has('middle_name') ? answers.middle_name?.trim() || null : null, last_name: personalFields.has('last_name') ? answers.last_name.trim() : '', gender: personalFields.has('gender') ? answers.gender?.trim() || null : null, birthdate: personalFields.has('birthdate') ? answers.birthdate || null : null,
+      email: personalFields.has('email') ? answers.email.trim().toLowerCase() : '', mobile: personalFields.has('contact_number') ? answers.contact_number.trim() || null : null, address: personalFields.has('address') ? answers.address.trim() || null : null,
+      emergency_contact_name: personalFields.has('emergency_contact') ? answers.emergency_contact.trim() || null : null, emergency_contact_number: personalFields.has('emergency_contact_phone') ? answers.emergency_contact_phone.trim() || null : null, emergency_contact_relationship: personalFields.has('emergency_contact_relationship') ? answers.emergency_contact_relationship.trim() || null : null,
       shirt_size: answers.shirt_size?.trim() || null,
     }).select('id,registration_number,category_id,first_name,last_name,email').single();
     if (error || !row) { await rollback(); return NextResponse.json({ error: `Registrant ${index + 1}: registration could not be saved` }, { status: 500 }); }

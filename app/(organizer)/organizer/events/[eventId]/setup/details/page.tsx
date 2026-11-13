@@ -154,7 +154,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
   }
 
   if (!event) return <main className="mx-auto max-w-5xl p-5 sm:p-8">
-    {message.startsWith('Loading') ? <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">{message}</div> : <div className="rounded-2xl border border-red-200 bg-white p-6"><p role="alert" className="text-sm text-red-800">{message}</p><button type="button" onClick={() => void load()} className="mt-4 rounded-lg bg-[#071b41] px-4 py-2 text-sm font-bold text-white">Try again</button></div>}
+    {message.startsWith('Loading') ? <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">{message}</div> : <ToastFeedback message={String(message)} tone="auto"><div className="flex flex-wrap items-center justify-between gap-3"><span>{message}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Try again</button></div></ToastFeedback>}
   </main>;
 
   const reviewLabel = event.review_status.replaceAll('_', ' ');
@@ -171,7 +171,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
     {profileLocked && <div role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><p className="font-bold">Editing is paused during review</p><p className="mt-1">RaceDeck is reviewing the current version. Editing will be available again when the review is complete.</p></div>}
     {event.lifecycle_status !== 'draft' && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><p className="font-bold">Live event updates</p><p className="mt-1">Changes saved here update the public event page right away. Please notify registered participants when a change affects their plans.</p></div>}
 
-    {message && <ToastFeedback message={String(message)} tone="error"><p role="status" className={`rounded-xl border p-3 text-sm ${message.includes('saved') ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{message}</p></ToastFeedback>}
+    {message && <ToastFeedback message={String(message)} tone="auto" />}
 
     <form onSubmit={submit} className="space-y-4">
       <Section title="Public event information" description="Name, URL, and description displayed on the public event page." icon={ImageIcon}>

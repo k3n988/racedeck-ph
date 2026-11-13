@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BarChart3, ChevronDown, ClipboardList, FileText, Settings2, Users } from 'lucide-react';
+import { ToastFeedback } from '@/components/toast-feedback';
 
 export type EventWorkspaceEvent = {
   id: string;
@@ -187,7 +188,7 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
               {canPublish && <button type="button" disabled={busy || !readiness?.can_submit} title={!readiness?.can_submit ? 'Complete the event setup checklist before publishing.' : undefined} onClick={() => void runWorkflow('publish')} className="min-h-10 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">{busy ? 'Publishing…' : 'Publish event'}</button>}
             </div>
           </div>
-          {(notice || loadMessage) && <ToastFeedback message={notice || loadMessage} tone={notice ? 'success' : 'error'} />}
+          {(notice || loadMessage) && <ToastFeedback message={notice || loadMessage} tone="auto" />}
           <nav aria-label="Event workspace sections" className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
             {directLinks.map(({ label, path, icon: Icon }) => {
               const href = `/organizer/events/${eventId}${path ? `/${path}` : ''}`;

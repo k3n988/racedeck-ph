@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, BarChart3, CheckCircle2, Circle, ClipboardList, FileText, Flag, Megaphone, PackageCheck, Settings2, Shirt, TicketCheck, Users } from 'lucide-react';
 import { EventWorkspaceOverview, useEventWorkspace } from '@/components/organizer/event-workspace-layout';
+import { ToastFeedback } from '@/components/toast-feedback';
 
 type WorkspaceLink = { label: string; href: string; description: string; icon: typeof FileText };
 
@@ -80,8 +81,8 @@ export default function OrganizerEventWorkspace({ params }: { params: { eventId:
 
   return (
     <main className="mx-auto max-w-[1480px] space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
-      {overviewError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Event overview metrics could not be loaded: {overviewError}</p>}
-      {contentPagesUnavailable && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Saved event content tabs are unavailable until the Supabase event-content-pages migration is applied.</p>}
+      {overviewError && <ToastFeedback message={`Event overview metrics could not be loaded: ${overviewError}`} tone="auto" />}
+      {contentPagesUnavailable && <ToastFeedback message="Saved event content tabs are unavailable until the Supabase event-content-pages migration is applied." tone="warning" />}
       {event.lifecycle_status === 'draft' && event.review_status === 'pending_review' && <p className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">RaceDeck is reviewing this event. You can continue setup and monitor its status here.</p>}
       {event.review_feedback && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><p className="font-bold">RaceDeck review feedback</p><p className="mt-1 whitespace-pre-wrap">{event.review_feedback}</p></section>}
       {event.lifecycle_status === 'draft' && event.review_status !== 'pending_review' && readiness && <section aria-labelledby="event-readiness-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

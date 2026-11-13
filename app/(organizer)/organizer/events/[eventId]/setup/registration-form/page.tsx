@@ -18,6 +18,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
   const [editing, setEditing] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
   const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -25,6 +26,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    setLoadFailed(false);
     try {
       const response = await fetch(`/api/organizer/events/${params.eventId}/registration-form`, { cache: 'no-store' });
       const body = await response.json().catch(() => null);
@@ -33,6 +35,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
       setFields(body as Field[]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Registration form could not be loaded.');
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -45,6 +48,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
     setForm(field ? { label: field.label, field_type: field.field_type as CustomFieldType, section_key: field.section_key ?? 'additional', is_required: field.is_required, is_active: field.is_active, display_order: field.display_order } : { ...blank, display_order: fields.length });
     setModal(true);
     setError('');
+    setLoadFailed(false);
     setNotice('');
   }
 
@@ -59,7 +63,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
     });
     const body = await response.json().catch(() => ({}));
     setBusy(false);
-    if (!response.ok) { setError(body.error ?? 'Field could not be saved.'); return; }
+    if (!response.ok) { setLoadFailed(false); setError(body.error ?? 'Field could not be saved.'); return; }
     setModal(false);
     setEditing(null);
     setNotice(form.label + (editing ? ' was updated.' : ' was added.'));
@@ -70,7 +74,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
     if (!window.confirm(`Delete “${field.label}”? This cannot be undone.`)) return;
     const response = await fetch(`/api/organizer/events/${params.eventId}/registration-form/${field.id}`, { method: 'DELETE' });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) { setError(body.error ?? 'Field could not be deleted.'); return; }
+    if (!response.ok) { setLoadFailed(false); setError(body.error ?? 'Field could not be deleted.'); return; }
     setNotice(`${field.label} was deleted.`);
     await load();
   }
@@ -111,8 +115,8 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
             <span className="text-xs font-semibold text-slate-500">{fields.length} custom field{fields.length === 1 ? '' : 's'}</span>
           </div>
 
-          {notice && <ToastFeedback message={String(notice)} tone="success"><p role="status" className="border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm font-medium text-emerald-800 sm:px-6">{notice}</p></ToastFeedback>}
-          {error && <ToastFeedback message={String(error)} tone="error"><div role="alert" className="m-5 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-red-800">{error}</p><button type="button" onClick={() => void load()} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-100">Try again</button></div></ToastFeedback>}
+          {notice && <ToastFeedback message={String(notice)} tone="auto" />}
+          {error && !modal && <ToastFeedback message={String(error)} tone="auto">{loadFailed ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{error}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Try again</button></div> : undefined}</ToastFeedback>}
 
           {loading ? (
             <div role="status" className="space-y-3 p-5 sm:p-6"><div className="h-4 w-48 animate-pulse rounded bg-slate-200" /><div className="h-20 animate-pulse rounded-xl bg-slate-100" /><span className="sr-only">Loading registration fields…</span></div>
@@ -157,7 +161,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
             <h2 id="field-dialog-title" className="mt-1 text-xl font-extrabold text-[#101c33]">{editing ? 'Edit custom field' : 'Add custom field'}</h2>
             <p className="mt-1 text-sm text-slate-600">Set the question and how participants will answer it.</p>
           </div>
-          {error && <ToastFeedback message={String(error)} tone="error"><p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p></ToastFeedback>}
+          {error && <ToastFeedback message={String(error)} tone="auto" />}
           <label className="block text-sm font-semibold text-slate-700">Field label<input autoFocus required maxLength={160} value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} placeholder="e.g. What is your running club?" className={controlClass} /></label>
           <label className="block text-sm font-semibold text-slate-700">Registration section<select value={form.section_key} onChange={(event) => setForm({ ...form, section_key: event.target.value as FieldForm['section_key'] })} className={controlClass}><option value="additional">Additional information</option><option value="health">Health information</option></select></label>
           <label className="block text-sm font-semibold text-slate-700">Answer type<select value={form.field_type} onChange={(event) => setForm({ ...form, field_type: event.target.value as CustomFieldType })} className={controlClass}>{CUSTOM_FIELD_TYPES.map((type) => <option key={type} value={type}>{CUSTOM_FIELD_TYPE_LABELS[type]}</option>)}</select></label>
@@ -213,7 +217,7 @@ function OptionManager({ eventId, field, onChange }: { eventId: string; field: F
   return <div className="max-w-2xl border-t border-slate-100 pt-3 text-sm">
     <div className="mb-2 flex items-center justify-between"><h4 className="font-bold text-[#101c33]">Answer options</h4><button type="button" disabled={busy} onClick={() => setAdding(!adding)} className="text-xs font-bold text-orange-700 hover:text-orange-800">{adding ? 'Cancel' : '+ Add option'}</button></div>
     {field.options.length ? <ul className="space-y-1.5">{field.options.map((option) => <li key={option.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><span className="text-slate-700">{option.label} <span className="text-slate-400">({option.value})</span></span><button type="button" disabled={busy} onClick={() => void remove(option)} className="text-xs font-semibold text-slate-500 hover:text-red-700">Remove</button></li>)}</ul> : <p className="text-xs text-slate-500">No answer choices yet.</p>}
-    {error && <ToastFeedback message={String(error)} tone="error"><p role="alert" className="mt-2 text-xs text-red-700">{error}</p></ToastFeedback>}
+    {error && <ToastFeedback message={String(error)} tone="auto" />}
     {adding && <form onSubmit={add} className="mt-3 grid gap-2 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"><label className="text-xs font-semibold text-slate-600">Option label<input required maxLength={160} value={label} onChange={(event) => setLabel(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Stored value<input maxLength={160} value={value} onChange={(event) => setValue(event.target.value)} placeholder="Defaults to label" className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-normal" /></label><button disabled={busy} className="rounded-lg bg-[#0b2b5b] px-3 py-2 text-xs font-bold text-white hover:bg-[#123b78]">{busy ? 'Adding…' : 'Save option'}</button></form>}
   </div>;
 }

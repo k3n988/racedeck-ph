@@ -56,7 +56,7 @@ a[href="/auth/logout"]:hover {
   color: #fff;
 }
 .content-editor .ProseMirror {
-  min-height: 420px;
+  min-height: 120px;
   padding: 1rem;
   outline: none;
   color: #334155;
@@ -101,6 +101,15 @@ a[href="/auth/logout"]:hover {
 .content-editor .ProseMirror ul[data-bullet-style="diamond"] > li::marker { content: "◆  "; }
 .content-editor .ProseMirror ul[data-bullet-style="arrow"] > li::marker { content: "➢  "; }
 .content-editor .ProseMirror ul[data-bullet-style="star"] > li::marker { content: "★  "; }
+.content-editor .ProseMirror ul[data-bullet-style] { list-style: none; padding-left: 1.5rem; }
+.content-editor .ProseMirror ul[data-bullet-style] > li { position: relative; }
+.content-editor .ProseMirror ul[data-bullet-style] > li::before { position: absolute; left: -1.35rem; width: 1rem; text-align: center; }
+.content-editor .ProseMirror ul[data-bullet-style="disc"] > li::before { content: "\2022"; }
+.content-editor .ProseMirror ul[data-bullet-style="circle"] > li::before { content: "\25CB"; }
+.content-editor .ProseMirror ul[data-bullet-style="square"] > li::before { content: "\25AA"; }
+.content-editor .ProseMirror ul[data-bullet-style="diamond"] > li::before { content: "\25C6"; }
+.content-editor .ProseMirror ul[data-bullet-style="arrow"] > li::before { content: "\27A2"; }
+.content-editor .ProseMirror ul[data-bullet-style="star"] > li::before { content: "\2605"; }
 .content-editor .ProseMirror ol[data-number-style="decimal"] { list-style-type: decimal; }
 .content-editor .ProseMirror ol[data-number-style="decimal-leading-zero"] { list-style-type: decimal-leading-zero; }
 .content-editor .ProseMirror ol[data-number-style="lower-alpha"] { list-style-type: lower-alpha; }

@@ -186,7 +186,7 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
       <button type="button" onClick={() => open()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-300"><Plus size={17} aria-hidden="true" />Add category</button>
     </header>
 
-    {message && !loading && <div role="status" className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm ${failed ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}><span>{message}</span>{failed && <button type="button" onClick={() => void load()} className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold">Retry</button>}</div>}
+    {message && !loading && <ToastFeedback message={String(message)} tone="auto">{failed ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{message}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Retry</button></div> : undefined}</ToastFeedback>}
 
     <section aria-label="Category summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryCard label="Race categories" value={loading ? '—' : items.length.toString()} note="Configured for this event" icon={TicketCheck} />
@@ -258,7 +258,7 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
             </label>
           </div>
           {editing && <p className="rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-900">Capacity cannot be set below the number of confirmed runners. Race kit products are managed in the Race Kit section.</p>}
-          {formError && <ToastFeedback message={String(formError)} tone="error"><p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{formError}</p></ToastFeedback>}
+          {formError && <ToastFeedback message={String(formError)} tone="auto" />}
           <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
             <button type="button" disabled={busy} onClick={() => setModal(false)} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
             <button type="submit" disabled={busy} className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-wait disabled:opacity-60">{busy ? 'Saving…' : editing ? 'Save category' : 'Add category'}</button>

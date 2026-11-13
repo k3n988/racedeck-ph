@@ -63,6 +63,7 @@ type RegistrationInfo = {
     address: string | null;
     organizer_name: string;
     registration_availability: string;
+    registration_personal_fields: string[];
     registration_opens_at: string | null;
     registration_closes_at: string | null;
   };
@@ -387,6 +388,7 @@ function RegistrantFields({
   onRemove?: () => void;
 }) {
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const collectsPersonalField = (key: string) => data.event.registration_personal_fields.includes(key);
   const categoryKits = data.kits.filter((kit) => kit.category_id === registrant.categoryId);
   const sharedKits = data.kits.filter((kit) => kit.category_id === null);
   // Shared items apply to every category; category-specific items extend them.
@@ -480,25 +482,25 @@ function RegistrantFields({
           <h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Personal information</h2>
           <p className="mt-3 text-xs text-slate-500">Enter details for the person who will take part. Event-specific questions configured by the organizer appear here.</p>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <AnswerInput label="First Name" value={registrant.answers.first_name ?? ""} onChange={(value) => updateAnswer("first_name", value)} required />
-            <AnswerInput label="Middle Name (optional)" value={registrant.answers.middle_name ?? ""} onChange={(value) => updateAnswer("middle_name", value)} />
-            <AnswerInput label="Last Name" value={registrant.answers.last_name ?? ""} onChange={(value) => updateAnswer("last_name", value)} required />
+            {collectsPersonalField("first_name") && <AnswerInput label="First Name" value={registrant.answers.first_name ?? ""} onChange={(value) => updateAnswer("first_name", value)} required />}
+            {collectsPersonalField("middle_name") && <AnswerInput label="Middle Name (optional)" value={registrant.answers.middle_name ?? ""} onChange={(value) => updateAnswer("middle_name", value)} />}
+            {collectsPersonalField("last_name") && <AnswerInput label="Last Name" value={registrant.answers.last_name ?? ""} onChange={(value) => updateAnswer("last_name", value)} required />}
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <AnswerInput label="Birthdate" type="date" value={registrant.answers.birthdate ?? ""} onChange={(value) => updateAnswer("birthdate", value)} required />
-            <label className="block min-w-0 text-sm font-semibold text-slate-800">Gender
+            {collectsPersonalField("birthdate") && <AnswerInput label="Birthdate" type="date" value={registrant.answers.birthdate ?? ""} onChange={(value) => updateAnswer("birthdate", value)} required />}
+            {collectsPersonalField("gender") && <label className="block min-w-0 text-sm font-semibold text-slate-800">Gender
               <select name="gender" autoComplete="sex" value={registrant.answers.gender ?? ""} onChange={(event) => updateAnswer("gender", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
                 <option value="">Select gender (optional)</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
                 <option value="prefer_not_to_say">Prefer not to say</option>
               </select>
-            </label>
-            <AnswerInput label="Email" type="email" value={registrant.answers.email ?? ""} onChange={(value) => updateAnswer("email", value)} required />
+            </label>}
+            {collectsPersonalField("email") && <AnswerInput label="Email" type="email" value={registrant.answers.email ?? ""} onChange={(value) => updateAnswer("email", value)} required />}
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <AnswerInput label="Contact Number" type="tel" value={registrant.answers.contact_number ?? ""} onChange={(value) => updateAnswer("contact_number", value)} required />
-            <AnswerInput label="Address" value={registrant.answers.address ?? ""} onChange={(value) => updateAnswer("address", value)} required />
+            {collectsPersonalField("contact_number") && <AnswerInput label="Contact Number" type="tel" value={registrant.answers.contact_number ?? ""} onChange={(value) => updateAnswer("contact_number", value)} required />}
+            {collectsPersonalField("address") && <AnswerInput label="Address" value={registrant.answers.address ?? ""} onChange={(value) => updateAnswer("address", value)} required />}
           </div>
           {(["additional", "health"] as const).map((section) => {
             const fields = data.fields.filter((field) => (field.section_key ?? "additional") === section);
@@ -514,7 +516,7 @@ function RegistrantFields({
           <h2 className="text-lg font-bold text-slate-900">Included race kit</h2><p className="mt-1 text-sm text-slate-600">Items configured for this selected category. Select a size or option for every item that offers choices.</p>
           <div className="mt-4 space-y-3">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
             <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
-              {details.variants.length > 0 && <VariantChoiceGroup label={item.item_name.trim().toLowerCase() === "race kit claiming" ? "Claiming place" : "Size / option"} name={`kit-${registrant.id}-${item.id}`} value={registrant.kitSelections[item.id] ?? ""} variants={details.variants} unavailableVariants={item.unavailable_variants} required={item.is_required} onChange={(value) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: value } })} />}
+              {details.variants.length > 0 && <VariantChoiceGroup label={item.item_name.trim().toLowerCase() === "race kit claiming" ? "Pickup or delivery" : "Size / option"} name={`kit-${registrant.id}-${item.id}`} value={registrant.kitSelections[item.id] ?? ""} variants={details.variants} unavailableVariants={item.unavailable_variants} required={item.is_required} onChange={(value) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: value } })} />}
             </div>
             {details.images.length > 0 && <ProductImageCarousel images={details.images} label={item.item_name} />}
           </article>; })}</div>
@@ -532,7 +534,7 @@ function RegistrantFields({
           </article>; })}</div>
         </section>}
 
-        <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Emergency contact information</h2><div className="mt-4 grid gap-4 md:grid-cols-3"><AnswerInput label="Emergency contact person" value={registrant.answers.emergency_contact ?? ""} onChange={(value) => updateAnswer("emergency_contact", value)} required /><AnswerInput label="Emergency contact phone" type="tel" value={registrant.answers.emergency_contact_phone ?? ""} onChange={(value) => updateAnswer("emergency_contact_phone", value)} required /><label className="block min-w-0 text-sm font-semibold text-slate-800">Relationship to participant <span className="text-orange-600">*</span><select required value={registrant.answers.emergency_contact_relationship ?? ""} onChange={(event) => updateAnswer("emergency_contact_relationship", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"><option value="">Select relationship</option>{EMERGENCY_CONTACT_RELATIONSHIPS.map((relationship) => <option key={relationship} value={relationship}>{relationship}</option>)}</select></label></div></section>
+        {(collectsPersonalField("emergency_contact") || collectsPersonalField("emergency_contact_phone") || collectsPersonalField("emergency_contact_relationship")) && <section><h2 className="rounded-md bg-slate-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#071b41]">Emergency contact information</h2><div className="mt-4 grid gap-4 md:grid-cols-3">{collectsPersonalField("emergency_contact") && <AnswerInput label="Emergency contact person" value={registrant.answers.emergency_contact ?? ""} onChange={(value) => updateAnswer("emergency_contact", value)} required />}{collectsPersonalField("emergency_contact_phone") && <AnswerInput label="Emergency contact phone" type="tel" value={registrant.answers.emergency_contact_phone ?? ""} onChange={(value) => updateAnswer("emergency_contact_phone", value)} required />}{collectsPersonalField("emergency_contact_relationship") && <label className="block min-w-0 text-sm font-semibold text-slate-800">Relationship to participant <span className="text-orange-600">*</span><select required value={registrant.answers.emergency_contact_relationship ?? ""} onChange={(event) => updateAnswer("emergency_contact_relationship", event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"><option value="">Select relationship</option>{EMERGENCY_CONTACT_RELATIONSHIPS.map((relationship) => <option key={relationship} value={relationship}>{relationship}</option>)}</select></label>}</div></section>}
 
         </>}
 
@@ -901,7 +903,7 @@ export default function RegisterPage({
                   <div className="flex items-center justify-between gap-3"><h3 id="review-participant-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><Users className="h-5 w-5" aria-hidden="true" />Registrant Information</h3><button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button></div>
                   <div className="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{registrants.map((registrant, index) => <div key={registrant.id} className="contents">
                     {registrants.length > 1 && <p className="col-span-full border-t border-slate-100 pt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Participant {index + 1}</p>}
-                    {[ ["First name", "first_name"], ["Middle name", "middle_name"], ["Last name", "last_name"], ["Birthdate", "birthdate"], ["Gender", "gender"], ["Email", "email"], ["Contact number", "contact_number"], ["Address", "address"] ].map(([label, key]) => <div key={key} className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-medium text-slate-800">{registrant.answers[key] || "—"}</p></div>)}
+                    {[ ["First name", "first_name"], ["Middle name", "middle_name"], ["Last name", "last_name"], ["Birthdate", "birthdate"], ["Gender", "gender"], ["Email", "email"], ["Contact number", "contact_number"], ["Address", "address"] ].filter(([, key]) => data.event.registration_personal_fields.includes(key)).map(([label, key]) => <div key={key} className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-medium text-slate-800">{registrant.answers[key] || "—"}</p></div>)}
                     {data.fields.filter((field) => registrant.answers[field.id]).map((field) => <div key={field.id} className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{field.label}</p><p className="mt-1 break-words text-sm font-medium text-slate-800">{reviewAnswer(field, registrant.answers[field.id])}</p></div>)}
                   </div>)}</div>
                 </section>
@@ -911,10 +913,10 @@ export default function RegisterPage({
                   <div className="mt-3 divide-y divide-slate-100">{registrants.map((registrant) => data.merchandise.filter((item) => (registrant.merchandiseSelections[item.id]?.quantity ?? 0) > 0).map((item) => { const selection = registrant.merchandiseSelections[item.id]; return <div key={`${registrant.id}-${item.id}`} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3">{item.image_urls[0] && <Image src={item.image_urls[0]} alt="" width={56} height={56} unoptimized className="h-14 w-14 shrink-0 rounded-lg object-cover" />}<div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-800">{item.name}{selection.variant ? ` · ${selection.variant}` : ""}</p><p className="text-xs text-slate-500">Qty {selection.quantity} · {peso(item.unit_price)} each</p></div></div><strong className="shrink-0 text-sm text-slate-800">{peso(item.unit_price * selection.quantity)}</strong></div>; }))}</div>
                 </section>}
 
-                <section aria-labelledby="review-emergency-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                {data.event.registration_personal_fields.some((field) => ["emergency_contact", "emergency_contact_phone", "emergency_contact_relationship"].includes(field)) && <section aria-labelledby="review-emergency-heading" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                   <div className="flex items-center justify-between gap-3"><h3 id="review-emergency-heading" className="flex items-center gap-2 font-bold text-[#071b41]"><PhoneCall className="h-5 w-5" aria-hidden="true" />Emergency Contact</h3><button type="button" onClick={() => { setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button></div>
-                  <div className="mt-3 space-y-2">{registrants.map((registrant, index) => <p key={registrant.id} className="break-words text-sm leading-6 text-slate-700">{registrants.length > 1 && <strong className="text-slate-900">Participant {index + 1}: </strong>}<strong className="font-semibold text-slate-900">{registrant.answers.emergency_contact || "—"}</strong><span> · {registrant.answers.emergency_contact_phone || "—"} · {registrant.answers.emergency_contact_relationship || "—"}</span></p>)}</div>
-                </section>
+                  <div className="mt-3 space-y-2">{registrants.map((registrant, index) => <p key={registrant.id} className="break-words text-sm leading-6 text-slate-700">{registrants.length > 1 && <strong className="text-slate-900">Participant {index + 1}: </strong>}{data.event.registration_personal_fields.includes("emergency_contact") && <strong className="font-semibold text-slate-900">{registrant.answers.emergency_contact || "—"}</strong>}{data.event.registration_personal_fields.includes("emergency_contact_phone") && <span>{data.event.registration_personal_fields.includes("emergency_contact") ? " · " : ""}{registrant.answers.emergency_contact_phone || "—"}</span>}{data.event.registration_personal_fields.includes("emergency_contact_relationship") && <span>{data.event.registration_personal_fields.includes("emergency_contact") || data.event.registration_personal_fields.includes("emergency_contact_phone") ? " · " : ""}{registrant.answers.emergency_contact_relationship || "—"}</span>}</p>)}</div>
+                </section>}
 
               </div>
 

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { ToastFeedback } from '@/components/toast-feedback';
 
 type Category = { id: string; name: string };
 type Registration = {
@@ -54,6 +55,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
   const queryString = params.toString();
   const [data, setData] = useState<PageData | null>(null);
   const [error, setError] = useState('');
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
@@ -65,6 +67,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
     const controller = new AbortController();
     setIsLoading(true);
     setError('');
+    setLoadFailed(false);
     setSearch(new URLSearchParams(queryString).get('search') ?? '');
     setStatus(new URLSearchParams(queryString).get('status') ?? '');
     setCategoryId(new URLSearchParams(queryString).get('categoryId') ?? '');
@@ -78,6 +81,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
       .catch((reason: unknown) => {
         if (reason instanceof Error && reason.name === 'AbortError') return;
         setError(reason instanceof Error ? reason.message : 'Registrations could not be loaded.');
+        setLoadFailed(true);
         setData(null);
       })
       .finally(() => {
@@ -144,6 +148,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
       URL.revokeObjectURL(href);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'CSV export could not be prepared.');
+      setLoadFailed(false);
     } finally {
       setIsExporting(false);
     }
@@ -152,6 +157,8 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
   const hasFilters = Boolean(params.get('search') || params.get('status') || params.get('categoryId'));
 
   return (
+    <>
+    {error && <ToastFeedback message={error} tone="auto">{loadFailed ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{error}</span><button type="button" onClick={() => setRetryToken((value) => value + 1)} className="shrink-0 font-semibold underline underline-offset-2">Retry loading registrations</button></div> : undefined}</ToastFeedback>}
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
         <div>
@@ -192,12 +199,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
         {hasFilters && <button type="button" onClick={resetFilters} className="h-11 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-white hover:text-slate-900">Clear</button>}
       </form>
 
-      {error ? (
-        <div className="m-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
-          <span>{error}</span>
-          <button type="button" onClick={() => setRetryToken((value) => value + 1)} className="rounded-lg border border-red-300 bg-white px-3 py-2 font-semibold hover:bg-red-100">Try again</button>
-        </div>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="space-y-3 p-5" aria-label="Loading registrations">
           {[0, 1, 2].map((item) => <div key={item} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}
         </div>
@@ -218,7 +220,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data?.registrations.length === 0 ? (
+                {data?.registrations.length === 0 && !error ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-3">
                       <div className="flex min-h-36 flex-col items-center justify-center px-4 py-5 text-center sm:min-h-44">
@@ -270,5 +272,6 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
         </>
       )}
     </section>
+    </>
   );
 }

@@ -257,7 +257,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
         <p className="mt-1 text-sm text-slate-600">Manage the same included products, sizes, photos, and size guides available during event creation. Paid add-ons stay under Additional Merchandise.</p>
       </header>
 
-      {message && <ToastFeedback message={message} tone={error ? 'error' : 'success'}><div className="flex items-center gap-3"><span>{message}</span>{error && <button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button>}</div></ToastFeedback>}
+      {message && <ToastFeedback message={message} tone="auto"><div className="flex items-center gap-3"><span>{message}</span>{error && <button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button>}</div></ToastFeedback>}
 
       <form onSubmit={saveConfig} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="font-bold text-[#071b41]">{configId ? 'Edit race kit configuration' : 'Add race kit configuration'}</h2><p className="mt-1 text-sm text-slate-600">Create one shared kit or configure a kit for a specific category.</p></div>{configId && <button type="button" onClick={() => { setConfigId(null); setConfig({ name: '', description: '', category_id: null, status: 'active' }); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cancel edit</button>}</div>

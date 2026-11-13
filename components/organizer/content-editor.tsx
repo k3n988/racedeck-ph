@@ -158,6 +158,10 @@ export function ContentEditor({
 }) {
   const lastValue = useRef(value);
   const imageInput = useRef<HTMLInputElement>(null);
+  // Native toolbar controls (selects, color inputs, popovers) take focus away
+  // from ProseMirror. Keep the editor selection so commands still target the
+  // user's selection instead of falling back to a broader document selection.
+  const savedSelection = useRef({ from: 1, to: 1 });
   const [, refresh] = useState(0);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -197,7 +201,13 @@ export function ContentEditor({
       onChange(lastValue.current);
       refresh((count) => count + 1);
     },
-    onSelectionUpdate: () => refresh((count) => count + 1),
+    onSelectionUpdate: ({ editor: current }) => {
+      savedSelection.current = {
+        from: current.state.selection.from,
+        to: current.state.selection.to,
+      };
+      refresh((count) => count + 1);
+    },
   });
 
   useEffect(() => {
@@ -211,12 +221,28 @@ export function ContentEditor({
     editor?.setEditable(editable);
   }, [editor, editable]);
 
-  if (!editor) return editable ? <div className="min-h-[420px] rounded-b-lg border border-slate-200 p-4 text-sm text-slate-400">Loading editor...</div> : null;
+  if (!editor) return editable ? <div className="min-h-[120px] rounded-b-lg border border-slate-200 p-4 text-sm text-slate-400">Loading editor...</div> : null;
 
   const textStyle = editor.getAttributes('textStyle') as { fontSize?: string; fontFamily?: string; color?: string };
   const selectedSize = Number.parseInt(textStyle.fontSize || '12', 10) || 12;
   const selectedFamily = textStyle.fontFamily || 'Arial';
   const highlightStyle = editor.getAttributes('highlight') as { color?: string };
+  const rememberSelection = () => {
+    savedSelection.current = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    };
+  };
+  const restoreSelection = () => {
+    const maxPosition = editor.state.doc.content.size;
+    const from = Math.max(1, Math.min(savedSelection.current.from, maxPosition));
+    const to = Math.max(from, Math.min(savedSelection.current.to, maxPosition));
+    editor.commands.setTextSelection({ from, to });
+  };
+  const runAtSelection = (command: () => void) => {
+    restoreSelection();
+    command();
+  };
   const currentNode = editor.isActive('heading', { level: 1 }) ? 'heading-1'
     : editor.isActive('heading', { level: 2 }) ? 'heading-2'
       : editor.isActive('heading', { level: 3 }) ? 'heading-3'
@@ -225,11 +251,12 @@ export function ContentEditor({
   const currentLineHeight = String(editor.getAttributes(activeBlock).lineHeight || '1.5');
   const currentAlignment = editor.getAttributes(activeBlock).textAlign || 'left';
 
-  const setFontSize = (size: number) => editor.chain().focus().setMark('textStyle', { fontSize: `${Math.min(96, Math.max(6, size))}pt` }).run();
+  const setFontSize = (size: number) => runAtSelection(() => editor.chain().focus().setMark('textStyle', { fontSize: `${Math.min(96, Math.max(6, size))}pt` }).run());
   const setLineHeight = (lineHeight: string) => {
-    editor.chain().focus().updateAttributes(activeBlock, { lineHeight }).run();
+    runAtSelection(() => editor.chain().focus().updateAttributes(activeBlock, { lineHeight }).run());
   };
   const changeIndent = (delta: number) => {
+    restoreSelection();
     if (editor.isActive('listItem') || editor.isActive('taskItem')) {
       if (delta > 0) editor.chain().focus().sinkListItem('listItem').run();
       else editor.chain().focus().liftListItem('listItem').run();
@@ -240,36 +267,42 @@ export function ContentEditor({
     editor.chain().focus().updateAttributes(node, { indent: Math.max(0, Math.min(8, current + delta)) }).run();
   };
   const setBulletStyle = (style: string) => {
-    if (editor.isActive('bulletList')) editor.chain().focus().updateAttributes('bulletList', { bulletStyle: style }).run();
-    else editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { bulletStyle: style }).run();
+    runAtSelection(() => {
+      if (editor.isActive('bulletList')) editor.chain().focus().updateAttributes('bulletList', { bulletStyle: style }).run();
+      else editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { bulletStyle: style }).run();
+    });
     setBulletOpen(false);
   };
   const setNumberStyle = (style: string) => {
-    if (editor.isActive('orderedList')) editor.chain().focus().updateAttributes('orderedList', { numberStyle: style }).run();
-    else editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { numberStyle: style }).run();
+    runAtSelection(() => {
+      if (editor.isActive('orderedList')) editor.chain().focus().updateAttributes('orderedList', { numberStyle: style }).run();
+      else editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { numberStyle: style }).run();
+    });
     setNumberedOpen(false);
   };
   const addComment = () => {
     const note = window.prompt('Add a note');
     if (note?.trim()) {
       onComment?.(note.trim());
-      editor.chain().focus().toggleBlockquote().insertContent(note.trim()).toggleBlockquote().run();
+      runAtSelection(() => editor.chain().focus().toggleBlockquote().insertContent(note.trim()).toggleBlockquote().run());
     }
   };
   const addImageFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => editor.chain().focus().setImage({ src: String(reader.result), alt: file.name }).run();
+    reader.onload = () => runAtSelection(() => editor.chain().focus().setImage({ src: String(reader.result), alt: file.name }).run());
     reader.readAsDataURL(file);
   };
   const submitLink = () => {
     const href = normalizeUrl(linkUrl);
-    if (href) editor.chain().focus().setLink({ href }).run();
-    else editor.chain().focus().unsetLink().run();
+    runAtSelection(() => {
+      if (href) editor.chain().focus().setLink({ href }).run();
+      else editor.chain().focus().unsetLink().run();
+    });
     setLinkOpen(false);
   };
   const submitImageUrl = () => {
     const src = normalizeUrl(imageUrl);
-    if (src) editor.chain().focus().setImage({ src, alt: 'Event content image' }).run();
+    if (src) runAtSelection(() => editor.chain().focus().setImage({ src, alt: 'Event content image' }).run());
     setImageUrl('');
     setImageOpen(false);
   };
@@ -278,44 +311,44 @@ export function ContentEditor({
   return (
     <div className={`relative min-w-0 w-full overflow-visible ${editable ? 'rounded-lg border border-slate-200 bg-white' : 'content-editor--readonly'}`}>
       {editable && (
-      <div className="flex flex-wrap items-center gap-0.5 rounded-t-lg border-b border-slate-200 bg-slate-50 p-1.5">
-        <IconButton label="Undo" title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><Undo2 size={16} /></IconButton>
-        <IconButton label="Redo" title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><Redo2 size={16} /></IconButton>
+      <div onMouseDownCapture={rememberSelection} onFocusCapture={rememberSelection} className="flex flex-wrap items-center gap-0.5 rounded-t-lg border-b border-slate-200 bg-slate-50 p-1.5">
+        <IconButton label="Undo" title="Undo" disabled={!editor.can().undo()} onClick={() => runAtSelection(() => editor.chain().focus().undo().run())}><Undo2 size={16} /></IconButton>
+        <IconButton label="Redo" title="Redo" disabled={!editor.can().redo()} onClick={() => runAtSelection(() => editor.chain().focus().redo().run())}><Redo2 size={16} /></IconButton>
         <Divider />
-        <div className="relative"><select aria-label="Paragraph style" className={`${selectClass} min-w-28 appearance-none pr-7`} value={currentNode} onChange={(event) => {
+        <div className="relative"><select aria-label="Paragraph style" className={`${selectClass} min-w-28 appearance-none pr-7`} value={currentNode} onChange={(event) => runAtSelection(() => {
           const style = event.target.value;
           if (style === 'paragraph') editor.chain().focus().setParagraph().run();
           else if (style === 'title') editor.chain().focus().setParagraph().setMark('textStyle', { fontSize: '26pt' }).toggleBold().run();
           else if (style === 'subtitle') editor.chain().focus().setParagraph().setMark('textStyle', { fontSize: '16pt' }).run();
           else editor.chain().focus().toggleHeading({ level: Number(style.replace('heading-', '')) as 1 | 2 | 3 | 4 }).run();
-        }}><option value="paragraph">Normal text</option><option value="title">Title</option><option value="subtitle">Subtitle</option><option value="heading-1">Heading 1</option><option value="heading-2">Heading 2</option><option value="heading-3">Heading 3</option><option value="heading-4">Heading 4</option></select><ChevronDown className="pointer-events-none absolute right-1 top-2 text-slate-500" size={14} /></div>
-        <div className="relative"><select aria-label="Font family" className={`${selectClass} min-w-28 appearance-none pr-7`} value={selectedFamily} onChange={(event) => editor.chain().focus().setFontFamily(event.target.value).run()}><option value="Arial">Arial</option><option value="Times New Roman">Times New Roman</option><option value="Georgia">Georgia</option><option value="Courier New">Courier New</option><option value="Roboto">Roboto</option><option value="Montserrat">Montserrat</option></select><ChevronDown className="pointer-events-none absolute right-1 top-2 text-slate-500" size={14} /></div>
+        })}><option value="paragraph">Normal text</option><option value="title">Title</option><option value="subtitle">Subtitle</option><option value="heading-1">Heading 1</option><option value="heading-2">Heading 2</option><option value="heading-3">Heading 3</option><option value="heading-4">Heading 4</option></select><ChevronDown className="pointer-events-none absolute right-1 top-2 text-slate-500" size={14} /></div>
+        <div className="relative"><select aria-label="Font family" className={`${selectClass} min-w-28 appearance-none pr-7`} value={selectedFamily} onChange={(event) => runAtSelection(() => editor.chain().focus().setFontFamily(event.target.value).run())}><option value="Arial">Arial</option><option value="Times New Roman">Times New Roman</option><option value="Georgia">Georgia</option><option value="Courier New">Courier New</option><option value="Roboto">Roboto</option><option value="Montserrat">Montserrat</option></select><ChevronDown className="pointer-events-none absolute right-1 top-2 text-slate-500" size={14} /></div>
         <div className="flex h-8 items-center overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm"><button type="button" aria-label="Decrease font size" title="Decrease font size" onMouseDown={(event) => event.preventDefault()} onClick={() => setFontSize(selectedSize - 1)} className="grid h-full w-8 place-items-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><Minus size={15} /></button><input aria-label="Font size" type="number" min="6" max="96" value={selectedSize} onChange={(event) => setFontSize(Number(event.target.value) || 12)} onBlur={(event) => setFontSize(Number(event.target.value) || 12)} className="h-full w-9 border-x border-slate-200 text-center text-xs font-semibold text-[#071b41] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" /><button type="button" aria-label="Increase font size" title="Increase font size" onMouseDown={(event) => event.preventDefault()} onClick={() => setFontSize(selectedSize + 1)} className="grid h-full w-8 place-items-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><Plus size={15} /></button></div>
         <Divider />
-        <IconButton label="Bold" title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={16} /></IconButton>
-        <IconButton label="Italic" title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={16} /></IconButton>
-        <IconButton label="Underline" title="Underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><UnderlineIcon size={16} /></IconButton>
-        <div className="relative"><IconButton label="Text color" title="Text color" active={Boolean(textStyle.color)} onClick={() => { setTextColorOpen((open) => !open); setHighlightColorOpen(false); }}><span className="relative"><Type size={16} /><span className="absolute -bottom-1 left-0 h-0.5 w-4" style={{ backgroundColor: textStyle.color || '#071b41' }} /></span></IconButton>{textColorOpen && <div className="absolute left-0 top-10 z-30"><ColorPalette label="Text color" value={textStyle.color} onSelect={(color) => { editor.chain().focus().setColor(color).run(); setTextColorOpen(false); }} onClear={() => { editor.chain().focus().unsetColor().run(); setTextColorOpen(false); }} /></div>}</div>
-        <div className="relative"><IconButton label="Highlight color" title="Highlight color" active={editor.isActive('highlight')} onClick={() => { setHighlightColorOpen((open) => !open); setTextColorOpen(false); }}><span className="relative"><Highlighter size={16} /><span className="absolute -bottom-1 left-0 h-0.5 w-4" style={{ backgroundColor: highlightStyle.color || '#facc15' }} /></span></IconButton>{highlightColorOpen && <div className="absolute left-0 top-10 z-30"><ColorPalette label="Highlight color" value={highlightStyle.color} onSelect={(color) => { editor.chain().focus().setHighlight({ color }).run(); setHighlightColorOpen(false); }} onClear={() => { editor.chain().focus().unsetHighlight().run(); setHighlightColorOpen(false); }} /></div>}</div>
+        <IconButton label="Bold" title="Bold" active={editor.isActive('bold')} onClick={() => runAtSelection(() => editor.chain().focus().toggleBold().run())}><Bold size={16} /></IconButton>
+        <IconButton label="Italic" title="Italic" active={editor.isActive('italic')} onClick={() => runAtSelection(() => editor.chain().focus().toggleItalic().run())}><Italic size={16} /></IconButton>
+        <IconButton label="Underline" title="Underline" active={editor.isActive('underline')} onClick={() => runAtSelection(() => editor.chain().focus().toggleUnderline().run())}><UnderlineIcon size={16} /></IconButton>
+        <div className="relative"><IconButton label="Text color" title="Text color" active={Boolean(textStyle.color)} onClick={() => { rememberSelection(); setTextColorOpen((open) => !open); setHighlightColorOpen(false); }}><span className="relative"><Type size={16} /><span className="absolute -bottom-1 left-0 h-0.5 w-4" style={{ backgroundColor: textStyle.color || '#071b41' }} /></span></IconButton>{textColorOpen && <div className="absolute left-0 top-10 z-30"><ColorPalette label="Text color" value={textStyle.color} onSelect={(color) => { runAtSelection(() => editor.chain().focus().setColor(color).run()); setTextColorOpen(false); }} onClear={() => { runAtSelection(() => editor.chain().focus().unsetColor().run()); setTextColorOpen(false); }} /></div>}</div>
+        <div className="relative"><IconButton label="Highlight color" title="Highlight color" active={editor.isActive('highlight')} onClick={() => { rememberSelection(); setHighlightColorOpen((open) => !open); setTextColorOpen(false); }}><span className="relative"><Highlighter size={16} /><span className="absolute -bottom-1 left-0 h-0.5 w-4" style={{ backgroundColor: highlightStyle.color || '#facc15' }} /></span></IconButton>{highlightColorOpen && <div className="absolute left-0 top-10 z-30"><ColorPalette label="Highlight color" value={highlightStyle.color} onSelect={(color) => { runAtSelection(() => editor.chain().focus().setHighlight({ color }).run()); setHighlightColorOpen(false); }} onClear={() => { runAtSelection(() => editor.chain().focus().unsetHighlight().run()); setHighlightColorOpen(false); }} /></div>}</div>
         <Divider />
         <div className="relative"><IconButton label="Insert or edit link" title="Insert or edit link" active={editor.isActive('link')} onClick={() => { setLinkUrl(editor.getAttributes('link').href || ''); setLinkOpen((open) => !open); }}><Link2 size={16} /></IconButton>{linkOpen && <div className="absolute left-0 top-10 z-20 flex w-72 gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"><input autoFocus value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitLink(); if (event.key === 'Escape') setLinkOpen(false); }} placeholder="https://example.com" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitLink} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Apply</button></div>}</div>
         <IconButton label="Add note" title="Add note" onClick={addComment}><MessageSquarePlus size={16} /></IconButton>
         <div className="relative"><IconButton label="Insert image" title="Insert image" onClick={() => setImageOpen((open) => !open)}><ImagePlus size={16} /></IconButton>{imageOpen && <div className="absolute right-0 top-10 z-20 w-72 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"><button type="button" onClick={() => imageInput.current?.click()} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50"><Upload size={15} />Upload from computer</button><div className="flex gap-2"><input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="Paste image URL" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitImageUrl} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Insert</button></div><div className="flex gap-2"><input value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} placeholder="Search web images" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" title="Open image search" onClick={() => { if (imageSearch.trim()) window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(imageSearch.trim())}`, '_blank', 'noopener,noreferrer'); }} className="rounded border border-slate-300 px-2 text-slate-700"><Search size={14} /></button></div></div>}</div>
         <input ref={imageInput} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) addImageFile(file); event.currentTarget.value = ''; }} />
         <Divider />
-        <div className="relative flex items-center"><IconButton label="Alignment" title="Alignment" active={currentAlignment !== 'left'} onClick={() => editor.chain().focus().setTextAlign('left').run()}>{currentAlignment === 'center' ? <AlignCenter size={16} /> : currentAlignment === 'right' ? <AlignRight size={16} /> : currentAlignment === 'justify' ? <AlignJustify size={16} /> : <AlignLeft size={16} />}</IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Text alignment" className="absolute inset-0 cursor-pointer opacity-0" value={currentAlignment} onChange={(event) => editor.chain().focus().setTextAlign(event.target.value).run()}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select></div>
+        <div className="relative flex items-center"><IconButton label="Alignment" title="Alignment" active={currentAlignment !== 'left'} onClick={() => runAtSelection(() => editor.chain().focus().setTextAlign('left').run())}>{currentAlignment === 'center' ? <AlignCenter size={16} /> : currentAlignment === 'right' ? <AlignRight size={16} /> : currentAlignment === 'justify' ? <AlignJustify size={16} /> : <AlignLeft size={16} />}</IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Text alignment" className="absolute inset-0 cursor-pointer opacity-0" value={currentAlignment} onChange={(event) => runAtSelection(() => editor.chain().focus().setTextAlign(event.target.value).run())}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select></div>
         <div className="relative flex items-center"><IconButton label="Line and paragraph spacing" title="Line and paragraph spacing" active={currentLineHeight !== '1.5'} onClick={() => setLineHeight('1.5')}><LineSpacingIcon /></IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Line spacing" className="absolute inset-0 cursor-pointer opacity-0" value={currentLineHeight} onChange={(event) => setLineHeight(event.target.value)}><option value="1">Single</option><option value="1.15">1.15</option><option value="1.5">1.5</option><option value="2">Double</option></select></div>
-        <div className="relative flex items-center"><IconButton label="Checklist" title="Checklist" active={editor.isActive('taskList')} onClick={() => { editor.chain().focus().toggleTaskList().run(); setChecklistOpen(false); }}><ListChecks size={16} /></IconButton><button type="button" aria-label="Checklist options" title="Checklist options" onMouseDown={(event) => event.preventDefault()} onClick={() => setChecklistOpen((open) => !open)} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{checklistOpen && <div className="absolute left-0 top-10 z-30 grid w-60 grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl"><button type="button" title="Apply checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().toggleTaskList().run(); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button><button type="button" title="Apply compact checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { editor.chain().focus().toggleTaskList().run(); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button></div>}</div>
-        <div className="relative flex items-center"><IconButton label="Bulleted list" title="Bulleted list" active={editor.isActive('bulletList')} onClick={() => { editor.chain().focus().toggleBulletList().run(); setBulletOpen(false); }}><List size={16} /></IconButton><button type="button" aria-label="Bulleted list options" title="Bulleted list options" onMouseDown={(event) => event.preventDefault()} onClick={() => setBulletOpen((open) => !open)} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{bulletOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['disc', 'circle', 'square', 'diamond', 'arrow', 'star'].map((style) => <button key={style} type="button" title={`Use ${style} bullets`} onMouseDown={(event) => event.preventDefault()} onClick={() => setBulletStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><BulletPreview style={style} /></button>)}</div>}</div>
-        <div className="relative flex items-center"><IconButton label="Numbered list" title="Numbered list" active={editor.isFocused && editor.isActive('orderedList')} onClick={() => { editor.chain().focus().toggleOrderedList().run(); setNumberedOpen(false); }}><ListOrdered size={16} /></IconButton><button type="button" aria-label="Numbered list options" title="Numbered list options" onMouseDown={(event) => event.preventDefault()} onClick={() => setNumberedOpen((open) => !open)} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{numberedOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['decimal', 'lower-alpha', 'upper-alpha', 'lower-roman', 'upper-roman', 'decimal-leading-zero'].map((style) => <button key={style} type="button" title={`Use ${style} numbering`} onMouseDown={(event) => event.preventDefault()} onClick={() => setNumberStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><NumberPreview style={style} /></button>)}</div>}</div>
+        <div className="relative flex items-center"><IconButton label="Checklist" title="Checklist" active={editor.isActive('taskList')} onClick={() => { runAtSelection(() => editor.chain().focus().toggleTaskList().run()); setChecklistOpen(false); }}><ListChecks size={16} /></IconButton><button type="button" aria-label="Checklist options" title="Checklist options" onMouseDown={(event) => event.preventDefault()} onClick={() => { rememberSelection(); setChecklistOpen((open) => !open); }} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{checklistOpen && <div className="absolute left-0 top-10 z-30 grid w-60 grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl"><button type="button" title="Apply checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { runAtSelection(() => editor.chain().focus().toggleTaskList().run()); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button><button type="button" title="Apply compact checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { runAtSelection(() => editor.chain().focus().toggleTaskList().run()); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button></div>}</div>
+        <div className="relative flex items-center"><IconButton label="Bulleted list" title="Bulleted list" active={editor.isActive('bulletList')} onClick={() => { runAtSelection(() => editor.chain().focus().toggleBulletList().run()); setBulletOpen(false); }}><List size={16} /></IconButton><button type="button" aria-label="Bulleted list options" title="Bulleted list options" onMouseDown={(event) => event.preventDefault()} onClick={() => { rememberSelection(); setBulletOpen((open) => !open); }} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{bulletOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['disc', 'circle', 'square', 'diamond', 'arrow', 'star'].map((style) => <button key={style} type="button" title={`Use ${style} bullets`} onMouseDown={(event) => event.preventDefault()} onClick={() => setBulletStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><BulletPreview style={style} /></button>)}</div>}</div>
+        <div className="relative flex items-center"><IconButton label="Numbered list" title="Numbered list" active={editor.isFocused && editor.isActive('orderedList')} onClick={() => { runAtSelection(() => editor.chain().focus().toggleOrderedList().run()); setNumberedOpen(false); }}><ListOrdered size={16} /></IconButton><button type="button" aria-label="Numbered list options" title="Numbered list options" onMouseDown={(event) => event.preventDefault()} onClick={() => { rememberSelection(); setNumberedOpen((open) => !open); }} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{numberedOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['decimal', 'lower-alpha', 'upper-alpha', 'lower-roman', 'upper-roman', 'decimal-leading-zero'].map((style) => <button key={style} type="button" title={`Use ${style} numbering`} onMouseDown={(event) => event.preventDefault()} onClick={() => setNumberStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><NumberPreview style={style} /></button>)}</div>}</div>
         <IconButton label="Decrease indent" title="Decrease indent" onClick={() => changeIndent(-1)}><Outdent size={16} /></IconButton>
         <IconButton label="Increase indent" title="Increase indent" onClick={() => changeIndent(1)}><Indent size={16} /></IconButton>
-        <IconButton label="Clear formatting" title="Clear formatting" onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}><Eraser size={16} /></IconButton>
-        {tableActive && <><Divider /><IconButton label="Add table row" title="Add table row" onClick={() => editor.chain().focus().addRowAfter().run()}><Plus size={15} /></IconButton><IconButton label="Delete table row" title="Delete table row" onClick={() => editor.chain().focus().deleteRow().run()}><Minus size={15} /></IconButton><IconButton label="Add table column" title="Add table column" onClick={() => editor.chain().focus().addColumnAfter().run()}><Plus size={15} /></IconButton><IconButton label="Delete table column" title="Delete table column" onClick={() => editor.chain().focus().deleteColumn().run()}><Minus size={15} /></IconButton></>}
-        <IconButton label="Insert table" title="Insert 3 by 3 table" active={tableActive} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><CheckSquare size={16} /></IconButton>
+        <IconButton label="Clear formatting" title="Clear formatting" onClick={() => runAtSelection(() => editor.chain().focus().clearNodes().unsetAllMarks().run())}><Eraser size={16} /></IconButton>
+        {tableActive && <><Divider /><IconButton label="Add table row" title="Add table row" onClick={() => runAtSelection(() => editor.chain().focus().addRowAfter().run())}><Plus size={15} /></IconButton><IconButton label="Delete table row" title="Delete table row" onClick={() => runAtSelection(() => editor.chain().focus().deleteRow().run())}><Minus size={15} /></IconButton><IconButton label="Add table column" title="Add table column" onClick={() => runAtSelection(() => editor.chain().focus().addColumnAfter().run())}><Plus size={15} /></IconButton><IconButton label="Delete table column" title="Delete table column" onClick={() => runAtSelection(() => editor.chain().focus().deleteColumn().run())}><Minus size={15} /></IconButton></>}
+        <IconButton label="Insert table" title="Insert 3 by 3 table" active={tableActive} onClick={() => runAtSelection(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}><CheckSquare size={16} /></IconButton>
       </div>
       )}
-      <EditorContent editor={editor} className={`content-editor ${editable ? 'min-h-[420px] p-4' : ''}`} />
+      <EditorContent editor={editor} className="content-editor" />
     </div>
   );
 }
