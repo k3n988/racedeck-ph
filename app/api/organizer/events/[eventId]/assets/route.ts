@@ -22,7 +22,8 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     const isSponsorLogo = kind === 'sponsor_logo';
     const isRaceKitAsset = kind === 'race_kit_image' || kind === 'size_chart';
     const eventImagesLocked = event.lifecycle_status !== 'draft' || event.review_status === 'pending_review' || event.review_status === 'approved';
-    if ((isSponsorLogo && event.review_status === 'pending_review') || (!isSponsorLogo && !isRaceKitAsset && eventImagesLocked)) {
+    const isEditableContentImage = kind === 'content_image' && event.review_status !== 'pending_review';
+    if ((isSponsorLogo && event.review_status === 'pending_review') || (!isSponsorLogo && !isRaceKitAsset && !isEditableContentImage && eventImagesLocked)) {
       return NextResponse.json({ error: isSponsorLogo ? 'Sponsor logos cannot be changed while this event is under review.' : 'Event images are locked during review and after approval.' }, { status: 409 });
     }
     // The migration creates this bucket in a fresh project. Creating it here as

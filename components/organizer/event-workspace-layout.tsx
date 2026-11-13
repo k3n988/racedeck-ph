@@ -92,7 +92,10 @@ function WorkspaceMenu({ eventId, label, icon: Icon, links, pathname }: {
   pathname: string;
 }) {
   const base = `/organizer/events/${eventId}`;
-  const activeItem = links.find(([, path]) => pathname === `${base}${path ? `/${path}` : ''}`);
+  const activeItem = links.find(([, path]) => {
+    const href = `${base}${path ? `/${path}` : ''}`;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  });
   const isActive = Boolean(activeItem);
   return (
     <details name="event-workspace-sections" className="group relative shrink-0">
@@ -170,6 +173,11 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
   const statusLabel = event?.review_status === 'pending_review' ? 'Pending Review' : event ? `${titleCase(event.lifecycle_status)} · ${titleCase(event.review_status)}` : '';
   const context = useMemo(() => ({ event, readiness }), [event, readiness]);
   const isRegistrationSection = pathname.startsWith(`/organizer/events/${eventId}/registrations`);
+  const renderDirectLink = ({ label, path, icon: Icon }: typeof directLinks[number]) => {
+    const href = `/organizer/events/${eventId}${path ? `/${path}` : ''}`;
+    const active = pathname === href;
+    return <Link key={path} href={href} aria-current={active ? 'page' : undefined} className={`flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${active ? 'bg-[#0b2b5b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}><Icon size={16} aria-hidden="true" />{label}</Link>;
+  };
 
   if (isPreview) return <>{children}</>;
 
@@ -190,12 +198,9 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
           </div>
           {(notice || loadMessage) && <ToastFeedback message={notice || loadMessage} tone="auto" />}
           <nav aria-label="Event workspace sections" className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
-            {directLinks.map(({ label, path, icon: Icon }) => {
-              const href = `/organizer/events/${eventId}${path ? `/${path}` : ''}`;
-              const active = pathname === href;
-              return <Link key={path} href={href} aria-current={active ? 'page' : undefined} className={`flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${active ? 'bg-[#0b2b5b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}><Icon size={16} aria-hidden="true" />{label}</Link>;
-            })}
+            {renderDirectLink(directLinks[0])}
             {groups.map((group) => <WorkspaceMenu key={group.label} eventId={eventId} label={group.label} icon={group.icon} links={group.links} pathname={pathname} />)}
+            {renderDirectLink(directLinks[1])}
           </nav>
         </div>
       </div>}

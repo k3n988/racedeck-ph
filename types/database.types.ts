@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1522,9 +1522,8 @@ export type Database = {
           net_collected_amount: number
           notes: string | null
           organization_id: string | null
-          organizer_payable_amount: number
+          organizer_split_amount: number
           other_adjustments_amount: number
-          payouts_sent_amount: number
           platform_fees_amount: number
           processing_fees_amount: number
           reconciled_at: string | null
@@ -1534,7 +1533,6 @@ export type Database = {
           reconciliation_reference: string
           recorded_gross_payments: number
           refunds_amount: number
-          remaining_payable_amount: number
           source_metadata: Json
           status: Database["public"]["Enums"]["reconciliation_status"]
           updated_at: string
@@ -1550,9 +1548,8 @@ export type Database = {
           net_collected_amount?: number
           notes?: string | null
           organization_id?: string | null
-          organizer_payable_amount?: number
+          organizer_split_amount?: number
           other_adjustments_amount?: number
-          payouts_sent_amount?: number
           platform_fees_amount?: number
           processing_fees_amount?: number
           reconciled_at?: string | null
@@ -1562,7 +1559,6 @@ export type Database = {
           reconciliation_reference: string
           recorded_gross_payments?: number
           refunds_amount?: number
-          remaining_payable_amount?: number
           source_metadata?: Json
           status?: Database["public"]["Enums"]["reconciliation_status"]
           updated_at?: string
@@ -1578,9 +1574,8 @@ export type Database = {
           net_collected_amount?: number
           notes?: string | null
           organization_id?: string | null
-          organizer_payable_amount?: number
+          organizer_split_amount?: number
           other_adjustments_amount?: number
-          payouts_sent_amount?: number
           platform_fees_amount?: number
           processing_fees_amount?: number
           reconciled_at?: string | null
@@ -1590,7 +1585,6 @@ export type Database = {
           reconciliation_reference?: string
           recorded_gross_payments?: number
           refunds_amount?: number
-          remaining_payable_amount?: number
           source_metadata?: Json
           status?: Database["public"]["Enums"]["reconciliation_status"]
           updated_at?: string
@@ -2053,95 +2047,6 @@ export type Database = {
           },
         ]
       }
-      organization_payout_accounts: {
-        Row: {
-          account_holder_name: string | null
-          account_label: string | null
-          account_reference: string
-          address_line1: string | null
-          address_line2: string | null
-          bank_address: string | null
-          bank_name: string | null
-          city: string | null
-          created_at: string
-          created_by: string | null
-          contact_phone: string | null
-          country_code: string
-          currency: string
-          id: string
-          is_active: boolean
-          is_default: boolean
-          notification_emails: string[]
-          organization_id: string
-          postal_code: string | null
-          provider: string
-          state_province: string | null
-          swift_bic: string | null
-          updated_at: string
-          verified_at: string | null
-        }
-        Insert: {
-          account_holder_name?: string | null
-          account_label?: string | null
-          account_reference: string
-          address_line1?: string | null
-          address_line2?: string | null
-          bank_address?: string | null
-          bank_name?: string | null
-          city?: string | null
-          created_at?: string
-          created_by?: string | null
-          contact_phone?: string | null
-          country_code?: string
-          currency?: string
-          id?: string
-          is_active?: boolean
-          is_default?: boolean
-          notification_emails?: string[]
-          organization_id: string
-          postal_code?: string | null
-          provider: string
-          state_province?: string | null
-          swift_bic?: string | null
-          updated_at?: string
-          verified_at?: string | null
-        }
-        Update: {
-          account_holder_name?: string | null
-          account_label?: string | null
-          account_reference?: string
-          address_line1?: string | null
-          address_line2?: string | null
-          bank_address?: string | null
-          bank_name?: string | null
-          city?: string | null
-          created_at?: string
-          created_by?: string | null
-          contact_phone?: string | null
-          country_code?: string
-          currency?: string
-          id?: string
-          is_active?: boolean
-          is_default?: boolean
-          notification_emails?: string[]
-          organization_id?: string
-          postal_code?: string | null
-          provider?: string
-          state_province?: string | null
-          swift_bic?: string | null
-          updated_at?: string
-          verified_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "organization_payout_accounts_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       organization_roles: {
         Row: {
           created_at: string
@@ -2181,7 +2086,6 @@ export type Database = {
           is_nonprofit: boolean
           logo_url: string | null
           name: string
-          payout_account: Json | null
           postal_code: string | null
           slug: string
           social_links: Json | null
@@ -2209,7 +2113,6 @@ export type Database = {
           is_nonprofit?: boolean
           logo_url?: string | null
           name: string
-          payout_account?: Json | null
           postal_code?: string | null
           slug: string
           social_links?: Json | null
@@ -2237,7 +2140,6 @@ export type Database = {
           is_nonprofit?: boolean
           logo_url?: string | null
           name?: string
-          payout_account?: Json | null
           postal_code?: string | null
           slug?: string
           social_links?: Json | null
@@ -2718,114 +2620,6 @@ export type Database = {
             columns: ["registration_id"]
             isOneToOne: true
             referencedRelation: "registrations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      payouts: {
-        Row: {
-          approved_at: string | null
-          approved_by: string | null
-          created_at: string
-          currency: string
-          external_reference: string | null
-          failure_reason: string | null
-          gross_registration_sales: number
-          id: string
-          idempotency_key: string
-          initiated_at: string
-          initiated_by: string | null
-          metadata: Json
-          net_payout_amount: number
-          notes: string | null
-          organization_id: string
-          other_adjustments: number
-          paid_at: string | null
-          payout_account_reference: string
-          payout_period_end: string | null
-          payout_period_start: string | null
-          payout_reference: string
-          platform_fees_deducted: number
-          processing_at: string | null
-          processing_fees_deducted: number
-          reconciliation_id: string | null
-          refunds_deducted: number
-          status: Database["public"]["Enums"]["payout_status"]
-          updated_at: string
-        }
-        Insert: {
-          approved_at?: string | null
-          approved_by?: string | null
-          created_at?: string
-          currency?: string
-          external_reference?: string | null
-          failure_reason?: string | null
-          gross_registration_sales?: number
-          id?: string
-          idempotency_key: string
-          initiated_at?: string
-          initiated_by?: string | null
-          metadata?: Json
-          net_payout_amount?: number
-          notes?: string | null
-          organization_id: string
-          other_adjustments?: number
-          paid_at?: string | null
-          payout_account_reference: string
-          payout_period_end?: string | null
-          payout_period_start?: string | null
-          payout_reference: string
-          platform_fees_deducted?: number
-          processing_at?: string | null
-          processing_fees_deducted?: number
-          reconciliation_id?: string | null
-          refunds_deducted?: number
-          status?: Database["public"]["Enums"]["payout_status"]
-          updated_at?: string
-        }
-        Update: {
-          approved_at?: string | null
-          approved_by?: string | null
-          created_at?: string
-          currency?: string
-          external_reference?: string | null
-          failure_reason?: string | null
-          gross_registration_sales?: number
-          id?: string
-          idempotency_key?: string
-          initiated_at?: string
-          initiated_by?: string | null
-          metadata?: Json
-          net_payout_amount?: number
-          notes?: string | null
-          organization_id?: string
-          other_adjustments?: number
-          paid_at?: string | null
-          payout_account_reference?: string
-          payout_period_end?: string | null
-          payout_period_start?: string | null
-          payout_reference?: string
-          platform_fees_deducted?: number
-          processing_at?: string | null
-          processing_fees_deducted?: number
-          reconciliation_id?: string | null
-          refunds_deducted?: number
-          status?: Database["public"]["Enums"]["payout_status"]
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payouts_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "payouts_reconciliation_id_fkey"
-            columns: ["reconciliation_id"]
-            isOneToOne: false
-            referencedRelation: "finance_reconciliation_records"
             referencedColumns: ["id"]
           },
         ]
@@ -4430,7 +4224,6 @@ export type Database = {
         | "processed"
         | "failed"
         | "ignored"
-      payout_status: "pending" | "processing" | "paid" | "failed" | "cancelled"
       platform_content_type:
         | "featured_race"
         | "homepage_banner"
@@ -4788,7 +4581,6 @@ export const Constants = {
         "failed",
         "ignored",
       ],
-      payout_status: ["pending", "processing", "paid", "failed", "cancelled"],
       platform_content_type: [
         "featured_race",
         "homepage_banner",

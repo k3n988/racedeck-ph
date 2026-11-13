@@ -27,7 +27,7 @@ export default function OrganizationDataPage({ title, endpoint, columns, highlig
     return () => { cancelled = true; };
   }, [endpoint, query]);
 
-  const rows = Array.isArray(data?.payments) ? data.payments : Array.isArray(data?.payouts) ? data.payouts : Array.isArray(data?.registrations) ? data.registrations : [];
+  const rows = Array.isArray(data?.payments) ? data.payments : Array.isArray(data?.registrations) ? data.registrations : [];
   const summary = data?.summary as Record<string, unknown> | undefined;
 
   return <main className="mx-auto max-w-7xl space-y-6 p-6">

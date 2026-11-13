@@ -26,6 +26,9 @@ export async function DELETE(_request: Request, { params }: { params: { eventId:
     return NextResponse.json({ error: 'Event could not be checked before deletion.' }, { status: 500 });
   }
   if (!event) return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
+  if (event.lifecycle_status !== 'draft' || !['not_submitted', 'needs_changes', 'rejected'].includes(event.review_status)) {
+    return NextResponse.json({ error: 'For testing, admins can permanently delete editable draft events only. Cancel or archive other events to preserve their history.' }, { status: 409 });
+  }
 
   const [registrations, payments] = await Promise.all([
     db.from('registrations').select('id', { count: 'exact', head: true }).eq('event_id', event.id),
@@ -39,9 +42,18 @@ export async function DELETE(_request: Request, { params }: { params: { eventId:
     return NextResponse.json({ error: 'This event has participant registrations or payment records and cannot be permanently deleted. Cancel or archive it to preserve participant and financial history.' }, { status: 409 });
   }
 
-  const { error: deleteError } = await db.from('events').delete().eq('id', event.id);
+  const deleteDraftEvent = db.rpc as unknown as (name: string, args: {
+    p_event_id: string;
+    p_organization_id: string;
+  }) => Promise<{ error: { code?: string; message?: string } | null }>;
+  const { error: deleteError } = await deleteDraftEvent.call(db, 'delete_organizer_draft_event', {
+    p_event_id: event.id,
+    p_organization_id: event.organization_id,
+  });
   if (deleteError) {
     console.error('[Admin event deletion] Delete failed', deleteError);
+    if (deleteError.code === 'P0001') return NextResponse.json({ error: deleteError.message ?? 'This draft cannot be deleted because it has protected records.' }, { status: 409 });
+    if (deleteError.code === 'PGRST202') return NextResponse.json({ error: 'Draft deletion is unavailable until the pending Supabase migration is applied.' }, { status: 503 });
     if (deleteError.code === '23503') {
       return NextResponse.json({ error: 'This event has protected operational records and cannot be permanently deleted. Archive or cancel the event instead.' }, { status: 409 });
     }

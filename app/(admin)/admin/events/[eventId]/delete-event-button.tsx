@@ -11,7 +11,7 @@ export default function DeleteEventButton({ eventId, eventName }: { eventId: str
   const [error, setError] = useState('');
 
   async function removeEvent() {
-    if (!window.confirm(`Permanently delete “${eventName}”? This cannot be undone. Events with registrations or payment history cannot be deleted.`)) return;
+    if (!window.confirm(`Permanently delete draft “${eventName}”? This cannot be undone. Drafts with registrations, payments, or waiver acceptances cannot be deleted.`)) return;
 
     setBusy(true);
     setError('');
@@ -30,7 +30,7 @@ export default function DeleteEventButton({ eventId, eventName }: { eventId: str
 
   return <div className="flex flex-col items-end gap-2">
     <button type="button" onClick={() => void removeEvent()} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-bold text-red-700 hover:border-red-400 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60">
-      <Trash2 size={16} aria-hidden="true" />{busy ? 'Deleting…' : 'Delete event'}
+      <Trash2 size={16} aria-hidden="true" />{busy ? 'Deleting…' : 'Delete draft'}
     </button>
     {error && <ToastFeedback message={String(error)} tone="error"><p role="alert" className="max-w-72 text-right text-sm text-red-700">{error}</p></ToastFeedback>}
   </div>;

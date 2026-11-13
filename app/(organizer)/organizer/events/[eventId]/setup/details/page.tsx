@@ -108,6 +108,17 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
 
   useEffect(() => { void load(); }, [load]);
 
+  const uploadDescriptionImage = useCallback(async (file: File) => {
+    const data = new FormData();
+    data.append('file', file);
+    data.append('kind', 'content_image');
+    const response = await fetch(`/api/organizer/events/${params.eventId}/assets`, { method: 'POST', body: data });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? 'Image upload failed. Try again.');
+    if (typeof body.url !== 'string' || !body.url) throw new Error('Image upload completed without a usable URL.');
+    return body.url;
+  }, [params.eventId]);
+
   const profileLocked = Boolean(event?.review_status === 'pending_review');
   const profileEditable = Boolean(event && !profileLocked);
   const operationsEditable = profileEditable;
@@ -158,7 +169,12 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
   </main>;
 
   const reviewLabel = event.review_status.replaceAll('_', ' ');
-  return <main className="mx-auto max-w-5xl space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
+  return <main className="mx-auto max-w-6xl space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
+    <header className="border-b border-slate-200 pb-5">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Event setup</p>
+      <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071b41] sm:text-3xl">Event Details</h1>
+      <p className="mt-2 text-sm text-slate-600">Manage the public event page, schedule, registration window, and venue information.</p>
+    </header>
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
       <span className="font-semibold text-slate-700">Review status</span>
       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize text-slate-700">{reviewLabel}</span>
@@ -169,7 +185,6 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
 
     {event.review_feedback && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h2 className="font-bold">RaceDeck review feedback</h2><p className="mt-1 whitespace-pre-wrap">{event.review_feedback}</p></section>}
     {profileLocked && <div role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><p className="font-bold">Editing is paused during review</p><p className="mt-1">RaceDeck is reviewing the current version. Editing will be available again when the review is complete.</p></div>}
-    {event.lifecycle_status !== 'draft' && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><p className="font-bold">Live event updates</p><p className="mt-1">Changes saved here update the public event page right away. Please notify registered participants when a change affects their plans.</p></div>}
 
     {message && <ToastFeedback message={String(message)} tone="auto" />}
 
@@ -178,7 +193,7 @@ export default function EventDetailsSetup({ params }: { params: { eventId: strin
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Event name" name="name" defaultValue={event.name} disabled={!profileEditable} required />
           <Field label="Event URL slug" name="slug" defaultValue={event.slug} disabled={!profileEditable} required hint="Use lowercase letters, numbers, and hyphens." />
-          <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-slate-700">Event description</label><ContentEditor value={description} onChange={setDescription} editorLabel="Event description" placeholder="Tell participants what to expect at your event." editable={profileEditable} /><input type="hidden" name="description" value={description} disabled={!profileEditable} /></div>
+          <div className="sm:col-span-2"><label className="mb-2 block text-sm font-semibold text-slate-700">Event description</label><ContentEditor value={description} onChange={setDescription} onImageUpload={uploadDescriptionImage} editorLabel="Event description" placeholder="Tell participants what to expect at your event." editable={profileEditable} /><input type="hidden" name="description" value={description} disabled={!profileEditable} /></div>
         </div>
       </Section>
 

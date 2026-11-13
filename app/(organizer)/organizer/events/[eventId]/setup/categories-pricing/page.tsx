@@ -181,8 +181,8 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
   const failed = Boolean(message && !loading && /could not|failed|error|timed out/i.test(message));
 
   return <main className="mx-auto max-w-7xl space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
-    <header className="flex flex-col justify-between gap-4 rounded-2xl bg-[#071b41] px-5 py-6 text-white shadow-sm sm:flex-row sm:items-center sm:px-7">
-      <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-300">Event setup</p><h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Categories &amp; Pricing</h1><p className="mt-2 text-sm text-slate-200">Set race distances, registration fees, capacity, and category schedules.</p></div>
+    <header className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center">
+      <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Event setup</p><h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071b41] sm:text-3xl">Categories &amp; Pricing</h1><p className="mt-2 text-sm text-slate-600">Set race distances, registration fees, capacity, and category schedules.</p></div>
       <button type="button" onClick={() => open()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-300"><Plus size={17} aria-hidden="true" />Add category</button>
     </header>
 

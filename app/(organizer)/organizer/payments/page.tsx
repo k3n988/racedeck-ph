@@ -131,7 +131,7 @@ export default function PaymentsPage() {
 
   const cards = useMemo(() => [
     { title: 'Total collected', value: money(summary?.total_collected ?? 0), note: 'Successful checkout totals', Icon: CircleDollarSign },
-    { title: 'Organizer revenue', value: money(summary?.organizer_revenue ?? 0), note: 'Before refunds and payout deductions', Icon: Wallet },
+    { title: 'Organizer revenue', value: money(summary?.organizer_revenue ?? 0), note: 'Before refunds and gateway deductions', Icon: Wallet },
     { title: 'Successful payments', value: (summary?.successful_payments ?? 0).toLocaleString(), note: 'Verified successful transactions', Icon: BadgeCheck },
     { title: 'Pending payments', value: (summary?.pending_payments ?? 0).toLocaleString(), note: 'Awaiting gateway confirmation', Icon: CreditCard },
   ], [summary]);
@@ -257,7 +257,6 @@ export default function PaymentsPage() {
 
             <section><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-bold text-[#0b2348]">Refund history</h3><span className="text-xs text-slate-500">{selected.refunds.length} {selected.refunds.length === 1 ? 'record' : 'records'}</span></div>{selected.refunds.length ? <ul className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 px-4">{selected.refunds.map((refund) => <li key={refund.id} className="flex items-center justify-between gap-3 py-3"><div><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-bold ${refund.status === 'succeeded' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>{statusLabel(refund.status)}</span><p className="mt-1 text-xs text-slate-500">{refund.gateway_refund_id || date(refund.processed_at || refund.created_at)}</p></div><strong className="whitespace-nowrap text-sm text-slate-800">{money(refund.amount, refund.currency)}</strong></li>)}</ul> : <p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">No refund is recorded for this transaction.</p>}</section>
 
-            <section><h3 className="text-sm font-bold text-[#0b2348]">Payout status</h3><p className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">Payouts are tracked at the organization level. No verified payment-to-payout link is available for this transaction.</p></section>
           </div>
         </aside>
       </div>}

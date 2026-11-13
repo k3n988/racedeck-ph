@@ -7,7 +7,7 @@ const roles = ['super_admin', 'admin', 'finance', 'support'] as const;
 const descriptions: Record<(typeof roles)[number], string> = {
   super_admin: 'Full platform administration and protected access control.',
   admin: 'Organizer and event operations, participant support, and platform content.',
-  finance: 'Payment records, refunds, payouts, fees, and reconciliation.',
+  finance: 'Payment records, refunds, fees, and reconciliation.',
   support: 'Participant and organizer records plus support case handling.',
 };
 

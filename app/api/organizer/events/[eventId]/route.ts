@@ -4,6 +4,7 @@ import type { Database } from '@/types/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { effectiveRegistrationAvailability, registrationAvailabilityReason } from '@/lib/events/registration-availability';
 import { parseEventSocialLinks } from '@/lib/events/event-social-links';
+import { MAX_RICH_CONTENT_LENGTH, richContentLength } from '@/lib/rich-text-content';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -128,6 +129,12 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     const allowed = ['name', 'slug', 'description', 'banner_url', 'banner_position_x', 'banner_position_y', 'banner_zoom', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability', 'registration_personal_fields'];
     const keys = Object.keys(body).filter((key) => allowed.includes(key));
     if (!keys.length) return NextResponse.json({ error: 'No event changes provided' }, { status: 400 });
+    if ('description' in body && body.description !== null && typeof body.description !== 'string') {
+      return NextResponse.json({ error: 'Event description must be text.' }, { status: 400 });
+    }
+    if (typeof body.description === 'string' && richContentLength(body.description) > MAX_RICH_CONTENT_LENGTH) {
+      return NextResponse.json({ error: 'Event description must be 50,000 characters or fewer.' }, { status: 400 });
+    }
     for (const key of ['registration_opens_at', 'registration_closes_at']) {
       if (key in body && body[key] != null && typeof body[key] !== 'string') {
         return NextResponse.json({ error: 'Registration dates must be valid date and time values.' }, { status: 400 });
@@ -153,6 +160,7 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
       return NextResponse.json({ error: 'Banner zoom must be between 100% and 200%.' }, { status: 400 });
     }
     const update = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)).map(([key, value]) => {
+      if (key === 'description' && typeof value === 'string') return [key, value.trim() ? value : ''];
       if (typeof value === 'string' && value.trim() === '') return [key, null];
       if (['registration_opens_at', 'registration_closes_at'].includes(key) && typeof value === 'string') return [key, new Date(value).toISOString()];
       if (key === 'overall_capacity' && typeof value === 'string') return [key, Number(value) || null];

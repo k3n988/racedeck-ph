@@ -2,7 +2,7 @@ RaceDeck PH — Final Merged Production Specification (v3)
 Base architecture: v2 (corrected status modeling, legal/finance structure). Merged in: v1's full transactional email system, sales invoice support, and e-certificate system — adapted to v2's status fields.
 
 1. Platform Overview
-RaceDeck PH is a multi-tenant SaaS platform for running/race event discovery, registration, payments, organizer operations, race-kit claiming, bib management, results, e-certificates, reporting, and organizer payouts in the Philippines.
+RaceDeck PH is a multi-tenant SaaS platform for running/race event discovery, registration, payments, organizer operations, race-kit claiming, bib management, results, e-certificates, and reporting in the Philippines.
 RaceDeck is specifically for running and race events, not a general-purpose event platform.
 Primary Users
 Guest / Public Visitor
@@ -16,7 +16,7 @@ Support Staff
 Core platform flow:
 Discover Race → Register → Temporary Slot Reservation → Pay → Payment Gateway Verification → Registration Confirmed → Receive Confirmation Email → Receive QR/Digital Ticket → Receive Receipt/Invoice → Receive Reminders → Claim Race Kit → Race → Results Published → Receive Results Notification → Receive E-Certificate (if enabled)
 Organizer flow:
-Register Organizer Account → Create Organization → Complete Profile → Upload Verification Documents → Submit for Review → RaceDeck Admin Review → Approved → Create Event → Configure Event → Submit for Review → RaceDeck Approval → Publish → Receive Registrations → Manage Race Operations → Publish Results → Generate E-Certificates (if enabled) → Receive Payout
+Register Organizer Account → Create Organization → Complete Profile → Upload Verification Documents → Submit for Review → RaceDeck Admin Review → Approved → Create Event → Configure Event → Submit for Review → RaceDeck Approval → Publish → Receive Registrations → Manage Race Operations → Publish Results → Generate E-Certificates (if enabled)
 
 2. Public Website
 Navigation: Events · Results · Services · About Us · Contact Us · Login/Register
@@ -69,16 +69,16 @@ Organizer self-registers normally: Self-Registration → Verification → Admin 
 Every organizer-owned record must resolve to an organization_id. Cross-organization isolation enforced at DB and API level (not just UI).
 
 12. Final Organizer Sidebar
-Dashboard · Events · Registrations · Payments · Payouts · Reports · Team Members · Organization · Settings
+Dashboard · Events · Registrations · Payments · Reports · Team Members · Organization · Settings
 
 13. Organizer Dashboard
 KPI Cards [CORE]: Total Events, Active Events, Total Registrations, Total Participants, Gross Registration Sales, Net Organizer Revenue
-Sections: Upcoming Events, Recent Registrations, Recent Payments, Payout Summary
+Sections: Upcoming Events, Recent Registrations, Recent Payments
 [PHASE 2] Registration trend, category distribution, advanced analytics
 
 14. Organization Profile
 Public: name, logo, description, contact person, email, phone, address, website, social links
-Private: legal/business info, verification documents, payout account, internal contacts
+Private: legal/business info, verification documents, internal contacts
 Organization Account Status (separate from verification): Active · Suspended · Deactivated
 
 15. Organizer Verification
@@ -269,7 +269,7 @@ Each certificate receives a unique certificate ID, verification URL/token, and Q
 Public verification page shows: participant, event, category, date, certificate validity — without exposing unnecessary personal information.
 
 47. Organizer Payments
-Gross Registration Sales − Refunds − RaceDeck/Processing Fees (when organizer-borne) = Net Organizer Revenue → Payout
+Gross Registration Sales − Refunds − RaceDeck/Processing Fees (when organizer-borne) = Net Organizer Revenue. PayMongo handles settlement through its configured split workflow.
 
 48. Platform Fee Configuration
 [CORE] Fixed, percentage, or fixed+percentage. Fee bearer: Participant Pays or Organizer Absorbs.
@@ -281,27 +281,24 @@ Example: Registration ₱1,000, RaceDeck Fee ₱40 → Participant Pays: ₱1,04
 Status: Pending · Processing · Completed · Failed · Cancelled
 On Completed → triggers §35.6
 
-50. Organizer Payouts
-Dashboard: Available Balance, Pending Balance, Total Paid Out, Net Organizer Revenue
-Payout record: reference, amount, destination, initiated/completed dates, status
-Status: Pending · Processing · Paid · Failed · Cancelled
-MVP: manually approved/processed by RaceDeck. [PHASE 2] Automated payout schedule.
+50. Payment Settlement
+PayMongo handles organizer/platform settlement through its configured split workflow. RaceDeck records payment and reconciliation information, with no bank-account storage or disbursement controls.
 
 51. Organizer Reports
-[CORE] Registrations, event performance, gross sales, discounts, refunds, RaceDeck fees, net revenue, payments, payouts, category performance, kit claiming, email delivery, results, certificates issued
+[CORE] Registrations, event performance, gross sales, discounts, refunds, RaceDeck fees, net revenue, payments, category performance, kit claiming, email delivery, results, certificates issued
 [PHASE 2] Repeat runners, demographics, conversion, cohort analytics
 
 52. RaceDeck Admin Sidebar
 Dashboard
 Management: Organizers · Events · Participants
-Finance: Transactions · Refunds · Payouts · Platform Fees · Reconciliation
+Finance: Transactions · Refunds · Platform Fees · Reconciliation
 Platform: Content Management · Email Delivery · Support/Issues · Roles & Permissions · Audit Logs · Platform Settings
 
 53. Admin Dashboard
-[CORE] Total/Active Organizers, Pending Organizer Reviews, Total/Active Events, Events Pending Review, Total Registrations, Gross Registration Volume, RaceDeck Fee Revenue, Organizer Payables, Recent Transactions, Upcoming Major Races
+[CORE] Total/Active Organizers, Pending Organizer Reviews, Total/Active Events, Events Pending Review, Total Registrations, Gross Registration Volume, RaceDeck Fee Revenue, Organizer Split Totals, Recent Transactions, Upcoming Major Races
 
 54. Organizer Management — Admin
-Search/filter, review applications/documents, approve/request changes/reject, suspend/reactivate, view organization/team/events/financials/payouts/audit history
+Search/filter, review applications/documents, approve/request changes/reject, suspend/reactivate, view organization/team/events/financials/audit history
 
 55. Admin Event Management
 Search/filter all events, review submission, request changes, approve/reject, publish/unpublish, feature, cancel/suspend listing, view registrations summary/finance summary/status history
@@ -316,7 +313,7 @@ Actions: view email, retry failed, view delivery provider response, suppress inv
 
 58. Finance Reconciliation
 [CORE]
-Payment Gateway Total vs. RaceDeck Recorded Payments − Refunds = Net Collected → then RaceDeck Fees, Organizer Payable, Payouts Sent. Highlight discrepancies. Not a replacement for accounting software.
+Payment Gateway Total vs. RaceDeck Recorded Payments − Refunds = Net Collected → then RaceDeck Fees and Organizer Split. Highlight discrepancies. Not a replacement for accounting software.
 
 59. Content Management
 [CORE] Featured race, homepage banner, homepage sections, public announcements
@@ -330,17 +327,17 @@ Status: Open · In Progress · Resolved · Closed
 61. RaceDeck Internal Roles
 Super Admin — full platform access
 Admin — organizer/event management
-Finance — transactions, refunds, payouts, fees, reconciliation
+Finance — transactions, refunds, fees, reconciliation
 Support — participants, organizers, support cases, limited registration/payment lookup
 Use granular permissions rather than hardcoded UI assumptions.
 
 62. Audit Logs
-[CORE] Tracks: organizer/event approval, event changes, registration changes, payment changes, refund/payout actions, bib changes, kit claims, result publication, certificate generation, email resend, role changes, platform settings
+[CORE] Tracks: organizer/event approval, event changes, registration changes, payment changes, refunds, bib changes, kit claims, result publication, certificate generation, email resend, role changes, platform settings
 Stored: actor, action, resource, timestamp, previous value (where appropriate), new value, IP/device context (where appropriate)
 
 63. Notifications
 Participant (automatic): registration created, payment pending/confirmation/failure, registration confirmation, receipt/invoice available, refund completed, kit available/deadline, event reminder, organizer announcement, race tomorrow, results published, e-certificate ready
-Organizer: organizer verification result, event review result, new registration, payment notification, refund, payout notice, important delivery failure
+Organizer: organizer verification result, event review result, new registration, payment notification, refund, important delivery failure
 Channels: In-App, Email [CORE] · SMS, Push [PHASE 2]
 
 64. Legal Architecture
@@ -358,7 +355,7 @@ Old accepted versions are never overwritten.
 
 67. Final Database Modules
 Identity/Access: users, user_profiles, organizations, organization_members, organization_roles, permissions, role_permissions
-Organizer: organizer_verifications, organization_payout_accounts
+Organizer: organizer_verifications
 Events: events, event_status_history, event_review_history, event_schedules, event_routes, event_partners, race_categories
 Registration: event_registration_fields, event_registration_field_options, registration_holds, registrations, registration_responses, registration_status_history
 Payments: payments, payment_transactions, payment_webhook_events, refunds, platform_fees
@@ -368,7 +365,7 @@ Race Operations: bibs, race_kit_configs, race_kit_items, race_kit_claims
 Communication: announcements, notifications, notification_deliveries, email_templates, email_messages, email_delivery_logs, event_reminder_settings
 Results: result_batches, results
 Certificates: certificate_templates, event_certificate_settings, certificates
-Finance: payouts, finance_reconciliation_records
+Finance: finance_reconciliation_records
 Legal: legal_documents, legal_acceptances, event_waivers, event_waiver_acceptances
 Platform: support_cases, audit_logs, content_blocks
 
@@ -383,7 +380,6 @@ User
            │    ├── Announcements
            │    ├── Result Batches
            │    └── Certificate Settings
-           └── Payouts
 
 
 Participant/User
@@ -403,23 +399,23 @@ Participant/User
 69. Final MVP Scope
 Public: Marketing · Events · Event Details · Public Results · Organizer Profile · Legal pages
 Participant: Account · Registration · Payments · My Races · QR · Bib · Kit info · Results · Certificates · Notifications · Profile
-Organizer: Verification · Organization profile · Dashboard · Team Members · Events · Event Workspace · Registrations · Payments · Payouts · Reports
+Organizer: Verification · Organization profile · Dashboard · Team Members · Events · Event Workspace · Registrations · Payments · Reports
 Event Operations: Categories · Capacity · Slot holds · Registration form · Promo codes · Bibs · QR · Race kits · Announcements · Results import/publication · Certificate settings
 Transactional Email [CORE]: registration pending, payment confirmation, registration confirmation, QR/ticket, receipt, invoice (where configured), payment failure, refund notification, race reminders, kit reminders, organizer announcements, results published, e-certificate ready
 E-Certificate [OPTIONAL PER EVENT]: enable/disable, template, generation, email delivery, download, verification
 Admin: Organizers · Events · Participants · Finance · Email Delivery · Content · Support · Roles · Audit · Settings
-Finance: Transactions · Payment webhooks · Refunds · Fees · Fee bearer · Payouts · Reconciliation
+Finance: Transactions · Payment webhooks · Refunds · Fees · Fee bearer · Reconciliation
 Security: Multi-tenancy · Authorization · Audit logs · Webhook verification · Secure QR · Privacy controls (Data Privacy Act) · Backups · Super Admin 2FA · Email sender domain authentication
 
 70. Features Explicitly Not Needed for MVP
 Native participant/organizer mobile apps, social feed, runner messaging, reviews/ratings, AI running coach, GPS live tracking, international currencies, generic event ticketing, merchandise marketplace, complex CRM, full accounting platform, marketing automation, RFID hardware.
-Future (Phase 2+): RFID/chip timing, live race results, live leaderboard, SMS, push notifications, live participant tracking, automated payout scheduling, full ticketing system, negotiated organizer fee rates.
+Future (Phase 2+): RFID/chip timing, live race results, live leaderboard, SMS, push notifications, live participant tracking, full ticketing system, negotiated organizer fee rates.
 
 71. Final Production Navigation
 Participant: Dashboard · My Races · Results · Payments · Notifications · Profile
-Organizer: Dashboard · Events · Registrations · Payments · Payouts · Reports · Team Members · Organization · Settings
+Organizer: Dashboard · Events · Registrations · Payments · Reports · Team Members · Organization · Settings
 Event Workspace: Overview · Event Setup (Event Details, Categories & Pricing, Registration Form, Event Waiver, Race Kit Configuration, Email & Reminders, Certificate Settings) · Registrations · Promo Codes · Bib Management · Race Kit Claiming · Announcements · Results · Reports · Settings
-RaceDeck Admin: Dashboard · Management (Organizers, Events, Participants) · Finance (Transactions, Refunds, Payouts, Platform Fees, Reconciliation) · Platform (Content Management, Email Delivery, Support/Issues, Roles & Permissions, Audit Logs, Platform Settings)
+RaceDeck Admin: Dashboard · Management (Organizers, Events, Participants) · Finance (Transactions, Refunds, Platform Fees, Reconciliation) · Platform (Content Management, Email Delivery, Support/Issues, Roles & Permissions, Audit Logs, Platform Settings)
 
 Final RaceDeck Principle
 RaceDeck operates as a self-service SaaS platform. The Organizer manages their organization and events. RaceDeck Admin verifies organizers, reviews events, manages platform finance, and maintains platform integrity. Participants register and pay online.

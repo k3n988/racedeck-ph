@@ -68,7 +68,7 @@ export function HomeEventsListing({ homepageData: data }: { homepageData: Homepa
     return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-6 text-center"><p className="text-sm font-semibold text-amber-900">Events couldn’t be loaded right now.</p><p className="mt-1 text-sm text-amber-800">Please try again in a moment.</p><RetryButton /></div>;
   }
 
-  const events = data.events.slice(0, 4);
+  const events = data.events;
   if (!events.length) {
     return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center"><p className="text-sm font-semibold text-slate-800">No events available yet</p><p className="mt-1 text-sm text-slate-500">New races are coming soon. Check back for upcoming events.</p></div>;
   }

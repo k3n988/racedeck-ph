@@ -61,6 +61,7 @@ a[href="/auth/logout"]:hover {
   outline: none;
   color: #334155;
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .content-editor--readonly .ProseMirror {
@@ -78,7 +79,8 @@ a[href="/auth/logout"]:hover {
 
 .content-editor .ProseMirror h1,
 .content-editor .ProseMirror h2,
-.content-editor .ProseMirror h3 {
+.content-editor .ProseMirror h3,
+.content-editor .ProseMirror h4 {
   color: #071b41;
   font-weight: 800;
   line-height: 1.25;
@@ -87,10 +89,21 @@ a[href="/auth/logout"]:hover {
 .content-editor .ProseMirror h1 { font-size: 1.75rem; }
 .content-editor .ProseMirror h2 { font-size: 1.5rem; }
 .content-editor .ProseMirror h3 { font-size: 1.25rem; }
+.content-editor .ProseMirror h4 { font-size: 1.125rem; }
+.content-editor .ProseMirror p + p,
+.content-editor .ProseMirror ul + p,
+.content-editor .ProseMirror ol + p,
+.content-editor .ProseMirror p + ul,
+.content-editor .ProseMirror p + ol { margin-top: 0.75rem; }
+.content-editor .ProseMirror ul:not([data-type="taskList"]),
+.content-editor .ProseMirror ol { padding-left: 1.5rem; }
+.content-editor .ProseMirror li + li { margin-top: 0.25rem; }
+.content-editor .ProseMirror a { color: #c2410c; text-decoration: underline; text-underline-offset: 2px; }
 .content-editor .ProseMirror img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+.content-editor .ProseMirror img.ProseMirror-selectednode { outline: 2px solid #f97316; outline-offset: 2px; }
 .content-editor .ProseMirror blockquote { border-left: 3px solid #ea580c; padding-left: 1rem; color: #64748b; }
-.content-editor .ProseMirror table { width: 100%; border-collapse: collapse; }
-.content-editor .ProseMirror th, .content-editor .ProseMirror td { border: 1px solid #cbd5e1; padding: 0.5rem; }
+.content-editor .ProseMirror table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; }
+.content-editor .ProseMirror th, .content-editor .ProseMirror td { border: 1px solid #cbd5e1; padding: 0.5rem; overflow-wrap: anywhere; }
 .content-editor .ProseMirror ul[data-type="taskList"] { list-style: none; padding-left: 0; }
 .content-editor .ProseMirror ul[data-type="taskList"] li { display: flex; gap: 0.5rem; }
 .content-editor .ProseMirror ul[data-type="taskList"] li > label { margin-top: 0.35rem; }

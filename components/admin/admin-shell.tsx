@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
-  CalendarDays, CreditCard, FileText, HandCoins, LayoutDashboard,
+  CalendarDays, CreditCard, FileText, LayoutDashboard,
   LifeBuoy, Mail, Menu, Percent, RotateCcw, Scale, ScrollText, Settings,
   ShieldCheck, Users, X,
 } from 'lucide-react';
@@ -19,7 +19,6 @@ const groups = [
   { label: 'Finance', items: [
     { label: 'Transactions', href: '/admin/finance/transactions', icon: CreditCard },
     { label: 'Refunds', href: '/admin/finance/refunds', icon: RotateCcw },
-    { label: 'Payouts', href: '/admin/finance/payouts', icon: HandCoins },
     { label: 'Platform Fees', href: '/admin/finance/platform-fees', icon: Percent },
     { label: 'Reconciliation', href: '/admin/finance/reconciliation', icon: Scale },
   ] },
@@ -46,7 +45,6 @@ export default function AdminShell({ children, email }: { children: React.ReactN
     : pathname.startsWith('/admin/organizers/') ? 'Organizer review'
       : pathname.startsWith('/admin/participants/') ? 'Registration details'
         : pathname.startsWith('/admin/finance/transactions/') ? 'Payment details'
-          : pathname.startsWith('/admin/finance/payouts/') ? 'Payout details'
             : pathname.startsWith('/admin/email-delivery/') ? 'Email details'
               : pathname.startsWith('/admin/support/') ? 'Support case'
                 : pathname.startsWith('/admin/audit-logs/') ? 'Audit record'

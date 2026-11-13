@@ -18,6 +18,7 @@ import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
+import { normalizeRichTextUrl, validateInlineImage } from '@/lib/rich-text-content';
 import {
   AlignLeft,
   AlignCenter,
@@ -45,7 +46,20 @@ import {
   Underline as UnderlineIcon,
   Undo2,
   Upload,
+  X,
 } from 'lucide-react';
+
+function safeFontSize(value: string | null | undefined) {
+  if (!value || !/^\d{1,3}(?:\.\d{1,2})?(?:pt|px|rem|em|%)$/i.test(value.trim())) return null;
+  const amount = Number.parseFloat(value);
+  return amount >= 1 && amount <= 128 ? value.trim() : null;
+}
+
+function safeLineHeight(value: string | null | undefined) {
+  if (!value || !/^\d(?:\.\d{1,2})?$/.test(value.trim())) return null;
+  const amount = Number(value);
+  return amount >= 1 && amount <= 3 ? String(amount) : null;
+}
 
 const TextFormatting = Extension.create({
   name: 'textFormatting',
@@ -55,8 +69,11 @@ const TextFormatting = Extension.create({
       attributes: {
         fontSize: {
           default: null,
-          parseHTML: (element: HTMLElement) => element.style.fontSize || null,
-          renderHTML: (attributes: { fontSize?: string | null }) => attributes.fontSize ? { style: `font-size: ${attributes.fontSize}` } : {},
+          parseHTML: (element: HTMLElement) => safeFontSize(element.style.fontSize),
+          renderHTML: (attributes: { fontSize?: string | null }) => {
+            const size = safeFontSize(attributes.fontSize);
+            return size ? { style: `font-size: ${size}` } : {};
+          },
         },
       },
     }, {
@@ -64,13 +81,43 @@ const TextFormatting = Extension.create({
       attributes: {
         lineHeight: {
           default: null,
-          parseHTML: (element: HTMLElement) => element.style.lineHeight || null,
-          renderHTML: (attributes: { lineHeight?: string | null }) => attributes.lineHeight ? { style: `line-height: ${attributes.lineHeight}` } : {},
+          parseHTML: (element: HTMLElement) => safeLineHeight(element.style.lineHeight),
+          renderHTML: (attributes: { lineHeight?: string | null }) => {
+            const lineHeight = safeLineHeight(attributes.lineHeight);
+            return lineHeight ? { style: `line-height: ${lineHeight}` } : {};
+          },
         },
         indent: {
           default: 0,
-          parseHTML: (element: HTMLElement) => Number(element.dataset.indent || 0),
-          renderHTML: (attributes: { indent?: number }) => attributes.indent ? { style: `margin-left: ${attributes.indent * 2}rem`, 'data-indent': String(attributes.indent) } : {},
+          parseHTML: (element: HTMLElement) => Math.max(0, Math.min(8, Number.parseInt(element.dataset.indent || '0', 10) || 0)),
+          renderHTML: (attributes: { indent?: number }) => {
+            const indent = Math.max(0, Math.min(8, Number.isInteger(attributes.indent) ? attributes.indent as number : 0));
+            return indent ? { style: `margin-left: ${indent * 2}rem`, 'data-indent': String(indent) } : {};
+          },
+        },
+      },
+    }, {
+      types: ['image'],
+      attributes: {
+        width: {
+          default: 100,
+          parseHTML: (element: HTMLElement) => {
+            const parsed = Number.parseFloat(element.style.width || element.getAttribute('width') || '100');
+            return Number.isFinite(parsed) ? Math.max(25, Math.min(100, parsed)) : 100;
+          },
+          renderHTML: (attributes: { width?: number }) => {
+            const width = Math.max(25, Math.min(100, Number.isFinite(attributes.width) ? Number(attributes.width) : 100));
+            return { width: `${width}%`, style: `width: ${width}%; height: auto` };
+          },
+        },
+        alignment: {
+          default: 'center',
+          parseHTML: (element: HTMLElement) => ['left', 'center', 'right'].includes(element.dataset.alignment || '') ? element.dataset.alignment : 'center',
+          renderHTML: (attributes: { alignment?: string }) => {
+            const alignment = ['left', 'center', 'right'].includes(attributes.alignment || '') ? attributes.alignment : 'center';
+            const margin = alignment === 'left' ? '0 auto 0 0' : alignment === 'right' ? '0 0 0 auto' : '0 auto';
+            return { 'data-alignment': alignment, style: `display: block; margin: ${margin}` };
+          },
         },
       },
     }, {
@@ -109,7 +156,7 @@ type IconButtonProps = {
   children: React.ReactNode;
 };
 
-function IconButton({ label, title, active = false, disabled = false, onClick, children }: IconButtonProps) {
+function IconButton({ label, title, active, disabled = false, onClick, children }: IconButtonProps) {
   return <button type="button" aria-label={label} title={title} aria-pressed={active} disabled={disabled} className={`${iconButton} ${active ? activeButton : ''} disabled:cursor-not-allowed disabled:opacity-35`} onMouseDown={(event) => event.preventDefault()} onClick={onClick}>{children}</button>;
 }
 
@@ -135,18 +182,13 @@ function ColorPalette({ label, value, onSelect, onClear, clearLabel }: { label: 
   return <div className="w-48 rounded-md border border-slate-200 bg-white p-2 shadow-xl"><p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>{onClear && <button type="button" onClick={onClear} className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-slate-100"><span className="grid h-4 w-4 place-items-center rounded border border-slate-300 text-[10px] leading-none">/</span>{clearLabel ?? 'None'}</button>}<div className="mt-1 grid grid-cols-10 gap-0.5">{colorSwatches.map((color) => <button type="button" key={color} aria-label={`Use ${color}`} title={color} onClick={() => onSelect(color)} className={`h-4 w-4 rounded-full border ${value?.toLowerCase() === color.toLowerCase() ? 'ring-2 ring-orange-400 ring-offset-1' : 'border-slate-200 hover:scale-110'}`} style={{ backgroundColor: color }} />)}</div><div className="mt-2 border-t border-slate-100 pt-2"><label className="flex items-center gap-2 px-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Custom<input aria-label={`Custom ${label}`} type="color" value={value || '#071b41'} onChange={(event) => onSelect(event.target.value)} className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0" /></label></div></div>;
 }
 
-function normalizeUrl(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-}
-
 export function ContentEditor({
   value,
   onChange,
   placeholder = 'Start writing event content...',
   editorLabel = 'Event content editor',
   onComment,
+  onImageUpload,
   editable = true,
 }: {
   value: string;
@@ -154,6 +196,7 @@ export function ContentEditor({
   placeholder?: string;
   editorLabel?: string;
   onComment?: (note: string) => void;
+  onImageUpload?: (file: File) => Promise<string>;
   editable?: boolean;
 }) {
   const lastValue = useRef(value);
@@ -168,9 +211,12 @@ export function ContentEditor({
   const [imageOpen, setImageOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [imageSearch, setImageSearch] = useState('');
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const [linkError, setLinkError] = useState('');
+  const [fontSizeDraft, setFontSizeDraft] = useState<string | null>(null);
   const [textColorOpen, setTextColorOpen] = useState(false);
   const [highlightColorOpen, setHighlightColorOpen] = useState(false);
-  const [checklistOpen, setChecklistOpen] = useState(false);
   const [bulletOpen, setBulletOpen] = useState(false);
   const [numberedOpen, setNumberedOpen] = useState(false);
   const editor = useEditor({
@@ -183,7 +229,12 @@ export function ContentEditor({
       Color,
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
+      Link.configure({
+        openOnClick: !editable,
+        autolink: true,
+        defaultProtocol: 'https',
+        isAllowedUri: (url) => normalizeRichTextUrl(url) !== null,
+      }),
       Image.configure({ inline: false, allowBase64: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -246,20 +297,28 @@ export function ContentEditor({
   const currentNode = editor.isActive('heading', { level: 1 }) ? 'heading-1'
     : editor.isActive('heading', { level: 2 }) ? 'heading-2'
       : editor.isActive('heading', { level: 3 }) ? 'heading-3'
-        : editor.isActive('heading', { level: 4 }) ? 'heading-4' : 'paragraph';
+        : editor.isActive('heading', { level: 4 }) ? 'heading-4'
+          : textStyle.fontSize === '26pt' ? 'title'
+            : textStyle.fontSize === '16pt' ? 'subtitle' : 'paragraph';
   const activeBlock = editor.isActive('heading') ? 'heading' : 'paragraph';
   const currentLineHeight = String(editor.getAttributes(activeBlock).lineHeight || '1.5');
   const currentAlignment = editor.getAttributes(activeBlock).textAlign || 'left';
+  const imageActive = editor.isActive('image');
+  const imageAttributes = editor.getAttributes('image') as { width?: number; alignment?: string };
 
-  const setFontSize = (size: number) => runAtSelection(() => editor.chain().focus().setMark('textStyle', { fontSize: `${Math.min(96, Math.max(6, size))}pt` }).run());
+  const setFontSize = (size: number) => {
+    setFontSizeDraft(null);
+    runAtSelection(() => editor.chain().focus().setMark('textStyle', { fontSize: `${Math.min(96, Math.max(6, size))}pt` }).run());
+  };
   const setLineHeight = (lineHeight: string) => {
     runAtSelection(() => editor.chain().focus().updateAttributes(activeBlock, { lineHeight }).run());
   };
   const changeIndent = (delta: number) => {
     restoreSelection();
     if (editor.isActive('listItem') || editor.isActive('taskItem')) {
-      if (delta > 0) editor.chain().focus().sinkListItem('listItem').run();
-      else editor.chain().focus().liftListItem('listItem').run();
+      const listItem = editor.isActive('taskItem') ? 'taskItem' : 'listItem';
+      if (delta > 0) editor.chain().focus().sinkListItem(listItem).run();
+      else editor.chain().focus().liftListItem(listItem).run();
       return;
     }
     const node = activeBlock;
@@ -287,13 +346,42 @@ export function ContentEditor({
       runAtSelection(() => editor.chain().focus().toggleBlockquote().insertContent(note.trim()).toggleBlockquote().run());
     }
   };
-  const addImageFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => runAtSelection(() => editor.chain().focus().setImage({ src: String(reader.result), alt: file.name }).run());
-    reader.readAsDataURL(file);
+  const addImageFile = async (file: File) => {
+    const validationError = validateInlineImage(file);
+    if (validationError) {
+      setImageError(validationError);
+      return;
+    }
+    setImageError('');
+    setImageBusy(true);
+    try {
+      const src = onImageUpload
+        ? await onImageUpload(file)
+        : await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Image could not be read.'));
+          reader.onerror = () => reject(new Error('Image could not be read. Try another file.'));
+          reader.onabort = () => reject(new Error('Image reading was cancelled.'));
+          reader.readAsDataURL(file);
+        });
+      if (!src) throw new Error('Image upload did not return an image URL.');
+      runAtSelection(() => editor.chain().focus().setImage({ src, alt: file.name }).run());
+      setImageOpen(false);
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : 'Image upload failed. Try again.');
+    } finally {
+      setImageBusy(false);
+      if (imageInput.current) imageInput.current.value = '';
+    }
   };
   const submitLink = () => {
-    const href = normalizeUrl(linkUrl);
+    const href = normalizeRichTextUrl(linkUrl);
+    if (linkUrl.trim() && !href) {
+      setLinkError('Enter an HTTP, HTTPS, email, phone, or relative link.');
+      return;
+    }
+    setLinkError('');
+    if (linkUrl.trim() && !href) return;
     runAtSelection(() => {
       if (href) editor.chain().focus().setLink({ href }).run();
       else editor.chain().focus().unsetLink().run();
@@ -301,8 +389,13 @@ export function ContentEditor({
     setLinkOpen(false);
   };
   const submitImageUrl = () => {
-    const src = normalizeUrl(imageUrl);
-    if (src) runAtSelection(() => editor.chain().focus().setImage({ src, alt: 'Event content image' }).run());
+    const src = normalizeRichTextUrl(imageUrl, 'image');
+    if (!src) {
+      setImageError('Enter a valid HTTP or HTTPS image URL.');
+      return;
+    }
+    setImageError('');
+    runAtSelection(() => editor.chain().focus().setImage({ src, alt: 'Event content image' }).run());
     setImageUrl('');
     setImageOpen(false);
   };
@@ -317,13 +410,13 @@ export function ContentEditor({
         <Divider />
         <div className="relative"><select aria-label="Paragraph style" className={`${selectClass} min-w-28 appearance-none pr-7`} value={currentNode} onChange={(event) => runAtSelection(() => {
           const style = event.target.value;
-          if (style === 'paragraph') editor.chain().focus().setParagraph().run();
-          else if (style === 'title') editor.chain().focus().setParagraph().setMark('textStyle', { fontSize: '26pt' }).toggleBold().run();
+          if (style === 'paragraph') editor.chain().focus().setParagraph().setMark('textStyle', { fontSize: null }).unsetMark('bold').run();
+          else if (style === 'title') editor.chain().focus().setParagraph().setMark('textStyle', { fontSize: '26pt' }).setMark('bold').run();
           else if (style === 'subtitle') editor.chain().focus().setParagraph().setMark('textStyle', { fontSize: '16pt' }).run();
           else editor.chain().focus().toggleHeading({ level: Number(style.replace('heading-', '')) as 1 | 2 | 3 | 4 }).run();
         })}><option value="paragraph">Normal text</option><option value="title">Title</option><option value="subtitle">Subtitle</option><option value="heading-1">Heading 1</option><option value="heading-2">Heading 2</option><option value="heading-3">Heading 3</option><option value="heading-4">Heading 4</option></select><ChevronDown className="pointer-events-none absolute right-1 top-2 text-slate-500" size={14} /></div>
         <div className="relative"><select aria-label="Font family" className={`${selectClass} min-w-28 appearance-none pr-7`} value={selectedFamily} onChange={(event) => runAtSelection(() => editor.chain().focus().setFontFamily(event.target.value).run())}><option value="Arial">Arial</option><option value="Times New Roman">Times New Roman</option><option value="Georgia">Georgia</option><option value="Courier New">Courier New</option><option value="Roboto">Roboto</option><option value="Montserrat">Montserrat</option></select><ChevronDown className="pointer-events-none absolute right-1 top-2 text-slate-500" size={14} /></div>
-        <div className="flex h-8 items-center overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm"><button type="button" aria-label="Decrease font size" title="Decrease font size" onMouseDown={(event) => event.preventDefault()} onClick={() => setFontSize(selectedSize - 1)} className="grid h-full w-8 place-items-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><Minus size={15} /></button><input aria-label="Font size" type="number" min="6" max="96" value={selectedSize} onChange={(event) => setFontSize(Number(event.target.value) || 12)} onBlur={(event) => setFontSize(Number(event.target.value) || 12)} className="h-full w-9 border-x border-slate-200 text-center text-xs font-semibold text-[#071b41] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" /><button type="button" aria-label="Increase font size" title="Increase font size" onMouseDown={(event) => event.preventDefault()} onClick={() => setFontSize(selectedSize + 1)} className="grid h-full w-8 place-items-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><Plus size={15} /></button></div>
+        <div className="flex h-8 items-center overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm"><button type="button" aria-label="Decrease font size" title="Decrease font size" onMouseDown={(event) => event.preventDefault()} onClick={() => setFontSize(selectedSize - 1)} className="grid h-full w-8 place-items-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><Minus size={15} /></button><input aria-label="Font size" type="number" min="6" max="96" value={fontSizeDraft ?? String(selectedSize)} onFocus={rememberSelection} onChange={(event) => setFontSizeDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); setFontSize(Number(fontSizeDraft) || selectedSize); } }} onBlur={() => { if (fontSizeDraft !== null) setFontSize(Number(fontSizeDraft) || selectedSize); }} className="h-full w-9 border-x border-slate-200 text-center text-xs font-semibold text-[#071b41] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" /><button type="button" aria-label="Increase font size" title="Increase font size" onMouseDown={(event) => event.preventDefault()} onClick={() => setFontSize(selectedSize + 1)} className="grid h-full w-8 place-items-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><Plus size={15} /></button></div>
         <Divider />
         <IconButton label="Bold" title="Bold" active={editor.isActive('bold')} onClick={() => runAtSelection(() => editor.chain().focus().toggleBold().run())}><Bold size={16} /></IconButton>
         <IconButton label="Italic" title="Italic" active={editor.isActive('italic')} onClick={() => runAtSelection(() => editor.chain().focus().toggleItalic().run())}><Italic size={16} /></IconButton>
@@ -331,20 +424,21 @@ export function ContentEditor({
         <div className="relative"><IconButton label="Text color" title="Text color" active={Boolean(textStyle.color)} onClick={() => { rememberSelection(); setTextColorOpen((open) => !open); setHighlightColorOpen(false); }}><span className="relative"><Type size={16} /><span className="absolute -bottom-1 left-0 h-0.5 w-4" style={{ backgroundColor: textStyle.color || '#071b41' }} /></span></IconButton>{textColorOpen && <div className="absolute left-0 top-10 z-30"><ColorPalette label="Text color" value={textStyle.color} onSelect={(color) => { runAtSelection(() => editor.chain().focus().setColor(color).run()); setTextColorOpen(false); }} onClear={() => { runAtSelection(() => editor.chain().focus().unsetColor().run()); setTextColorOpen(false); }} /></div>}</div>
         <div className="relative"><IconButton label="Highlight color" title="Highlight color" active={editor.isActive('highlight')} onClick={() => { rememberSelection(); setHighlightColorOpen((open) => !open); setTextColorOpen(false); }}><span className="relative"><Highlighter size={16} /><span className="absolute -bottom-1 left-0 h-0.5 w-4" style={{ backgroundColor: highlightStyle.color || '#facc15' }} /></span></IconButton>{highlightColorOpen && <div className="absolute left-0 top-10 z-30"><ColorPalette label="Highlight color" value={highlightStyle.color} onSelect={(color) => { runAtSelection(() => editor.chain().focus().setHighlight({ color }).run()); setHighlightColorOpen(false); }} onClear={() => { runAtSelection(() => editor.chain().focus().unsetHighlight().run()); setHighlightColorOpen(false); }} /></div>}</div>
         <Divider />
-        <div className="relative"><IconButton label="Insert or edit link" title="Insert or edit link" active={editor.isActive('link')} onClick={() => { setLinkUrl(editor.getAttributes('link').href || ''); setLinkOpen((open) => !open); }}><Link2 size={16} /></IconButton>{linkOpen && <div className="absolute left-0 top-10 z-20 flex w-72 gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"><input autoFocus value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitLink(); if (event.key === 'Escape') setLinkOpen(false); }} placeholder="https://example.com" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitLink} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Apply</button></div>}</div>
+        <div className="relative"><IconButton label="Insert or edit link" title="Insert or edit link" active={editor.isActive('link')} onClick={() => { setLinkUrl(editor.getAttributes('link').href || ''); setLinkError(''); setLinkOpen((open) => !open); }}><Link2 size={16} /></IconButton>{linkOpen && <div className="absolute left-0 top-10 z-20 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"><div className="flex gap-2"><input autoFocus aria-label="Link URL" aria-invalid={Boolean(linkError)} value={linkUrl} onChange={(event) => { setLinkUrl(event.target.value); setLinkError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') submitLink(); if (event.key === 'Escape') setLinkOpen(false); }} placeholder="https://example.com" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitLink} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Apply</button></div>{editor.isActive('link') && <button type="button" onClick={() => { runAtSelection(() => editor.chain().focus().unsetLink().run()); setLinkOpen(false); }} className="mt-2 px-1 text-xs font-semibold text-slate-600 underline">Remove link</button>}{linkError && <p role="alert" className="mt-2 text-xs text-red-700">{linkError}</p>}</div>}</div>
         <IconButton label="Add note" title="Add note" onClick={addComment}><MessageSquarePlus size={16} /></IconButton>
-        <div className="relative"><IconButton label="Insert image" title="Insert image" onClick={() => setImageOpen((open) => !open)}><ImagePlus size={16} /></IconButton>{imageOpen && <div className="absolute right-0 top-10 z-20 w-72 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"><button type="button" onClick={() => imageInput.current?.click()} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50"><Upload size={15} />Upload from computer</button><div className="flex gap-2"><input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="Paste image URL" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitImageUrl} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Insert</button></div><div className="flex gap-2"><input value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} placeholder="Search web images" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" title="Open image search" onClick={() => { if (imageSearch.trim()) window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(imageSearch.trim())}`, '_blank', 'noopener,noreferrer'); }} className="rounded border border-slate-300 px-2 text-slate-700"><Search size={14} /></button></div></div>}</div>
-        <input ref={imageInput} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) addImageFile(file); event.currentTarget.value = ''; }} />
+        <div className="relative"><IconButton label="Insert image" title="Insert image" onClick={() => { setImageError(''); setImageOpen((open) => !open); }}><ImagePlus size={16} /></IconButton>{imageOpen && <div className="absolute right-0 top-10 z-20 w-[min(18rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"><button type="button" disabled={imageBusy} onClick={() => imageInput.current?.click()} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50 disabled:opacity-50"><Upload size={15} />{imageBusy ? 'Uploading image…' : 'Upload from computer'}</button><div className="flex gap-2"><input aria-label="Image URL" value={imageUrl} onChange={(event) => { setImageUrl(event.target.value); setImageError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') submitImageUrl(); }} placeholder="Paste image URL" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" onClick={submitImageUrl} className="rounded bg-orange-600 px-2 text-xs font-bold text-white">Insert</button></div><div className="flex gap-2"><input aria-label="Search web images" value={imageSearch} onChange={(event) => setImageSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && imageSearch.trim()) window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(imageSearch.trim())}`, '_blank', 'noopener,noreferrer'); }} placeholder="Search web images" className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-orange-400" /><button type="button" title="Open image search" onClick={() => { if (imageSearch.trim()) window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(imageSearch.trim())}`, '_blank', 'noopener,noreferrer'); }} className="rounded border border-slate-300 px-2 text-slate-700"><Search size={14} /></button></div>{imageBusy && <p role="status" className="text-xs text-slate-600">Uploading image…</p>}{imageError && <p role="alert" className="text-xs text-red-700">{imageError}</p>}</div>}</div>
+        <input ref={imageInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addImageFile(file); event.currentTarget.value = ''; }} />
         <Divider />
         <div className="relative flex items-center"><IconButton label="Alignment" title="Alignment" active={currentAlignment !== 'left'} onClick={() => runAtSelection(() => editor.chain().focus().setTextAlign('left').run())}>{currentAlignment === 'center' ? <AlignCenter size={16} /> : currentAlignment === 'right' ? <AlignRight size={16} /> : currentAlignment === 'justify' ? <AlignJustify size={16} /> : <AlignLeft size={16} />}</IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Text alignment" className="absolute inset-0 cursor-pointer opacity-0" value={currentAlignment} onChange={(event) => runAtSelection(() => editor.chain().focus().setTextAlign(event.target.value).run())}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select></div>
         <div className="relative flex items-center"><IconButton label="Line and paragraph spacing" title="Line and paragraph spacing" active={currentLineHeight !== '1.5'} onClick={() => setLineHeight('1.5')}><LineSpacingIcon /></IconButton><ChevronDown className="pointer-events-none -ml-1 text-slate-500" size={12} /><select aria-label="Line spacing" className="absolute inset-0 cursor-pointer opacity-0" value={currentLineHeight} onChange={(event) => setLineHeight(event.target.value)}><option value="1">Single</option><option value="1.15">1.15</option><option value="1.5">1.5</option><option value="2">Double</option></select></div>
-        <div className="relative flex items-center"><IconButton label="Checklist" title="Checklist" active={editor.isActive('taskList')} onClick={() => { runAtSelection(() => editor.chain().focus().toggleTaskList().run()); setChecklistOpen(false); }}><ListChecks size={16} /></IconButton><button type="button" aria-label="Checklist options" title="Checklist options" onMouseDown={(event) => event.preventDefault()} onClick={() => { rememberSelection(); setChecklistOpen((open) => !open); }} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{checklistOpen && <div className="absolute left-0 top-10 z-30 grid w-60 grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl"><button type="button" title="Apply checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { runAtSelection(() => editor.chain().focus().toggleTaskList().run()); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button><button type="button" title="Apply compact checklist" onMouseDown={(event) => event.preventDefault()} onClick={() => { runAtSelection(() => editor.chain().focus().toggleTaskList().run()); setChecklistOpen(false); }} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-slate-500" /><span className="h-2 flex-1 bg-slate-300" /></span><span className="mt-2 flex items-center gap-2"><span className="grid h-3 w-3 place-items-center rounded-sm border border-slate-500 text-[9px]">✓</span><span className="h-2 flex-1 bg-slate-300" /></span></button></div>}</div>
+        <IconButton label="Checklist" title="Checklist" active={editor.isActive('taskList')} onClick={() => runAtSelection(() => editor.chain().focus().toggleTaskList().run())}><ListChecks size={16} /></IconButton>
         <div className="relative flex items-center"><IconButton label="Bulleted list" title="Bulleted list" active={editor.isActive('bulletList')} onClick={() => { runAtSelection(() => editor.chain().focus().toggleBulletList().run()); setBulletOpen(false); }}><List size={16} /></IconButton><button type="button" aria-label="Bulleted list options" title="Bulleted list options" onMouseDown={(event) => event.preventDefault()} onClick={() => { rememberSelection(); setBulletOpen((open) => !open); }} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{bulletOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['disc', 'circle', 'square', 'diamond', 'arrow', 'star'].map((style) => <button key={style} type="button" title={`Use ${style} bullets`} onMouseDown={(event) => event.preventDefault()} onClick={() => setBulletStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><BulletPreview style={style} /></button>)}</div>}</div>
         <div className="relative flex items-center"><IconButton label="Numbered list" title="Numbered list" active={editor.isFocused && editor.isActive('orderedList')} onClick={() => { runAtSelection(() => editor.chain().focus().toggleOrderedList().run()); setNumberedOpen(false); }}><ListOrdered size={16} /></IconButton><button type="button" aria-label="Numbered list options" title="Numbered list options" onMouseDown={(event) => event.preventDefault()} onClick={() => { rememberSelection(); setNumberedOpen((open) => !open); }} className="inline-flex h-8 w-5 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"><ChevronDown size={12} /></button>{numberedOpen && <div className="absolute left-0 top-10 z-30 grid w-80 grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">{['decimal', 'lower-alpha', 'upper-alpha', 'lower-roman', 'upper-roman', 'decimal-leading-zero'].map((style) => <button key={style} type="button" title={`Use ${style} numbering`} onMouseDown={(event) => event.preventDefault()} onClick={() => setNumberStyle(style)} className="rounded border border-slate-300 p-2 text-left hover:border-orange-400 hover:bg-orange-50"><NumberPreview style={style} /></button>)}</div>}</div>
         <IconButton label="Decrease indent" title="Decrease indent" onClick={() => changeIndent(-1)}><Outdent size={16} /></IconButton>
         <IconButton label="Increase indent" title="Increase indent" onClick={() => changeIndent(1)}><Indent size={16} /></IconButton>
         <IconButton label="Clear formatting" title="Clear formatting" onClick={() => runAtSelection(() => editor.chain().focus().clearNodes().unsetAllMarks().run())}><Eraser size={16} /></IconButton>
         {tableActive && <><Divider /><IconButton label="Add table row" title="Add table row" onClick={() => runAtSelection(() => editor.chain().focus().addRowAfter().run())}><Plus size={15} /></IconButton><IconButton label="Delete table row" title="Delete table row" onClick={() => runAtSelection(() => editor.chain().focus().deleteRow().run())}><Minus size={15} /></IconButton><IconButton label="Add table column" title="Add table column" onClick={() => runAtSelection(() => editor.chain().focus().addColumnAfter().run())}><Plus size={15} /></IconButton><IconButton label="Delete table column" title="Delete table column" onClick={() => runAtSelection(() => editor.chain().focus().deleteColumn().run())}><Minus size={15} /></IconButton></>}
+        {imageActive && <><Divider /><label className="flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-600">Image size<select aria-label="Image size" value={imageAttributes.width ?? 100} onChange={(event) => runAtSelection(() => editor.chain().focus().updateAttributes('image', { width: Number(event.target.value) }).run())} className="bg-transparent font-semibold text-slate-800 outline-none"><option value={25}>25%</option><option value={50}>50%</option><option value={75}>75%</option><option value={100}>100%</option></select></label><IconButton label="Align image left" title="Align image left" active={imageAttributes.alignment === 'left'} onClick={() => runAtSelection(() => editor.chain().focus().updateAttributes('image', { alignment: 'left' }).run())}><AlignLeft size={16} /></IconButton><IconButton label="Center image" title="Center image" active={!imageAttributes.alignment || imageAttributes.alignment === 'center'} onClick={() => runAtSelection(() => editor.chain().focus().updateAttributes('image', { alignment: 'center' }).run())}><AlignCenter size={16} /></IconButton><IconButton label="Align image right" title="Align image right" active={imageAttributes.alignment === 'right'} onClick={() => runAtSelection(() => editor.chain().focus().updateAttributes('image', { alignment: 'right' }).run())}><AlignRight size={16} /></IconButton><IconButton label="Remove image" title="Remove image" onClick={() => runAtSelection(() => editor.chain().focus().deleteSelection().run())}><X size={16} /></IconButton></>}
         <IconButton label="Insert table" title="Insert 3 by 3 table" active={tableActive} onClick={() => runAtSelection(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}><CheckSquare size={16} /></IconButton>
       </div>
       )}

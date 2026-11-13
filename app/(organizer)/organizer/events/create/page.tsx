@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { ContentEditor } from "@/components/organizer/content-editor";
+import { MAX_RICH_CONTENT_LENGTH, richContentLength } from "@/lib/rich-text-content";
 import { OptionalEventLinks } from "@/components/organizer/optional-event-links";
 import { eventPlatformLinkIsValid, type OptionalEventLinkPlatform } from "@/lib/events/event-social-links";
 import { Check, Maximize2, X } from "lucide-react";
 import { BannerFrameEditor, type BannerFrame } from "@/components/organizer/banner-frame-editor";
 import { manilaDateTimeToIso } from "@/lib/events/category-pricing";
 import { variantOptionsPayload } from "@/lib/events/variant-options";
-import { DEFAULT_PARTICIPANT_WAIVER_CONTENT, DEFAULT_PARTICIPANT_WAIVER_TITLE, EVENT_NAME_TOKEN, eventWaiverContentForTitle } from "@/lib/events/default-participant-waiver";
+import { DEFAULT_PARTICIPANT_WAIVER_CONTENT, DEFAULT_PARTICIPANT_WAIVER_TITLE, eventWaiverContentForTitle } from "@/lib/events/default-participant-waiver";
 
 type KitItem = { kind: "product" | "inclusion"; name: string; description: string; variants: string[]; variantSlots: Record<string, string>; productImages: UploadValue[]; referenceImage: UploadValue };
 type MerchandiseItem = { name: string; description: string; unitPrice: string; variants: string[]; variantSlots: Record<string, string>; images: UploadValue[] };
@@ -357,8 +358,8 @@ export default function CreateEventPage() {
   const [merchandise, setMerchandise] = useState<MerchandiseItem[]>([]);
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
   const [registrationPersonalFields, setRegistrationPersonalFields] = useState<string[]>(personalInformationFields.map((field) => field.key));
-  const [waiverTitle, setWaiverTitle] = useState(DEFAULT_PARTICIPANT_WAIVER_TITLE);
-  const [waiverContent, setWaiverContent] = useState(DEFAULT_PARTICIPANT_WAIVER_CONTENT);
+  const [waiverTitle] = useState(DEFAULT_PARTICIPANT_WAIVER_TITLE);
+  const [waiverContent] = useState(DEFAULT_PARTICIPANT_WAIVER_CONTENT);
   const [posters, setPosters] = useState<UploadValue[]>([]);
   const [eventPages, setEventPages] = useState<EventPage[]>([
     {
@@ -672,7 +673,7 @@ export default function CreateEventPage() {
       if (showCustomTab && customTabTitle.trim().length > 80) errors.push("Custom tab title must be 80 characters or fewer.");
       if (eventPages.length > 12) errors.push("An event can have no more than 12 content tabs.");
       if (eventPages.some((page) => page.title.trim().length === 0 || page.title.trim().length > 80)) errors.push("Each content tab title must be 1 to 80 characters.");
-      if (eventPages.some((page) => page.content.length > 50000)) errors.push("Each content page must be 50,000 characters or fewer.");
+      if (eventPages.some((page) => richContentLength(page.content) > MAX_RICH_CONTENT_LENGTH)) errors.push("Each content page must be 50,000 characters or fewer, excluding temporary image upload data.");
       if (!posters.every(validImage)) errors.push("Event posters must be JPG, PNG, or WEBP images up to 10 MB each.");
       const contentWithDataImages = eventPages.flatMap((page) => Array.from(page.content.matchAll(/src=[\"'](data:image\/[^\"']+)[\"']/gi), (match) => ({ page: page.title, source: match[1] })));
       for (const item of contentWithDataImages) {

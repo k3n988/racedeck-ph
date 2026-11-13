@@ -250,7 +250,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
   const isProductItem = item.details.kind !== 'text_inclusion';
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
+    <main className="mx-auto max-w-6xl space-y-6 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
       <header>
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Event setup</p>
         <h1 className="mt-1 text-2xl font-bold text-[#071b41]">Race kit & inclusions</h1>

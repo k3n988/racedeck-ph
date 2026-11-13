@@ -138,9 +138,9 @@ export default function EventMerchandiseSetup({ params }: { params: { eventId: s
 
   const updateDraft = (id: string, changes: Partial<Merchandise>) => setDrafts((current) => ({ ...current, [id]: { ...current[id], ...changes } }));
 
-  return <main className="mx-auto max-w-5xl space-y-6 p-5 sm:p-6">
+  return <main className="mx-auto max-w-6xl space-y-6 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
     <header><p className="text-sm font-semibold text-orange-600">Event setup</p><h1 className="mt-1 text-2xl font-black text-[#071b41]">Additional merchandise</h1><p className="mt-2 max-w-3xl text-sm text-slate-600">Manage optional paid products sold separately from category race-kit inclusions. Changes are locked while the event is under review or after approval.</p></header>
-    {message && <ToastFeedback message={String(message)} tone="auto" />}
+    {message && <ToastFeedback message={String(message)} tone="auto">{!loading && /could not|failed|error/i.test(message) ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{message}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Refresh products</button></div> : undefined}</ToastFeedback>}
     <section className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-bold text-[#071b41]">Add merchandise</h2><form onSubmit={(event) => void addItem(event)} className="mt-4 space-y-4">
       <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold">Product name<input required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Event finisher shirt" className={input} /></label><label className="text-sm font-semibold">Price (PHP)<input required min="0.01" step="0.01" type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} placeholder="450.00" className={input} /></label></div>
       <label className="block text-sm font-semibold">Description<input maxLength={1000} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={input} placeholder="Optional product details" /></label>

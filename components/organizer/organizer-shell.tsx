@@ -12,7 +12,6 @@ import {
   ChevronRight,
   CreditCard,
   Download,
-  HandCoins,
   LayoutDashboard,
   Menu,
   RefreshCw,
@@ -26,13 +25,12 @@ import { RegistrationsHeaderContext, type RegistrationHeaderActions, useRegistra
 const navigationGroups: { label?: string; items: { label: string; href: string; icon: LucideIcon }[] }[] = [
   { items: [{ label: 'Dashboard', href: '/organizer/dashboard', icon: LayoutDashboard }] },
   { items: [{ label: 'Events', href: '/organizer/events', icon: CalendarDays }, { label: 'Registrations', href: '/organizer/registrations', icon: UsersRound }] },
-  { label: 'Finance', items: [{ label: 'Payments', href: '/organizer/payments', icon: CreditCard }, { label: 'Payouts', href: '/organizer/payouts', icon: HandCoins }] },
+  { label: 'Finance', items: [{ label: 'Payments', href: '/organizer/payments', icon: CreditCard }] },
   { label: 'Analytics', items: [{ label: 'Reports', href: '/organizer/reports', icon: BarChart3 }] },
 ];
 
 const settingsItems: { label: string; href: string; icon: LucideIcon }[] = [
   { label: 'Organization details', href: '/organizer/organization', icon: Building2 },
-  { label: 'Payment profiles', href: '/organizer/payment-profiles', icon: CreditCard },
   { label: 'Staff', href: '/organizer/team-members', icon: UsersRound },
   { label: 'Verification', href: '/organizer/verification', icon: BadgeCheck },
 ];
@@ -40,8 +38,8 @@ const settingsItems: { label: string; href: string; icon: LucideIcon }[] = [
 const settingsSoonItems = ['Integrations', 'Validation lists'] as const;
 
 const routeLabels: Record<string, string> = {
-  dashboard: 'Dashboard', events: 'Events', registrations: 'Registrations', payments: 'Payments', payouts: 'Payouts',
-  'payment-profiles': 'Payment profiles', reports: 'Reports', 'team-members': 'Team Members', organization: 'Organization details',
+  dashboard: 'Dashboard', events: 'Events', registrations: 'Registrations', payments: 'Payments',
+  reports: 'Reports', 'team-members': 'Team Members', organization: 'Organization details',
   settings: 'Settings', create: 'Create Event', preview: 'Preview', results: 'Results', announcements: 'Announcements',
   'promo-codes': 'Promo Codes', 'race-kit-claiming': 'Race Kit Claiming', 'bib-management': 'Bib Management',
   'registration-form': 'Registration Form', waiver: 'Waiver', 'categories-pricing': 'Categories & Pricing',
@@ -264,11 +262,6 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
             </div>}
 
             {pathname === '/organizer/payments' && <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-              <button type="button" onClick={() => actions?.onExport()} disabled={!actions || actions.exportDisabled} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download aria-hidden="true" size={16} />Export CSV</button>
-              <button type="button" onClick={() => actions ? actions.onRefresh() : router.refresh()} disabled={actions?.refreshing ?? false} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw aria-hidden="true" size={15} className={actions?.refreshing ? 'animate-spin' : ''} />{actions?.refreshing ? 'Refreshing…' : 'Refresh'}</button>
-            </div>}
-
-            {pathname === '/organizer/payouts' && <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
               <button type="button" onClick={() => actions?.onExport()} disabled={!actions || actions.exportDisabled} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0b2b5b] px-3.5 text-sm font-bold text-white hover:bg-[#123b78] disabled:cursor-not-allowed disabled:opacity-50"><Download aria-hidden="true" size={16} />Export CSV</button>
               <button type="button" onClick={() => actions ? actions.onRefresh() : router.refresh()} disabled={actions?.refreshing ?? false} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"><RefreshCw aria-hidden="true" size={15} className={actions?.refreshing ? 'animate-spin' : ''} />{actions?.refreshing ? 'Refreshing…' : 'Refresh'}</button>
             </div>}
