@@ -7,6 +7,7 @@ import { getRaceCategoryRows } from '@/lib/events/race-category-query';
 import { categoryRegistrationAvailabilityReason, effectiveCategoryAvailability } from '@/lib/events/registration-availability';
 import { parseVariantOptions } from '@/lib/events/variant-options';
 import { loadVariantUsage, variantUsageKey } from '@/lib/events/variant-inventory';
+import { DEFAULT_PERSONAL_INFORMATION_FIELDS } from '@/lib/registration-form/personal-information-fields';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -65,7 +66,7 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     banner_position_x: Number(eventData.banner_position_x ?? 50),
     banner_position_y: Number(eventData.banner_position_y ?? 50),
     banner_zoom: Number(eventData.banner_zoom ?? 1),
-    registration_personal_fields: eventData.registration_personal_fields ?? ['first_name', 'middle_name', 'last_name', 'birthdate', 'gender', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship'],
+    registration_personal_fields: eventData.registration_personal_fields ?? DEFAULT_PERSONAL_INFORMATION_FIELDS,
   } : null;
   if (eventError) {
     console.error('Unable to load public event for registration', eventError);

@@ -97,11 +97,12 @@ function WorkspaceMenu({ eventId, label, icon: Icon, links, pathname }: {
     return pathname === href || pathname.startsWith(`${href}/`);
   });
   const isActive = Boolean(activeItem);
+  const displayLabel = label === 'Setup' && activeItem ? activeItem[0] : label;
   return (
     <details name="event-workspace-sections" className="group relative shrink-0">
-      <summary aria-label={isActive ? `${label}, current section: ${activeItem?.[0]}` : label} className={`flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 [&::-webkit-details-marker]:hidden ${isActive ? 'bg-[#0b2b5b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+      <summary aria-label={isActive ? `${label}, current screen: ${activeItem?.[0]}` : label} className={`flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 [&::-webkit-details-marker]:hidden ${isActive ? 'bg-[#0b2b5b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
         <Icon size={16} aria-hidden="true" />
-        <span>{label}</span>
+        <span>{displayLabel}</span>
         {isActive && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-orange-400" />}
         <ChevronDown size={14} aria-hidden="true" className="transition-transform group-open:rotate-180" />
       </summary>

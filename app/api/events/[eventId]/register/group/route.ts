@@ -13,6 +13,7 @@ import { isEmergencyContactRelationship } from '@/lib/registrations/emergency-co
 import { validateRegistrationAnswers } from '@/lib/registration-form/validate-answers';
 import { parseVariantOptions } from '@/lib/events/variant-options';
 import { hasVariantSlots, loadVariantUsage, variantUsageKey } from '@/lib/events/variant-inventory';
+import { DEFAULT_PERSONAL_INFORMATION_FIELDS } from '@/lib/registration-form/personal-information-fields';
 
 const participantSchema = z.object({
   category_id: z.string().uuid(),
@@ -45,8 +46,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   const { data: event } = await (isEventId ? eventLookup.eq('id', params.eventId) : eventLookup.eq('slug', params.eventId)).maybeSingle();
   const now = Date.now();
   if (!event || event.lifecycle_status !== 'published' || event.review_status !== 'approved') return NextResponse.json({ error: 'This event is not currently available for registration.' }, { status: 409 });
-  const defaultPersonalFields = ['first_name', 'middle_name', 'last_name', 'birthdate', 'gender', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship'];
-  const personalFields = new Set((event.registration_personal_fields as string[] | null) ?? defaultPersonalFields);
+  const personalFields = new Set((event.registration_personal_fields as string[] | null) ?? DEFAULT_PERSONAL_INFORMATION_FIELDS);
   const requiredPersonalFields = new Set(['first_name', 'last_name', 'birthdate', 'email', 'contact_number', 'address', 'emergency_contact', 'emergency_contact_phone', 'emergency_contact_relationship']);
 
   const { data: existing } = await admin.from('payments').select('id,registration_id,gateway,checkout_url,status,amount_due,currency,registrations!inner(user_id,event_id,registration_number)').in('gateway', ['paymongo', 'pending_setup']).eq('idempotency_key', idempotencyKey).maybeSingle();

@@ -4,18 +4,19 @@ import { hasPermission, loadAuthContext } from '@/lib/auth/permissions';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { CUSTOM_FIELD_TYPES, isSystemRegistrationFieldLabel } from '@/lib/registration-form/config';
+import { DEFAULT_PERSONAL_INFORMATION_FIELDS, PERSONAL_INFORMATION_FIELDS } from '@/lib/registration-form/personal-information-fields';
 const fieldSchema = z.object({label:z.string().trim().min(1).max(160),field_type:z.enum(CUSTOM_FIELD_TYPES),section_key:z.enum(['additional','health']).default('additional'),is_required:z.boolean(),is_active:z.boolean(),display_order:z.number().int().nonnegative()});
 async function access(eventId:string, write=false){
   const context=await loadAuthContext();
   if(!context)return{response:NextResponse.json({error:'Authentication required'},{status:401})}as const;
   if(!context.memberships.length)return{response:NextResponse.json({error:'Organization access required'},{status:403})}as const;
   const supabase=await createClient();
-  const{data:event}=await supabase.from('events').select('id,organization_id').eq('id',eventId).maybeSingle();
+  const{data:event}=await supabase.from('events').select('id,organization_id,review_status,registration_personal_fields').eq('id',eventId).maybeSingle();
   if(!event)return{response:NextResponse.json({error:'Event not found'},{status:404})}as const;
   const membership=context.memberships.find(item=>item.organization_id===event.organization_id);
   if(!membership)return{response:NextResponse.json({error:'You do not have access to this event'},{status:403})}as const;
   if(!(await hasPermission(membership.organization_id,write?'edit_events':'view_events',eventId)))return{response:NextResponse.json({error:'You do not have access to this event'},{status:403})}as const;
-  return{context,membership,supabase}as const
+  return{context,membership,supabase,event}as const
 }
 export async function GET(_r:Request,{params}:{params:{eventId:string}}){
   const result=await access(params.eventId);
@@ -29,6 +30,22 @@ export async function GET(_r:Request,{params}:{params:{eventId:string}}){
   const ids=(fields??[]).map(f=>f.id);
   const{data:options,error:optionsError}=ids.length?await admin.from('event_registration_field_options').select('id,field_id,label,value,display_order').in('field_id',ids).order('display_order'): {data:[],error:null};
   if(optionsError){console.error('Unable to load registration form options',{code:optionsError.code,message:optionsError.message});return NextResponse.json({error:'Registration form options could not be loaded'},{status:500})}
-  return NextResponse.json((fields??[]).map(f=>({...f,options:(options??[]).filter(o=>o.field_id===f.id)})))
+  return NextResponse.json({
+    fields: (fields??[]).map(f=>({...f,options:(options??[]).filter(o=>o.field_id===f.id)})),
+    registration_personal_fields: result.event.registration_personal_fields ?? DEFAULT_PERSONAL_INFORMATION_FIELDS,
+  })
+}
+export async function PATCH(request:Request,{params}:{params:{eventId:string}}){
+  const result=await access(params.eventId,true);
+  if('response'in result)return result.response;
+  if(result.event.review_status==='pending_review')return NextResponse.json({error:'Registration details cannot be changed while RaceDeck is reviewing this event.'},{status:409});
+  const keys=PERSONAL_INFORMATION_FIELDS.map(field=>field.key);
+  const schema=z.object({registration_personal_fields:z.array(z.enum(keys)).max(keys.length).refine(fields=>new Set(fields).size===fields.length)});
+  const parsed=schema.safeParse(await request.json().catch(()=>null));
+  if(!parsed.success)return NextResponse.json({error:'Choose valid personal information fields to collect.'},{status:400});
+  const admin=createAdminClient();
+  const{data,error}=await admin.from('events').update({registration_personal_fields:parsed.data.registration_personal_fields}).eq('id',params.eventId).eq('organization_id',result.membership.organization_id).select('registration_personal_fields').single();
+  if(error){console.error('Unable to update registration personal information fields',{code:error.code,message:error.message});return NextResponse.json({error:'Registration information settings could not be saved.'},{status:500})}
+  return NextResponse.json({registration_personal_fields:data.registration_personal_fields});
 }
 export async function POST(request:Request,{params}:{params:{eventId:string}}){const result=await access(params.eventId,true);if('response'in result)return result.response;const parsed=fieldSchema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:'Invalid registration field details'},{status:400});if(isSystemRegistrationFieldLabel(parsed.data.label))return NextResponse.json({error:'RaceDeck default participant fields are managed by the system and cannot be added as custom fields'},{status:409});const admin=createAdminClient();const{data,error}=await admin.from('event_registration_fields').insert({...parsed.data,event_id:params.eventId}).select('*').single();if(error){console.error('Unable to create registration form field',error);return NextResponse.json({error:'Registration field could not be created'},{status:500})}return NextResponse.json(data,{status:201})}

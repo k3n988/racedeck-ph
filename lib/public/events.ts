@@ -9,6 +9,7 @@ export { publicRegistrationPath } from '@/lib/public/event-paths';
 const VISIBLE_LIFECYCLE = ['published', 'ongoing', 'completed'] as const;
 const PAGE_SIZE = 12;
 const EVENT_BANNER_FRAME_COLUMNS = ['banner_position_x', 'banner_position_y', 'banner_zoom'] as const;
+const EVENT_LOGO_FRAME_COLUMNS = ['logo_position_x', 'logo_position_y', 'logo_zoom'] as const;
 
 function isMissingBannerFrameColumns(error: { code?: string; message?: string } | null | undefined) {
   if (!error) return false;
@@ -16,13 +17,22 @@ function isMissingBannerFrameColumns(error: { code?: string; message?: string } 
   return (error.code === '42703' || error.code === 'PGRST204') &&
     EVENT_BANNER_FRAME_COLUMNS.some((column) => message.includes(column));
 }
+function isMissingLogoFrameColumns(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const message = error.message?.toLowerCase() ?? '';
+  return (error.code === '42703' || error.code === 'PGRST204') &&
+    EVENT_LOGO_FRAME_COLUMNS.some((column) => message.includes(column));
+}
 
-function withDefaultBannerFrame<T extends { banner_position_x?: number | null; banner_position_y?: number | null; banner_zoom?: number | null }>(event: T): T {
+function withDefaultBannerFrame<T extends { banner_position_x?: number | null; banner_position_y?: number | null; banner_zoom?: number | null; logo_position_x?: number | null; logo_position_y?: number | null; logo_zoom?: number | null }>(event: T): T {
   return {
     ...event,
     banner_position_x: event.banner_position_x ?? 50,
     banner_position_y: event.banner_position_y ?? 50,
     banner_zoom: event.banner_zoom ?? 1,
+    logo_position_x: event.logo_position_x ?? 50,
+    logo_position_y: event.logo_position_y ?? 50,
+    logo_zoom: event.logo_zoom ?? 1,
   };
 }
 
@@ -38,7 +48,7 @@ export type FeaturedPublicEvent = PublicEventCard;
 export type HomepagePublicEventsData = { events: PublicEventCard[]; carouselEvents: PublicEventCard[] };
 export type HomepagePublicEventsResult = HomepagePublicEventsData & { error: boolean };
 export type PublicEventDetails = PublicEventCard & {
-  description: string | null; tagline: string | null; logo_url: string | null; start_time: string | null;
+  description: string | null; tagline: string | null; logo_url: string | null; logo_position_x: number; logo_position_y: number; logo_zoom: number; start_time: string | null;
   registration_opens_at: string | null; assembly_time: string | null; gun_start_time: string | null;
   cutoff_time: string | null; overall_capacity: number | null;
   categories: Array<{ id: string; name: string; distance_km: number | null; registration_fee: number; regular_registration_fee: number; early_bird_fee: number | null; early_bird_deadline: string | null; max_slots: number | null; confirmed_count: number; available_slots: number | null; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null }>;
@@ -53,7 +63,7 @@ export type PublicEventDetails = PublicEventCard & {
   announcements: Array<{ id: string; title: string; message: string; published_at: string | null }>;
   results_available: boolean;
 };
-type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; banner_position_x?: number | null; banner_position_y?: number | null; banner_zoom?: number | null; logo_url: string | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: EventSocialLinks | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string; lifecycle_status?: string };
+type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; banner_position_x?: number | null; banner_position_y?: number | null; banner_zoom?: number | null; logo_url: string | null; logo_position_x?: number | null; logo_position_y?: number | null; logo_zoom?: number | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: EventSocialLinks | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string; lifecycle_status?: string };
 type CategoryRow = { id: string; event_id: string; name: string; category_group_name?: string | null; distance_km: number | null; registration_fee: number; early_bird_fee: number | null; early_bird_deadline: string | null; max_slots: number | null; confirmed_count: number; registration_availability: string; gun_start_time: string | null; cutoff_time: string | null };
 
 const CATEGORY_CARD_FIELDS = 'id,event_id,name,category_group_name,distance_km,registration_fee,early_bird_fee,early_bird_deadline,max_slots,confirmed_count,registration_availability,gun_start_time,cutoff_time';
@@ -115,11 +125,13 @@ async function loadCardCategories(admin: SupabaseClient, eventIds: string[]) {
 
 async function getVisibleEvent(identifier: string) {
   const admin = createAdminClient();
-  const fields = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status';
+  const fields = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,logo_position_x,logo_position_y,logo_zoom,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status';
+  const bannerFields = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status';
   const legacyFields = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_availability,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status';
   const load = async (column: 'id' | 'slug', value: string, projection: string) => admin.from('events').select(projection).eq(column, value).in('lifecycle_status', [...VISIBLE_LIFECYCLE]).eq('review_status', 'approved').maybeSingle();
 
   let byId = await load('id', identifier, fields);
+  if (isMissingLogoFrameColumns(byId.error)) byId = await load('id', identifier, bannerFields);
   if (isMissingBannerFrameColumns(byId.error)) {
     console.warn('Public event banner framing columns are not available yet; using centered banner framing.');
     byId = await load('id', identifier, legacyFields);
@@ -128,6 +140,7 @@ async function getVisibleEvent(identifier: string) {
   if (byId.error && byId.error.code !== '22P02') return null;
 
   let bySlug = await load('slug', identifier, fields);
+  if (isMissingLogoFrameColumns(bySlug.error)) bySlug = await load('slug', identifier, bannerFields);
   if (isMissingBannerFrameColumns(bySlug.error)) bySlug = await load('slug', identifier, legacyFields);
   return bySlug.data ? withDefaultBannerFrame(bySlug.data as unknown as EventRow) : null;
 }
@@ -163,7 +176,7 @@ function extractTagline(description: string | null) {
   const tagline = firstBlock.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   // A tagline is deliberately short. This prevents a full Event Details paragraph
   // from being duplicated in the left event profile card.
-  return tagline && tagline.length <= 160 && tagline.split(/[.!?]/).filter(Boolean).length <= 1 ? tagline : null;
+  return tagline && tagline.length <= 180 ? tagline : null;
 }
 function manilaDate(date: Date) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
@@ -384,7 +397,7 @@ export async function getPublicEventDetails(identifier: string): Promise<PublicE
   const detailPoster = event.banner_url ? null : contentImages.data?.[0]?.image_url ?? null;
   const displayEvent = { ...event, banner_url: event.banner_url ?? detailPoster };
   const categoryViews = categories.map((category) => ({ ...category, registration_availability: ['sold_out', 'closed'].includes(category.registration_availability) ? category.registration_availability : availability, registration_fee: getCategoryPricing(category).amount, regular_registration_fee: Number(category.registration_fee), early_bird_fee: category.early_bird_fee === null ? null : Number(category.early_bird_fee), early_bird_deadline: category.early_bird_deadline, available_slots: category.max_slots === null ? null : Math.max(0, category.max_slots - category.confirmed_count) }));
-  return { ...card(displayEvent, categories, organizer), poster_fallback: Boolean(detailPoster), description: event.description, tagline: extractTagline(event.description), logo_url: event.logo_url, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], content_pages: (contentPages.data ?? []).map((page) => ({ id: page.page_key, title: page.title, type: page.page_type as 'system' | 'custom', content: page.content, visible: page.is_visible, display_order: page.display_order })), kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: eventPartners, partners_load_error: partnersLoadError, organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
+  return { ...card(displayEvent, categories, organizer), poster_fallback: Boolean(detailPoster), description: event.description, tagline: extractTagline(event.description), logo_url: event.logo_url, logo_position_x: event.logo_position_x ?? 50, logo_position_y: event.logo_position_y ?? 50, logo_zoom: event.logo_zoom ?? 1, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], content_pages: (contentPages.data ?? []).map((page) => ({ id: page.page_key, title: page.title, type: page.page_type as 'custom' | 'system', content: page.content, visible: page.is_visible, display_order: page.display_order })), kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: eventPartners, partners_load_error: partnersLoadError, organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
 }
 export async function getPublicResults(input: { event?: string; participant?: string; bib?: string; category?: string; page?: number }) {
   const admin = createAdminClient(); const page = Math.max(1, input.page ?? 1);

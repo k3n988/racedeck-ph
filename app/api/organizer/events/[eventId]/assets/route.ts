@@ -5,7 +5,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const types = new Set(['image/jpeg', 'image/png', 'image/webp']);
 export async function POST(request: Request, { params }: { params: { eventId: string } }) {
-  const auth = await requireOrganizerPermission('edit_events', params.eventId);
+  const requestedKind = new URL(request.url).searchParams.get('kind');
+  const auth = await requireOrganizerPermission(requestedKind === 'certificate_asset' ? 'manage_certificates' : 'edit_events', params.eventId);
   if ('response' in auth) return auth.response;
   try {
     const { data: event, error: eventError } = await auth.admin.from('events')
@@ -18,12 +19,17 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     const form = await request.formData();
     const kind = form.get('kind');
     const file = form.get('file');
-    if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map' && kind !== 'content_image' && kind !== 'sponsor_logo' && kind !== 'size_chart' && kind !== 'race_kit_image' && kind !== 'merchandise') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
+    if (requestedKind && requestedKind !== kind) return NextResponse.json({ error: 'Upload type does not match the requested asset type.' }, { status: 400 });
+    if ((kind !== 'logo' && kind !== 'banner' && kind !== 'poster' && kind !== 'route_map' && kind !== 'content_image' && kind !== 'sponsor_logo' && kind !== 'size_chart' && kind !== 'race_kit_image' && kind !== 'merchandise' && kind !== 'certificate_asset') || !(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024 || !types.has(file.type)) return NextResponse.json({ error: 'Upload a JPG, PNG, or WEBP image up to 10 MB.' }, { status: 400 });
     const isSponsorLogo = kind === 'sponsor_logo';
+    const isCertificateAsset = kind === 'certificate_asset';
     const isRaceKitAsset = kind === 'race_kit_image' || kind === 'size_chart';
     const eventImagesLocked = event.lifecycle_status !== 'draft' || event.review_status === 'pending_review' || event.review_status === 'approved';
     const isEditableContentImage = kind === 'content_image' && event.review_status !== 'pending_review';
-    if ((isSponsorLogo && event.review_status === 'pending_review') || (!isSponsorLogo && !isRaceKitAsset && !isEditableContentImage && eventImagesLocked)) {
+    const isEditableBanner = kind === 'banner' && event.review_status !== 'pending_review';
+    const isEditableEventLogo = kind === 'logo' && event.review_status !== 'pending_review';
+    const isEditablePoster = kind === 'poster' && event.review_status !== 'pending_review' && !(event.lifecycle_status === 'draft' && event.review_status === 'approved');
+    if ((isSponsorLogo && event.review_status === 'pending_review') || (!isSponsorLogo && !isCertificateAsset && !isRaceKitAsset && !isEditableContentImage && !isEditableBanner && !isEditableEventLogo && !isEditablePoster && eventImagesLocked)) {
       return NextResponse.json({ error: isSponsorLogo ? 'Sponsor logos cannot be changed while this event is under review.' : 'Event images are locked during review and after approval.' }, { status: 409 });
     }
     // The migration creates this bucket in a fresh project. Creating it here as
@@ -42,7 +48,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       if (error) return errorResponse(error, 'Saving event poster');
       return NextResponse.json({ url: publicUrl.publicUrl, kind });
     }
-    if (kind === 'content_image' || kind === 'sponsor_logo' || kind === 'size_chart' || kind === 'race_kit_image' || kind === 'merchandise') return NextResponse.json({ url: publicUrl.publicUrl, kind });
+    if (kind === 'content_image' || kind === 'sponsor_logo' || kind === 'size_chart' || kind === 'race_kit_image' || kind === 'merchandise' || kind === 'certificate_asset') return NextResponse.json({ url: publicUrl.publicUrl, kind });
     if (kind === 'route_map') {
       const db = auth.admin as unknown as SupabaseClient;
       const { error } = await db.from('event_routes').insert({ event_id: params.eventId, route_map_url: publicUrl.publicUrl });

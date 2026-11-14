@@ -9,13 +9,16 @@ import { ContentEditor } from "@/components/organizer/content-editor";
 import { MAX_RICH_CONTENT_LENGTH, richContentLength } from "@/lib/rich-text-content";
 import { OptionalEventLinks } from "@/components/organizer/optional-event-links";
 import { eventPlatformLinkIsValid, type OptionalEventLinkPlatform } from "@/lib/events/event-social-links";
-import { Check, Maximize2, X } from "lucide-react";
+import { composeEventDescription } from "@/lib/events/event-description";
+import { DEFAULT_PERSONAL_INFORMATION_FIELDS, PERSONAL_INFORMATION_FIELDS as personalInformationFields } from "@/lib/registration-form/personal-information-fields";
+import { Check, X } from "lucide-react";
 import { BannerFrameEditor, type BannerFrame } from "@/components/organizer/banner-frame-editor";
 import { manilaDateTimeToIso } from "@/lib/events/category-pricing";
 import { variantOptionsPayload } from "@/lib/events/variant-options";
+import { RACE_KIT_CLAIMING_ITEM, RACE_KIT_DELIVERY_OPTION } from "@/lib/events/race-kit";
 import { DEFAULT_PARTICIPANT_WAIVER_CONTENT, DEFAULT_PARTICIPANT_WAIVER_TITLE, eventWaiverContentForTitle } from "@/lib/events/default-participant-waiver";
 
-type KitItem = { kind: "product" | "inclusion"; name: string; description: string; variants: string[]; variantSlots: Record<string, string>; productImages: UploadValue[]; referenceImage: UploadValue };
+type KitItem = { kind: "product" | "inclusion"; name: string; description: string; quantity: number; variants: string[]; variantSlots: Record<string, string>; productImages: UploadValue[]; referenceImage: UploadValue };
 type MerchandiseItem = { name: string; description: string; unitPrice: string; variants: string[]; variantSlots: Record<string, string>; images: UploadValue[] };
 type Category = {
   // Persisted as the participant-facing category group name when group mode is selected.
@@ -35,7 +38,6 @@ type CategoryGroup = { id: string; name: string };
 type UploadValue = { url: string; file: File | null };
 type Sponsor = { name: string; logo: UploadValue };
 
-const RACE_KIT_DELIVERY_OPTION = "Race Kit Delivery";
 type RegistrationQuestion = {
   id: string;
   section_key: 'additional' | 'health';
@@ -46,19 +48,6 @@ type RegistrationQuestion = {
   other_option: boolean;
   optionDraft: string;
 };
-const personalInformationFields = [
-  { key: "first_name", label: "First name", required: true },
-  { key: "middle_name", label: "Middle name", required: false },
-  { key: "last_name", label: "Last name", required: true },
-  { key: "birthdate", label: "Birthdate", required: true },
-  { key: "gender", label: "Gender", required: false },
-  { key: "email", label: "Email", required: true },
-  { key: "contact_number", label: "Contact number", required: true },
-  { key: "address", label: "Address", required: true },
-  { key: "emergency_contact", label: "Emergency contact person", required: true },
-  { key: "emergency_contact_phone", label: "Emergency contact phone", required: true },
-  { key: "emergency_contact_relationship", label: "Relationship to participant", required: true },
-] as const;
 function RegistrationQuestionPreview({ question }: { question: RegistrationQuestion }) {
   const [answer, setAnswer] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -109,12 +98,13 @@ const steps = [
   "Categories, Pricing & Race Kit",
   "Content & Media",
   "Registration Setup",
+  "Event Waiver",
   "Sponsors & Review",
 ];
 const input =
-  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 caret-slate-900 outline-none [color-scheme:light] placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-100 disabled:text-slate-500";
+  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 caret-slate-900 outline-none [color-scheme:light] placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 disabled:bg-slate-100 disabled:text-slate-500";
 const emptyUpload = (): UploadValue => ({ url: "", file: null });
-const emptyKitItem = (kind: KitItem["kind"] = "product"): KitItem => ({ kind, name: "", description: "", variants: [], variantSlots: {}, productImages: [], referenceImage: emptyUpload() });
+const emptyKitItem = (kind: KitItem["kind"] = "product"): KitItem => ({ kind, name: "", description: "", quantity: 1, variants: [], variantSlots: {}, productImages: [], referenceImage: emptyUpload() });
 const emptyMerchandiseItem = (): MerchandiseItem => ({ name: "", description: "", unitPrice: "", variants: [], variantSlots: {}, images: [] });
 const hasValidOptionalVariantSlots = (variants: string[], variantSlots: Record<string, string>) => variants.every((variant) => {
   const value = variantSlots[variant]?.trim();
@@ -214,13 +204,6 @@ function Upload({
   error?: string;
 }) {
   const [uploadError, setUploadError] = useState("");
-  const [originalOpen, setOriginalOpen] = useState(false);
-  useEffect(() => {
-    if (!originalOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOriginalOpen(false); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [originalOpen]);
   const previews = Array.isArray(value) ? value : [value];
   const containPreview = /chart|guide|logo/i.test(label);
   return (
@@ -249,31 +232,22 @@ function Upload({
           className={`${input} ${uploadError || error ? "border-red-500 focus:border-red-500 focus:ring-red-100" : ""} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700`}
         />
       </label>
-      <p className="mt-1 text-xs text-slate-500">JPG, PNG, or WEBP · up to 10 MB{label.toLowerCase().includes("banner") ? " · landscape images work best" : label.toLowerCase().includes("logo") ? " · shown without cropping" : ""}</p>
+      <p className="mt-1 text-xs text-slate-500">JPG, PNG, or WEBP · up to 10 MB{label.toLowerCase().includes("banner") ? " · landscape images work best" : label.toLowerCase().includes("logo") ? " · square images work best" : ""}</p>
       {uploadError && <p role="alert" className="mt-1 text-xs font-medium text-red-700">{uploadError}</p>}
       {!uploadError && error && <p role="alert" className="mt-1 text-xs font-medium text-red-700">{error}</p>}
-      <div className={`mt-2 flex flex-wrap gap-2 ${profilePreview ? "items-center justify-center" : ""}`}>
-        {profilePreview && previews[0]?.url && <button type="button" onClick={() => setOriginalOpen(true)} aria-label="View original event logo" className="group relative rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200">
-          <Image src={previews[0].url} alt={`${label} circular thumbnail`} width={112} height={112} unoptimized className="h-24 w-24 rounded-full border-2 border-white object-cover shadow-md ring-1 ring-slate-200 transition group-hover:brightness-90" />
-          <span className="absolute inset-0 grid place-items-center rounded-full bg-slate-950/0 text-white transition group-hover:bg-slate-950/35"><Maximize2 size={18} className="opacity-0 group-hover:opacity-100" aria-hidden="true" /></span>
-        </button>}
+      {!profilePreview && <div className="mt-2 flex flex-wrap gap-2">
         {previews
           .filter((item) => item.url)
-          .filter((_, index) => (!profilePreview || index > 0) && !(wide && /banner/i.test(label) && frame && onFrameChange && index === 0))
+          .filter((_, index) => !(wide && /banner/i.test(label) && frame && onFrameChange && index === 0))
           .map((item, index) => (
             <div key={`${item.url}-${index}`} className="relative">
               <Image src={item.url} alt={`${label} preview ${index + 1}`} width={wide ? 1200 : 96} height={wide ? 400 : 96} unoptimized className={`rounded-lg border ${containPreview ? "bg-slate-50 object-contain" : "object-cover"} ${wide ? "aspect-[3/1] w-full" : "h-24 w-24"}`} />
               {onRemove && <button type="button" onClick={() => onRemove(index)} aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-bold text-red-600 shadow ring-1 ring-slate-200">×</button>}
             </div>
           ))}
-      </div>
-      {profilePreview && originalOpen && previews[0]?.url && <div role="dialog" aria-modal="true" aria-label="Original event logo" className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/85 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setOriginalOpen(false); }}>
-        <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-3 shadow-2xl sm:p-5">
-          <div className="mb-3 flex items-center justify-between gap-3"><h2 className="font-bold text-[#071b41]">Original event logo</h2><button type="button" autoFocus onClick={() => setOriginalOpen(false)} aria-label="Close original logo" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-700 hover:bg-slate-100"><X size={18} /></button></div>
-          <div className="grid min-h-0 flex-1 place-items-center overflow-auto rounded-lg bg-slate-100 p-2"><Image src={previews[0].url} alt="Original uploaded event logo" width={1600} height={1200} unoptimized className="max-h-[78vh] max-w-full object-contain" /></div>
-        </div>
       </div>}
       {wide && /banner/i.test(label) && previews[0]?.url && frame && onFrameChange && <BannerFrameEditor src={previews[0].url} value={frame} onChange={onFrameChange} />}
+      {profilePreview && /logo/i.test(label) && previews[0]?.url && frame && onFrameChange && <BannerFrameEditor src={previews[0].url} value={frame} onChange={onFrameChange} variant="logo" title="Event logo framing" />}
     </div>
   );
 }
@@ -288,14 +262,15 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
   };
   return <article className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="mb-3 flex items-center justify-between gap-3"><div><h4 className="font-bold text-[#071b41]">{item.kind === "inclusion" ? "Simple inclusion" : "Included product"}</h4>{item.kind === "product" && <p className="text-xs text-slate-500">Product with selectable options.</p>}</div><button type="button" onClick={onRemove} className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button></div>
-    <div className={item.kind === "inclusion" ? "max-w-xl" : "grid gap-3 md:grid-cols-2"}>
+    <div className="grid gap-3 md:grid-cols-2">
       <label className="block text-sm font-semibold text-slate-700">{item.kind === "inclusion" ? "Inclusion name" : "Product name"}<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder={item.kind === "inclusion" ? "e.g. E-certificate or Sports headband" : "e.g. Race singlet"} maxLength={160} className={input} /></label>
-      {item.kind === "product" && <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder="Add fabric, fit, or other helpful details" maxLength={1000} className={input} /></label>}
+      <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder={item.kind === "inclusion" ? "Add any helpful details" : "Add fabric, fit, or other helpful details"} maxLength={1000} className={input} /></label>
+      <label className="block max-w-48 text-sm font-semibold text-slate-700">Quantity included<input type="number" min="1" max="100" step="1" value={item.quantity} onChange={(event) => onChange({ ...item, quantity: Number(event.target.value) })} className={input} /></label>
     </div>
     {item.kind === "product" && <><div className="mt-4">
       <label className="block text-sm font-semibold text-slate-700">Available variants <span className="font-normal text-slate-400">(sizes, colors, or other options)</span></label>
       <div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.name.trim().toLowerCase() !== "race kit claiming" && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label>}<button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} className="rounded px-2 py-1 text-slate-600 hover:bg-white" aria-label={`Remove ${variant}`}>×</button></div>)}</div>
-      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
+      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><input value={variantDraft} maxLength={item.name.trim().toLocaleLowerCase() === "race kit claiming" ? 160 : 80} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
     </div>
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
       <Upload label="Product photos" value={item.productImages} multiple onChange={(file, url) => onChange({ ...item, productImages: [...item.productImages, { file, url }] })} onRemove={(imageIndex) => { const image = item.productImages[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, productImages: item.productImages.filter((_, index) => index !== imageIndex) }); }} />
@@ -349,6 +324,7 @@ export default function CreateEventPage() {
   });
   const [optionalLinks, setOptionalLinks] = useState<Partial<Record<OptionalEventLinkPlatform, string>>>({});
   const [bannerFrame, setBannerFrame] = useState<BannerFrame>({ x: 50, y: 50, zoom: 1 });
+  const [logoFrame, setLogoFrame] = useState<BannerFrame>({ x: 50, y: 50, zoom: 1 });
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryMode, setCategoryMode] = useState<"groups" | "distances" | null>(null);
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
@@ -357,9 +333,9 @@ export default function CreateEventPage() {
   const [raceKitDeliveryEnabled, setRaceKitDeliveryEnabled] = useState(false);
   const [merchandise, setMerchandise] = useState<MerchandiseItem[]>([]);
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
-  const [registrationPersonalFields, setRegistrationPersonalFields] = useState<string[]>(personalInformationFields.map((field) => field.key));
-  const [waiverTitle] = useState(DEFAULT_PARTICIPANT_WAIVER_TITLE);
-  const [waiverContent] = useState(DEFAULT_PARTICIPANT_WAIVER_CONTENT);
+  const [registrationPersonalFields, setRegistrationPersonalFields] = useState<string[]>(DEFAULT_PERSONAL_INFORMATION_FIELDS);
+  const [waiverTitle, setWaiverTitle] = useState(DEFAULT_PARTICIPANT_WAIVER_TITLE);
+  const [waiverContent, setWaiverContent] = useState(DEFAULT_PARTICIPANT_WAIVER_CONTENT);
   const [posters, setPosters] = useState<UploadValue[]>([]);
   const [eventPages, setEventPages] = useState<EventPage[]>([
     {
@@ -545,6 +521,9 @@ export default function CreateEventPage() {
     !optionalLinksValid && "valid optional links",
     !capacityValid && "a total capacity below 2,147,483,647",
     !registrationQuestionsReady && "complete or remove unfinished registration questions",
+    Boolean(waiverTitle.trim()) !== Boolean(waiverContent.trim()) && "complete the event waiver or leave both fields blank to skip it",
+    waiverTitle.trim().length > 240 && "an event waiver title within 240 characters",
+    eventWaiverContentForTitle(waiverContent, form.name).length > 10000 && "event waiver content within 10,000 characters",
   ].filter(Boolean) as string[];
   const ready = missing.length === 0;
   const submissionChecks = [
@@ -557,6 +536,7 @@ export default function CreateEventPage() {
     { label: "Facebook link is provided; any extra contact links are valid", stepIndex: 0, complete: contactFieldsValid },
     { label: "Total category capacity is within the supported limit", stepIndex: 2, complete: capacityValid },
     { label: "Registration questions are complete (if added)", stepIndex: 4, complete: registrationQuestionsReady },
+    { label: "Event waiver is complete or skipped", stepIndex: 5, complete: Boolean(waiverTitle.trim()) === Boolean(waiverContent.trim()) && waiverTitle.trim().length <= 240 && eventWaiverContentForTitle(waiverContent, form.name).length <= 10000 },
   ];
   const submissionReady = submissionChecks.every((check) => check.complete);
   const fieldCompletedSteps = [
@@ -565,6 +545,7 @@ export default function CreateEventPage() {
     categoriesReady,
     hasRichContent(eventPages.find((page) => page.id === "event-details")?.content || ""),
     registrationQuestionsReady,
+    Boolean(waiverTitle.trim()) === Boolean(waiverContent.trim()) && waiverTitle.trim().length <= 240 && eventWaiverContentForTitle(waiverContent, form.name).length <= 10000,
     ready && submissionReady,
   ];
   const validImage = (upload: UploadValue) => !upload.file || (upload.file.size > 0 && upload.file.size <= 10 * 1024 * 1024 && ["image/jpeg", "image/png", "image/webp"].includes(upload.file.type));
@@ -631,12 +612,14 @@ export default function CreateEventPage() {
       if (!capacityValid) errors.push("Combined category capacity exceeds the supported maximum. Lower one or more category capacities.");
       categories.forEach((category, categoryIndex) => category.kitItems.forEach((item, itemIndex) => {
         const itemLabel = `${categoryErrorName(category, categoryIndex)} · ${item.kind === "inclusion" ? `Simple inclusion ${itemIndex + 1}` : `Included product ${itemIndex + 1}`}${item.name.trim() ? ` “${item.name.trim()}”` : ""}`;
-        const started = Boolean(item.name.trim() || item.description.trim() || item.variants.length || item.productImages.length || item.referenceImage.file || item.referenceImage.url);
+        const started = Boolean(item.name.trim() || item.description.trim() || item.quantity !== 1 || item.variants.length || item.productImages.length || item.referenceImage.file || item.referenceImage.url);
         if (started && !item.name.trim()) errors.push(`${itemLabel}: enter a name or remove this empty item.`);
         if (item.name.trim().length > 160) errors.push(`${itemLabel}: name must be 160 characters or fewer.`);
         if (item.description.trim().length > 1000) errors.push(`${itemLabel}: description must be 1,000 characters or fewer.`);
+        if (started && (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100)) errors.push(`${itemLabel}: quantity must be a whole number from 1 to 100.`);
         if (item.kind === "product") {
           if (item.variants.some((variant) => !variant.trim())) errors.push(`${itemLabel}: remove or complete each blank choice.`);
+          if (item.name.trim().toLowerCase() !== "race kit claiming" && item.variants.some((variant) => variant.length > 80)) errors.push(`${itemLabel}: each choice must be 80 characters or fewer.`);
           if (new Set(item.variants.map((variant) => variant.trim().toLowerCase())).size !== item.variants.length) errors.push(`${itemLabel}: remove duplicate choices.`);
           if (item.variants.length > 40) errors.push(`${itemLabel}: use no more than 40 choices.`);
           if (!hasValidOptionalVariantSlots(item.variants, item.variantSlots)) errors.push(`${itemLabel}: each entered slot count must be a whole number from 0 to 1,000,000.`);
@@ -685,9 +668,6 @@ export default function CreateEventPage() {
     }
     if (stepIndex === 4) {
       const errors: string[] = [];
-      if (Boolean(waiverTitle.trim()) !== Boolean(waiverContent.trim())) errors.push("Complete both the event waiver title and content, or leave both blank to skip the waiver.");
-      if (waiverTitle.trim().length > 240) errors.push("Event waiver title must be 240 characters or fewer.");
-      if (eventWaiverContentForTitle(waiverContent, form.name).length > 50000) errors.push("Event waiver content must be 50,000 characters or fewer.");
       if (registrationQuestions.length > 30) errors.push("Add no more than 30 registration questions.");
       registrationQuestions.forEach((question, index) => {
         const number = index + 1;
@@ -704,6 +684,13 @@ export default function CreateEventPage() {
       return errors;
     }
     if (stepIndex === 5) {
+      const errors: string[] = [];
+      if (Boolean(waiverTitle.trim()) !== Boolean(waiverContent.trim())) errors.push("Complete both the event waiver title and content, or leave both blank to skip the waiver.");
+      if (waiverTitle.trim().length > 240) errors.push("Event waiver title must be 240 characters or fewer.");
+      if (eventWaiverContentForTitle(waiverContent, form.name).length > 10000) errors.push("Event waiver content must be 10,000 characters or fewer.");
+      return errors;
+    }
+    if (stepIndex === 6) {
       const errors: string[] = [];
       for (const [tier, list] of Object.entries(sponsors)) list.forEach((sponsor, index) => {
         if ((sponsor.logo.file || sponsor.logo.url) && !sponsor.name.trim()) errors.push(`${tier}, sponsor ${index + 1}: enter the sponsor name or remove the logo.`);
@@ -818,7 +805,7 @@ export default function CreateEventPage() {
       return {
         item_code: `${categoryId ?? "shared"}-${index + 1}-${itemName.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)}`,
         item_name: itemName,
-        quantity: 1,
+        quantity: item.quantity,
         details: { kind: item.kind === "inclusion" ? "text_inclusion" : "product", description: item.description.trim() || null, variants: item.kind === "product" ? variantOptionsPayload(item.variants, item.variantSlots) : [], product_image_urls: productImageUrls, reference_image_url: referenceImageUrl },
         is_required: item.kind === "product" && item.variants.length > 0,
         is_active: true,
@@ -950,18 +937,20 @@ export default function CreateEventPage() {
       })));
       const detailsPage = savedPages.find((page) => page.id === "event-details")?.content ?? "";
       const descriptionContent = hasRichContent(detailsPage) ? detailsPage : form.description.trim();
-      const description = hasRichContent(descriptionContent)
-        ? [form.tagline.trim(), descriptionContent].filter(Boolean).join("\n\n")
-        : null;
+      const combinedDescription = composeEventDescription(form.tagline, hasRichContent(descriptionContent) ? descriptionContent : "");
+      const description = combinedDescription || null;
       const detailsResponse = await fetch(`/api/organizer/events/${eventId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, banner_position_x: bannerFrame.x, banner_position_y: bannerFrame.y, banner_zoom: bannerFrame.zoom, registration_personal_fields: registrationPersonalFields }),
+        body: JSON.stringify({ description, banner_position_x: bannerFrame.x, banner_position_y: bannerFrame.y, banner_zoom: bannerFrame.zoom, logo_position_x: logoFrame.x, logo_position_y: logoFrame.y, logo_zoom: logoFrame.zoom, registration_personal_fields: registrationPersonalFields }),
       });
       const detailsBody = await detailsResponse.json().catch(() => ({}));
       if (!detailsResponse.ok) throw new Error(detailsBody.error ?? "Event description could not be saved.");
       if (detailsBody.banner_frame_saved === false && (bannerFrame.x !== 50 || bannerFrame.y !== 50 || bannerFrame.zoom !== 1)) {
         throw new Error("The selected banner position was not saved. Apply the pending Supabase banner framing migration, then reopen the draft to set its position.");
+      }
+      if (detailsBody.logo_frame_saved === false && (logoFrame.x !== 50 || logoFrame.y !== 50 || logoFrame.zoom !== 1)) {
+        throw new Error("The selected logo crop was not saved. Apply the pending Supabase logo framing migration, then reopen the draft to set its position.");
       }
       if (savedPages.some((page) => page.type === "custom" || page.content.trim())) {
         const contentResponse = await fetch(`/api/organizer/events/${eventId}/content-pages`, {
@@ -1033,12 +1022,13 @@ export default function CreateEventPage() {
         }
       }
       if (hasPhysicalRaceKit) {
-        await saveKit(eventId, null, "Race Kit Claiming", [{
+        await saveKit(eventId, null, RACE_KIT_CLAIMING_ITEM, [{
           kind: "product",
-          name: "Race Kit Claiming",
+          name: RACE_KIT_CLAIMING_ITEM,
           description: raceKitDeliveryEnabled
             ? "Choose a pickup location or delivery to the address entered during registration."
             : "Choose where you plan to claim your included race kit.",
+          quantity: 1,
           variants: [...kitClaimingLocations, ...(raceKitDeliveryEnabled ? [RACE_KIT_DELIVERY_OPTION] : [])],
           variantSlots: {},
           productImages: [],
@@ -1211,12 +1201,16 @@ export default function CreateEventPage() {
                   onChange={(file, url) => {
                     if (form.logo.url.startsWith("blob:")) URL.revokeObjectURL(form.logo.url);
                     update("logo", { file, url });
+                    setLogoFrame({ x: 50, y: 50, zoom: 1 });
                   }}
                   onRemove={() => {
                     if (form.logo.url.startsWith("blob:")) URL.revokeObjectURL(form.logo.url);
                     update("logo", emptyUpload());
+                    setLogoFrame({ x: 50, y: 50, zoom: 1 });
                   }}
                   profilePreview
+                  frame={logoFrame}
+                  onFrameChange={setLogoFrame}
                 />
                 <Upload
                   label="Banner image"
@@ -1451,10 +1445,7 @@ export default function CreateEventPage() {
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                     <h3 className="font-bold text-[#071b41]">Inclusions for {[group?.name.trim(), category.distance.trim() ? `${category.distance}K` : ""].filter(Boolean).join(" · ") || "this race option"} <span className="text-orange-600">*</span></h3>
                     <p className="mt-1 text-sm text-slate-600">These items are included for this race option. Participants choose product sizes during registration.</p>
-                    {category.kitItems.map((item, itemIndex) => item.kind === "inclusion" ? <div key={`inclusion-${itemIndex}`} className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                      <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">Simple inclusion<input value={item.name} onChange={(event) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? { ...kit, name: event.target.value } : kit) } : entry))} placeholder="e.g. Finisher medal" maxLength={160} className={input} /></label>
-                      <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} className="mt-5 shrink-0 rounded-lg px-2.5 py-2 text-sm font-bold text-red-600 hover:bg-red-50">Remove</button>
-                    </div> : <KitItemEditor key={`product-${itemIndex}`} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
+                    {category.kitItems.map((item, itemIndex) => <KitItemEditor key={`${item.kind}-${itemIndex}`} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
                     {attemptedSteps[2] && !categoryHasRequiredInclusion(category) && <p className="mt-3 text-sm font-semibold text-red-600" role="alert">Add at least one simple inclusion or included product.</p>}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("inclusion")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add simple inclusion</button>
@@ -1686,12 +1677,12 @@ export default function CreateEventPage() {
                 <div className="p-4 sm:p-5">
                   <p className="text-sm text-slate-600">Choose which standard details to collect. Required fields stay required when selected; optional fields can be left blank. Add event-specific questions below.</p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
                       <input type="checkbox" checked={registrationPersonalFields.length === personalInformationFields.length} onChange={(event) => setRegistrationPersonalFields(event.target.checked ? personalInformationFields.map((field) => field.key) : [])} className="h-4 w-4 accent-orange-600" />
                       Select all
                     </label>
                     {personalInformationFields.map((field) => (
-                      <label key={field.key} className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                      <label key={field.key} className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
                         <input type="checkbox" checked={registrationPersonalFields.includes(field.key)} onChange={(event) => setRegistrationPersonalFields((current) => event.target.checked ? [...current, field.key] : current.filter((key) => key !== field.key))} className="h-4 w-4 accent-orange-600" />
                         <span>{field.label}</span>
                         <span className={`text-xs font-semibold ${field.required ? "text-orange-700" : "text-slate-500"}`}>{field.required ? "Required" : "Optional"}</span>
@@ -1753,6 +1744,18 @@ export default function CreateEventPage() {
           )}
           {step === 5 && (
             <div className="mt-6 flex-1 space-y-5">
+              <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><h2 className="font-bold text-[#071b41]">Event waiver</h2><p className="mt-1 max-w-3xl text-sm text-slate-600">Participants review and accept this waiver during registration. Edit the provided template, or clear both fields to skip the waiver.</p></div>
+                  <div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setWaiverTitle(DEFAULT_PARTICIPANT_WAIVER_TITLE); setWaiverContent(DEFAULT_PARTICIPANT_WAIVER_CONTENT); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Restore default</button><button type="button" onClick={() => { setWaiverTitle(''); setWaiverContent(''); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">{waiverTitle === DEFAULT_PARTICIPANT_WAIVER_TITLE && waiverContent === DEFAULT_PARTICIPANT_WAIVER_CONTENT ? 'Delete default waiver content' : 'Clear waiver'}</button></div>
+                </div>
+                <label className="block text-sm font-semibold text-slate-700">Waiver title<input value={waiverTitle} onChange={(event) => setWaiverTitle(event.target.value)} maxLength={240} placeholder="Participant Waiver and Release Agreement" className={input} /><span className="mt-1 block text-xs font-normal text-slate-500">{waiverTitle.length}/240 characters</span></label>
+                <label className="block text-sm font-semibold text-slate-700">Waiver terms and conditions<textarea value={waiverContent} onChange={(event) => setWaiverContent(event.target.value)} maxLength={10000} rows={18} placeholder="Write the terms participants must review and accept." className={`${input} min-h-72 resize-y leading-6`} /><span className="mt-1 block text-xs font-normal text-slate-500">Use {"{{EVENT_NAME}}"} where the event name should appear. It is filled automatically when the waiver is saved. {waiverContent.length}/10,000 characters.</span></label>
+              </section>
+            </div>
+          )}
+          {step === 6 && (
+            <div className="mt-6 flex-1 space-y-5">
               <div className="grid gap-4 md:grid-cols-3">
                 {Object.entries(sponsors).map(([tier, list]) => (
                   <div key={tier} className="rounded-xl border p-4">
@@ -1766,7 +1769,7 @@ export default function CreateEventPage() {
                           label="Sponsor name"
                           value={sponsor.name}
                           onBlur={() => touchField(`sponsor-${tier}-${index}-name`)}
-                          error={shouldShowFieldError(`sponsor-${tier}-${index}-name`, 5) ? ((sponsor.logo.file || sponsor.logo.url) && !sponsor.name.trim() ? "Enter the sponsor name or remove the logo." : sponsor.name.trim().length > 160 ? "Sponsor name must be 160 characters or fewer." : undefined) : undefined}
+                          error={shouldShowFieldError(`sponsor-${tier}-${index}-name`, 6) ? ((sponsor.logo.file || sponsor.logo.url) && !sponsor.name.trim() ? "Enter the sponsor name or remove the logo." : sponsor.name.trim().length > 160 ? "Sponsor name must be 160 characters or fewer." : undefined) : undefined}
                           onChange={(value) =>
                             editSponsor(tier, index, { name: value })
                           }

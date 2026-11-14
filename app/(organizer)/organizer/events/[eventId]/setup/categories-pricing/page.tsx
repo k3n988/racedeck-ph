@@ -22,6 +22,7 @@ type Category = {
   gun_start_time: string | null;
   cutoff_time: string | null;
 };
+type CategoryMode = 'groups' | 'distances';
 
 type CategoryFormState = {
   name: string;
@@ -82,6 +83,7 @@ function CategoryField({ label, name, value, type = 'text', required = false, mi
 
 export default function CategoriesPricingPage({ params }: { params: { eventId: string } }) {
   const [items, setItems] = useState<Category[]>([]);
+  const [categoryMode, setCategoryMode] = useState<CategoryMode | null>(null);
   const [form, setForm] = useState<CategoryFormState>(blankForm);
   const [editing, setEditing] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
@@ -95,7 +97,9 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
       const response = await fetch(`/api/organizer/events/${params.eventId}/categories`, { cache: 'no-store' });
       const body = await response.json().catch(() => []);
       if (!response.ok) throw new Error(body.error ?? 'Categories could not be loaded.');
-      setItems(Array.isArray(body) ? body : []);
+      const categories = Array.isArray(body) ? body as Category[] : [];
+      setItems(categories);
+      setCategoryMode(categories.length ? categories.some((category) => category.category_group_name?.trim()) ? 'groups' : 'distances' : null);
       setMessage('');
       return true;
     } catch (error) {
@@ -139,10 +143,15 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
       setBusy(false);
       return;
     }
+    if (categoryMode === 'groups' && !form.category_group_name.trim()) {
+      setFormError('Enter a group name for this race distance.');
+      setBusy(false);
+      return;
+    }
     const body = {
       ...form,
       name: `${Number(form.distance_km)}K`,
-      category_group_name: form.category_group_name.trim() || null,
+      category_group_name: categoryMode === 'groups' || (!categoryMode && form.category_group_name.trim()) ? form.category_group_name.trim() : null,
       distance_km: form.distance_km ? Number(form.distance_km) : null,
       registration_fee: Number(form.registration_fee),
       early_bird_fee: form.early_bird_enabled ? Number(form.early_bird_fee) : null,
@@ -179,13 +188,12 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
   const totalCapacity = hasUnlimitedCapacity ? null : items.reduce((sum, category) => sum + (category.max_slots ?? 0), 0);
   const loading = message.startsWith('Loading');
   const failed = Boolean(message && !loading && /could not|failed|error|timed out/i.test(message));
+  const categorySections = categoryMode === 'groups'
+    ? Array.from(new Set(items.map((category) => category.category_group_name?.trim() ?? ''))).map((groupName) => ({ groupName, items: items.filter((category) => (category.category_group_name?.trim() ?? '') === groupName) }))
+    : [{ groupName: '', items }];
+  const addLabel = categoryMode === 'groups' ? 'Add group' : categoryMode === 'distances' ? 'Add distance' : 'Add category';
 
   return <main className="mx-auto max-w-7xl space-y-5 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
-    <header className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center">
-      <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Event setup</p><h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#071b41] sm:text-3xl">Categories &amp; Pricing</h1><p className="mt-2 text-sm text-slate-600">Set race distances, registration fees, capacity, and category schedules.</p></div>
-      <button type="button" onClick={() => open()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-300"><Plus size={17} aria-hidden="true" />Add category</button>
-    </header>
-
     {message && !loading && <ToastFeedback message={String(message)} tone="auto">{failed ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{message}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Retry</button></div> : undefined}</ToastFeedback>}
 
     <section aria-label="Category summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -198,19 +206,22 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div><h2 className="text-lg font-bold text-[#071b41]">Race categories</h2><p className="mt-1 text-sm text-slate-500">Edit each category’s distance, fee, capacity, and start schedule.</p></div>
-        {!loading && <span className="text-sm font-medium text-slate-500">{items.length} {items.length === 1 ? 'category' : 'categories'}</span>}
+        <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={loading} onClick={() => open()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-50"><Plus size={17} aria-hidden="true" />{addLabel}</button>{!loading && <span className="text-sm font-medium text-slate-500">{items.length} {items.length === 1 ? 'category' : 'categories'}</span>}</div>
       </div>
 
       {loading ? <div className="grid gap-3 lg:grid-cols-2">{[0, 1].map((item) => <div key={item} className="animate-pulse rounded-xl border border-slate-200 p-5"><div className="h-5 w-36 rounded bg-slate-200" /><div className="mt-4 h-4 w-52 rounded bg-slate-100" /><div className="mt-8 h-2 rounded bg-slate-100" /></div>)}</div>
         : failed ? null
-          : items.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><TicketCheck size={22} aria-hidden="true" /></span><h3 className="mt-3 font-bold text-[#071b41]">No race categories yet</h3><p className="mt-1 text-sm text-slate-500">Add the first distance and registration price for this event.</p><button type="button" onClick={() => open()} className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">Add first category</button></div>
-            : <div className="grid gap-3 lg:grid-cols-2">{items.map((category) => {
+          : !categoryMode ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center"><h3 className="font-bold text-[#071b41]">No race categories yet</h3><p className="mt-1 text-sm text-slate-500">Add a distance, or enter a group name to start a grouped event.</p><button type="button" onClick={() => open()} className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">Add category</button></div>
+            : items.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><TicketCheck size={22} aria-hidden="true" /></span><h3 className="mt-3 font-bold text-[#071b41]">No race categories yet</h3><p className="mt-1 text-sm text-slate-500">Add the first {categoryMode === 'groups' ? 'group and its distances' : 'distance'} and registration price for this event.</p><button type="button" onClick={() => open()} className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700">{categoryMode === 'groups' ? 'Add first group' : 'Add first distance'}</button></div>
+            : <div className="space-y-4">{categorySections.map((section) => <section key={section.groupName || 'ungrouped'} className={categoryMode === 'groups' ? 'rounded-xl border border-slate-200 bg-slate-50/70 p-4' : ''}>
+              {categoryMode === 'groups' && <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-[#071b41]">{section.groupName || 'Ungrouped distances'}</h3><button type="button" onClick={() => open(undefined, section.groupName)} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-bold text-orange-700 transition hover:bg-orange-50"><Plus size={14} aria-hidden="true" />Add distance</button></div>}
+            <div className="grid gap-3 lg:grid-cols-2">{section.items.map((category) => {
               const usedSlots = category.confirmed_count + category.held_count;
               const capacityFill = category.max_slots ? Math.min(100, Math.round((usedSlots / category.max_slots) * 100)) : 0;
               return <article key={category.id} className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words text-lg font-bold text-[#071b41]">{category.category_group_name ? `${category.category_group_name} · ` : ''}{category.distance_km === null ? category.name : `${category.distance_km}K`}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset ${availabilityTone(category.registration_availability)}`}>{statusLabel(category.registration_availability)}</span></div><p className="mt-1 text-sm text-slate-500">{category.category_group_name ? `Group: ${category.category_group_name} · ` : ''}{category.distance_km === null ? 'Distance not set' : `${category.distance_km} km`}</p></div>
-                  <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => open(undefined, category.category_group_name ?? '')} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-bold text-orange-700 transition hover:bg-orange-50"><Plus size={14} aria-hidden="true" />Add distance</button><button type="button" onClick={() => open(category)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#0b2a59] transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"><Pencil size={14} aria-hidden="true" />Edit</button></div>
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="break-words text-base font-bold text-[#071b41]">{category.category_group_name ? `${category.category_group_name} · ` : ''}{category.distance_km === null ? category.name : `${category.distance_km}K`}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ring-1 ring-inset ${availabilityTone(category.registration_availability)}`}>{statusLabel(category.registration_availability)}</span></div><p className="mt-1 text-sm text-slate-500">{category.category_group_name ? `Group: ${category.category_group_name} · ` : ''}{category.distance_km === null ? 'Distance not set' : `${category.distance_km} km`}</p></div>
+                  <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => open(category)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-[#0b2a59] transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"><Pencil size={14} aria-hidden="true" />Edit</button></div>
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
                   <div><p className="text-xs font-semibold text-slate-500">{category.early_bird_fee !== null && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > Date.now() ? 'Early Bird price' : 'Current registration fee'}</p><p className="mt-1 font-bold text-slate-900">{peso(category.early_bird_fee !== null && category.early_bird_deadline && Date.parse(category.early_bird_deadline) > Date.now() ? category.early_bird_fee : category.registration_fee)}</p>{category.early_bird_fee !== null && category.early_bird_deadline && <p className="mt-1 text-xs text-slate-500">Regular price {peso(category.registration_fee)} · deadline {new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(category.early_bird_deadline))} Manila time</p>}</div>
@@ -225,18 +236,19 @@ export default function CategoriesPricingPage({ params }: { params: { eventId: s
                   <span className="inline-flex items-center gap-1.5"><Clock3 size={14} className="text-orange-600" aria-hidden="true" />Cut-off {category.cutoff_time?.slice(0, 5) ?? 'TBA'}</span>
                 </div>
               </article>;
-            })}</div>}
+            })}</div>
+          </section>)}</div>}
     </section>
 
     {modal && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4" onKeyDown={(event) => { if (event.key === 'Escape' && !busy) setModal(false); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="category-dialog-title" className="my-auto w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
-          <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-orange-600">Category setup</p><h2 id="category-dialog-title" className="mt-1 text-xl font-extrabold text-[#071b41]">{editing ? 'Edit category' : 'Add category'}</h2><p className="mt-1 text-sm text-slate-500">Set the category details shown to participants at registration.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-orange-600">Category setup</p><h2 id="category-dialog-title" className="mt-1 text-lg font-bold text-[#071b41]">{editing ? 'Edit category' : 'Add category'}</h2><p className="mt-1 text-sm text-slate-500">Set the category details shown to participants at registration.</p></div>
           <button type="button" aria-label="Close dialog" disabled={busy} onClick={() => setModal(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"><X size={18} /></button>
         </div>
         <form onSubmit={save} className="space-y-5 p-5 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2">
-            <CategoryField label="Category group name (optional)" name="category_group_name" value={form.category_group_name} autoFocus hint="For example Regular or Early Bird. Leave blank to list distances without a group." onChange={changeField} />
+            {(categoryMode === 'groups' || categoryMode === null) && <CategoryField label={categoryMode === 'groups' ? 'Group name' : 'Group name (optional)'} name="category_group_name" value={form.category_group_name} required={categoryMode === 'groups'} autoFocus hint={categoryMode === 'groups' ? 'For example Regular, Student, or VIP.' : 'Enter a name to start a grouped event, or leave blank for distances only.'} onChange={changeField} />}
             <CategoryField label="Distance (km)" name="distance_km" value={form.distance_km} type="number" required min={0.01} step={0.01} hint="Enter the race distance, such as 3 or 21.1 km." onChange={changeField} />
             <CategoryField label="Registration fee (PHP)" name="registration_fee" value={form.registration_fee} type="number" required min={0} step={0.01} onChange={changeField} />
             <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 sm:col-span-2">

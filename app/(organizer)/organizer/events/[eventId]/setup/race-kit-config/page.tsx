@@ -4,6 +4,7 @@ import { ToastFeedback } from '@/components/toast-feedback';
 import Image from 'next/image';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { parseVariantOptions, variantOptionsPayload } from '@/lib/events/variant-options';
+import { isValidRaceKitImage, MAX_RACE_KIT_ITEM_DESCRIPTION_LENGTH, MAX_RACE_KIT_PICKUP_LOCATIONS, MAX_RACE_KIT_PRODUCT_IMAGES, MAX_RACE_KIT_PRODUCT_VARIANTS, RACE_KIT_CLAIMING_ITEM, RACE_KIT_DELIVERY_OPTION } from '@/lib/events/race-kit';
 
 type KitImage = { url: string; file?: File };
 type Item = {
@@ -58,8 +59,9 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
+  const [editorError, setEditorError] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveMessage = false) => {
     setLoading(true);
     try {
       const response = await fetch(`/api/organizer/events/${params.eventId}/race-kit-config`, { cache: 'no-store' });
@@ -68,7 +70,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
       setConfigs(data.configs ?? []);
       setCategories(data.categories ?? []);
       setError(false);
-      setMessage('');
+      if (!preserveMessage) setMessage('');
     } catch (loadError) {
       setError(true);
       setMessage(loadError instanceof Error ? loadError.message : 'Race kit configurations could not be loaded.');
@@ -104,7 +106,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
       setConfigId(null);
       setConfig({ name: '', description: '', category_id: null, status: 'active' });
       setMessage('Race kit configuration saved.');
-      await load();
+      await load(true);
     } catch (saveError) {
       setError(true);
       setMessage(saveError instanceof Error ? saveError.message : 'Configuration could not be saved.');
@@ -125,7 +127,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? 'Configuration status could not be updated.');
       setMessage(current.status === 'active' ? 'Configuration deactivated; it will no longer appear during registration.' : 'Configuration activated and available during registration.');
-      await load();
+      await load(true);
     } catch (statusError) {
       setError(true);
       setMessage(statusError instanceof Error ? statusError.message : 'Configuration status could not be updated.');
@@ -136,10 +138,33 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
 
   async function saveItem(event: FormEvent, currentConfig: Config) {
     event.preventDefault();
+    const isProduct = item.details.kind !== 'text_inclusion';
+    const isClaimingItem = item.item_name.trim().toLocaleLowerCase() === RACE_KIT_CLAIMING_ITEM.toLocaleLowerCase();
+    const variantNames = variants.map((variant) => variant.trim());
+    const pickupLocations = variantNames.filter((variant) => variant.toLocaleLowerCase() !== RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase());
+    const duplicateVariants = new Set(variantNames.map((variant) => variant.toLocaleLowerCase())).size !== variantNames.length;
+    const invalidVariantSlots = !isClaimingItem && Object.entries(variantSlots).some(([variant, value]) => {
+      if (!variants.includes(variant) || !value.trim()) return false;
+      const slots = Number(value);
+      return !Number.isSafeInteger(slots) || slots < 0 || slots > 1000000;
+    });
+    const invalidImage = [...productImages.filter((image) => image.file).map((image) => image.file!), ...(referenceImage?.file ? [referenceImage.file] : [])].some((file) => !isValidRaceKitImage(file));
+    let validationError = '';
+    if (!item.item_name.trim()) validationError = 'Enter a name for this race kit item.';
+    else if (item.item_name.trim().length > 160) validationError = 'Item names must be 160 characters or fewer.';
+    else if (String(item.details.description ?? '').trim().length > MAX_RACE_KIT_ITEM_DESCRIPTION_LENGTH) validationError = 'Descriptions must be 1,000 characters or fewer.';
+    else if (isProduct && (variantNames.some((variant) => !variant) || duplicateVariants)) validationError = 'Complete each option and remove duplicate choices.';
+    else if (isProduct && variants.length > (isClaimingItem ? MAX_RACE_KIT_PICKUP_LOCATIONS + 1 : MAX_RACE_KIT_PRODUCT_VARIANTS)) validationError = isClaimingItem ? 'Use no more than 40 pickup locations, plus the delivery option.' : 'Use no more than 40 product options.';
+    else if (isProduct && !isClaimingItem && (variantNames.some((variant) => variant.length > 80) || invalidVariantSlots)) validationError = 'Each option must be 80 characters or fewer, and entered slot counts must be whole numbers from 0 to 1,000,000.';
+    else if (isClaimingItem && pickupLocations.some((location) => location.length > 160)) validationError = 'Pickup locations must be 160 characters or fewer.';
+    else if (isClaimingItem && pickupLocations.length === 0 && !variantNames.some((variant) => variant.toLocaleLowerCase() === RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase())) validationError = 'Add at least one pickup location or enable Race Kit Delivery.';
+    else if (isProduct && productImages.length > MAX_RACE_KIT_PRODUCT_IMAGES) validationError = 'Upload no more than 8 product photos.';
+    else if (isProduct && invalidImage) validationError = 'Images must be JPG, PNG, or WEBP files no larger than 10 MB each.';
+    if (validationError) { setEditorError(validationError); return; }
+    setEditorError('');
     setBusy(true);
     setError(false);
     try {
-      const isProduct = item.details.kind !== 'text_inclusion';
       const currentImageUrls = isProduct ? productImages.map((image) => image.file ? uploadAsset('race_kit_image', image.file) : Promise.resolve(image.url)) : [];
       const imageUrls = await Promise.all(currentImageUrls);
       const sizeChartUrl = isProduct ? referenceImage?.file ? await uploadAsset('size_chart', referenceImage.file) : referenceImage?.url ?? null : null;
@@ -150,7 +175,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
         item_code: itemCode,
         item_name: name,
         details: { ...item.details, kind: isProduct ? 'product' : 'text_inclusion', description: String(item.details.description ?? '').trim() || null, variants: isProduct ? variantOptionsPayload(variants, variantSlots) : [], product_image_urls: imageUrls, reference_image_url: sizeChartUrl },
-        is_required: isProduct && variants.length > 0 ? item.is_required : false,
+        is_required: isProduct && variants.length > 0,
       };
       const url = `/api/organizer/events/${params.eventId}/race-kit-config/${currentConfig.id}/items${itemId ? `/${itemId}` : ''}`;
       const response = await fetch(url, { method: itemId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -158,7 +183,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
       if (!response.ok) throw new Error(data.error ?? 'Race kit item could not be saved.');
       resetItemEditor();
       setMessage('Race kit item saved and available to participant registration.');
-      await load();
+      await load(true);
     } catch (saveError) {
       setError(true);
       setMessage(saveError instanceof Error ? saveError.message : 'Race kit item could not be saved.');
@@ -168,6 +193,8 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
   }
 
   function resetItemEditor() {
+    productImages.forEach((image) => { if (image.url.startsWith('blob:')) URL.revokeObjectURL(image.url); });
+    if (referenceImage?.url.startsWith('blob:')) URL.revokeObjectURL(referenceImage.url);
     setItemId(null);
     setEditorConfigId(null);
     setItem(emptyItem());
@@ -176,9 +203,11 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
     setVariantDraft('');
     setProductImages([]);
     setReferenceImage(null);
+    setEditorError('');
   }
 
   function editItem(currentConfigId: string, currentItem: Item) {
+    resetItemEditor();
     const details = currentItem.details && typeof currentItem.details === 'object' ? currentItem.details : {};
     setEditorConfigId(currentConfigId);
     setItemId(currentItem.id);
@@ -209,7 +238,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? 'Race kit item status could not be updated.');
       setMessage(currentItem.is_active ? 'Item deactivated; existing kit history is preserved.' : 'Item activated for participant registration.');
-      await load();
+      await load(true);
     } catch (statusError) {
       setError(true);
       setMessage(statusError instanceof Error ? statusError.message : 'Race kit item status could not be updated.');
@@ -227,7 +256,7 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? 'Race kit item could not be removed.');
       setMessage('Race kit item removed.');
-      await load();
+      await load(true);
     } catch (removeError) {
       setError(true);
       setMessage(removeError instanceof Error ? removeError.message : 'Race kit item could not be removed.');
@@ -239,24 +268,57 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
   function addVariant() {
     const next = variantDraft.trim();
     if (!next || variants.some((value) => value.toLowerCase() === next.toLowerCase())) return;
+    if (next.toLocaleLowerCase() === RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase() && item.item_name.trim().toLocaleLowerCase() === RACE_KIT_CLAIMING_ITEM.toLocaleLowerCase()) {
+      setEditorError('Use the Race Kit Delivery checkbox to add the reserved delivery option.');
+      return;
+    }
+    const claimingItem = item.item_name.trim().toLocaleLowerCase() === RACE_KIT_CLAIMING_ITEM.toLocaleLowerCase();
+    if (claimingItem && variants.filter((value) => value.toLocaleLowerCase() !== RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase()).length >= MAX_RACE_KIT_PICKUP_LOCATIONS) {
+      setEditorError('Use no more than 40 pickup locations.');
+      return;
+    }
+    if (!claimingItem && variants.length >= MAX_RACE_KIT_PRODUCT_VARIANTS) {
+      setEditorError('Use no more than 40 product options.');
+      return;
+    }
+    setEditorError('');
     setVariants([...variants, next]);
     setVariantSlots((current) => ({ ...current, [next]: '' }));
     if (!itemId) setItem((current) => ({ ...current, is_required: true }));
     setVariantDraft('');
   }
 
+  function addProductImages(files: File[]) {
+    if (productImages.length + files.length > MAX_RACE_KIT_PRODUCT_IMAGES) {
+      setEditorError('Upload no more than 8 product photos.');
+      return;
+    }
+    if (files.some((file) => !isValidRaceKitImage(file))) {
+      setEditorError('Images must be JPG, PNG, or WEBP files no larger than 10 MB each.');
+      return;
+    }
+    setEditorError('');
+    setProductImages([...productImages, ...files.map((file) => ({ file, url: URL.createObjectURL(file) }))]);
+  }
+
+  function addReferenceImage(file: File | undefined) {
+    if (!file) return;
+    if (!isValidRaceKitImage(file)) {
+      setEditorError('Images must be JPG, PNG, or WEBP files no larger than 10 MB each.');
+      return;
+    }
+    setEditorError('');
+    if (referenceImage?.url.startsWith('blob:')) URL.revokeObjectURL(referenceImage.url);
+    setReferenceImage({ file, url: URL.createObjectURL(file) });
+  }
+
   const inputClass = 'mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100';
   const editItemDescription = typeof item.details.description === 'string' ? item.details.description : '';
   const isProductItem = item.details.kind !== 'text_inclusion';
+  const isClaimingItem = item.item_name.trim().toLocaleLowerCase() === RACE_KIT_CLAIMING_ITEM.toLocaleLowerCase();
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
-      <header>
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Event setup</p>
-        <h1 className="mt-1 text-2xl font-bold text-[#071b41]">Race kit & inclusions</h1>
-        <p className="mt-1 text-sm text-slate-600">Manage the same included products, sizes, photos, and size guides available during event creation. Paid add-ons stay under Additional Merchandise.</p>
-      </header>
-
       {message && <ToastFeedback message={message} tone="auto"><div className="flex items-center gap-3"><span>{message}</span>{error && <button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button>}</div></ToastFeedback>}
 
       <form onSubmit={saveConfig} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -302,15 +364,17 @@ export default function RaceKitConfigPage({ params }: { params: { eventId: strin
                 <label className="block text-sm font-semibold text-slate-700">{isProductItem ? 'Product name' : 'Inclusion name'}<input required maxLength={160} value={item.item_name} onChange={(event) => setItem({ ...item, item_name: event.target.value })} placeholder={isProductItem ? 'e.g. Event singlet' : 'e.g. E-certificate'} className={inputClass} /></label>
                 <label className="block text-sm font-semibold text-slate-700">Quantity included<input required type="number" min="1" max="100" value={item.quantity} onChange={(event) => setItem({ ...item, quantity: Number(event.target.value) })} className={inputClass} /></label>
               </div>
-              <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-500">(optional)</span><input maxLength={500} value={editItemDescription} onChange={(event) => setItem({ ...item, details: { ...item.details, description: event.target.value } })} placeholder="e.g. Moisture-wicking event singlet" className={inputClass} /></label>
+              <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-500">(optional)</span><input maxLength={MAX_RACE_KIT_ITEM_DESCRIPTION_LENGTH} value={editItemDescription} onChange={(event) => setItem({ ...item, details: { ...item.details, description: event.target.value } })} placeholder="e.g. Moisture-wicking event singlet" className={inputClass} /></label>
               {isProductItem && <>
               <div><label className="block text-sm font-semibold text-slate-700">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Claiming place options' : 'Available variants'} <span className="font-normal text-slate-500">{item.item_name.trim().toLowerCase() === 'race kit claiming' ? '(participant chooses one)' : '(sizes, colors, or other options)'}</span></label><div className="mt-2 space-y-2">{variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_120px_auto] items-center gap-2 rounded-lg border border-slate-200 bg-white p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.item_name.trim().toLowerCase() !== 'race kit claiming' && <label className="text-xs font-semibold text-slate-600">Slots<input type="number" min="0" step="1" inputMode="numeric" value={variantSlots[variant] ?? ''} onChange={(event) => setVariantSlots({ ...variantSlots, [variant]: event.target.value })} aria-label={`Available slots for ${variant}`} placeholder="Qty" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm font-normal" /></label>}<button type="button" onClick={() => { setVariants(variants.filter((value) => value !== variant)); const next = { ...variantSlots }; delete next[variant]; setVariantSlots(next); }} className="ml-1 rounded px-2 py-1 text-slate-600" aria-label={`Remove ${variant}`}>×</button></div>)}</div><div className="mt-2 flex gap-2"><input value={variantDraft} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addVariant(); } }} placeholder={item.item_name.trim().toLowerCase() === 'race kit claiming' ? 'Add a place, e.g. Race-day venue' : 'Add a variant, e.g. Kids Small'} className={`${inputClass} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 bg-white px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div></div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-semibold text-slate-700">Product photos <span className="font-normal text-slate-500">(JPG, PNG, WEBP · max 10 MB each)</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const files = Array.from(event.target.files ?? []); setProductImages([...productImages, ...files.map((file) => ({ file, url: URL.createObjectURL(file) }))]); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{productImages.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{productImages.map((image, index) => <div key={`${image.url}-${index}`} className="relative"><Image src={image.url} alt={`Product photo ${index + 1}`} width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" aria-label={`Remove product photo ${index + 1}`} onClick={() => setProductImages(productImages.filter((_, imageIndex) => imageIndex !== index))} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-red-600 text-white">×</button></div>)}</div>}</label>
-                <label className="block text-sm font-semibold text-slate-700">Size chart or reference guide <span className="font-normal text-slate-500">(optional)</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setReferenceImage({ file, url: URL.createObjectURL(file) }); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{referenceImage && <div className="mt-2 flex items-center gap-2"><Image src={referenceImage.url} alt="Size guide preview" width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" onClick={() => setReferenceImage(null)} className="text-sm font-semibold text-red-700">Remove guide</button></div>}</label>
+                <label className="block text-sm font-semibold text-slate-700">Product photos <span className="font-normal text-slate-500">(JPG, PNG, WEBP · max 10 MB each)</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addProductImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{productImages.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{productImages.map((image, index) => <div key={`${image.url}-${index}`} className="relative"><Image src={image.url} alt={`Product photo ${index + 1}`} width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" aria-label={`Remove product photo ${index + 1}`} onClick={() => { if (image.url.startsWith('blob:')) URL.revokeObjectURL(image.url); setProductImages(productImages.filter((_, imageIndex) => imageIndex !== index)); }} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-red-600 text-white">×</button></div>)}</div>}</label>
+                <label className="block text-sm font-semibold text-slate-700">Size chart or reference guide <span className="font-normal text-slate-500">(optional)</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { addReferenceImage(event.target.files?.[0]); event.currentTarget.value = ''; }} className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1`} />{referenceImage && <div className="mt-2 flex items-center gap-2"><Image src={referenceImage.url} alt="Size guide preview" width={80} height={64} unoptimized className="h-16 w-20 rounded-md border border-slate-200 object-cover" /><button type="button" onClick={() => { if (referenceImage.url.startsWith('blob:')) URL.revokeObjectURL(referenceImage.url); setReferenceImage(null); }} className="text-sm font-semibold text-red-700">Remove guide</button></div>}</label>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={item.is_required} onChange={(event) => setItem({ ...item, is_required: event.target.checked })} className="h-4 w-4 accent-orange-600" />Participant must choose an option when variants are configured</label>
+              {isClaimingItem && <label className="inline-flex cursor-pointer items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={variants.some((variant) => variant.toLocaleLowerCase() === RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase())} onChange={(event) => setVariants((current) => event.target.checked ? current.some((variant) => variant.toLocaleLowerCase() === RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase()) ? current : [...current, RACE_KIT_DELIVERY_OPTION] : current.filter((variant) => variant.toLocaleLowerCase() !== RACE_KIT_DELIVERY_OPTION.toLocaleLowerCase()))} className="mt-0.5 h-4 w-4 accent-orange-600" /><span><span className="font-semibold">Enable Race Kit Delivery</span><span className="mt-0.5 block text-xs text-slate-500">Participants can choose delivery to the address entered during registration.</span></span></label>}
+              {variants.length > 0 && <p className="text-sm text-slate-600">Participants must choose one option when choices are configured, matching Create Event.</p>}
               </>}
+              {editorError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{editorError}</p>}
               <div className="flex flex-wrap gap-2"><button disabled={busy || !item.item_name.trim()} className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving…' : itemId ? 'Save item' : 'Add included item'}</button><button type="button" disabled={busy} onClick={resetItemEditor} className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">Cancel</button></div>
             </form> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => addItem(current, 'text_inclusion')} className="rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-bold text-orange-700 disabled:opacity-60">+ Add simple inclusion</button><button type="button" disabled={busy} onClick={() => addItem(current, 'product')} className="rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-bold text-orange-700 disabled:opacity-60">+ Add product with choices</button></div>}
           </section>;

@@ -14,6 +14,11 @@ const schema = z.object({
   image_urls: z.array(z.string().url()).max(8),
   display_order: z.number().int().nonnegative(),
   is_active: z.boolean(),
+}).superRefine((item, context) => {
+  const names = item.variants.map((variant) => typeof variant === 'string' ? variant.trim() : variant.name.trim());
+  if (new Set(names.map((name) => name.toLocaleLowerCase())).size !== names.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['variants'], message: 'Merchandise variants must have unique names.' });
+  }
 });
 
 async function getEditableEvent(eventId: string) {

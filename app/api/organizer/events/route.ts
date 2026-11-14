@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireOrganizerPermission, errorResponse } from '@/lib/auth/organizer-access';
 import { effectiveAvailability } from '@/lib/public/events';
 import { parseEventSocialLinks } from '@/lib/events/event-social-links';
+import { encodeReminderContent } from '@/lib/email/reminder-content';
 const EVENT_FIELDS = 'id,organization_id,slug,name,banner_url,event_date,venue,address,lifecycle_status,review_status,registration_availability,registration_opens_at,registration_closes_at,overall_capacity,is_featured,created_at,updated_at';
 export async function GET(request: Request) {
   const auth = await requireOrganizerPermission('view_events');
@@ -121,6 +122,7 @@ export async function POST(request: Request) {
       { label: 'race category pricing and groups', query: () => auth.admin.from('race_categories').select('category_group_name,registration_opens_at,registration_closes_at,early_bird_fee,early_bird_deadline').limit(0) },
       { label: 'registration question sections', query: () => auth.admin.from('event_registration_fields').select('section_key').limit(0) },
       { label: 'banner positioning', query: () => auth.admin.from('events').select('banner_position_x,banner_position_y,banner_zoom').limit(0) },
+      { label: 'email reminder settings', query: () => auth.admin.from('event_reminder_settings').select('id').limit(0) },
     ];
     const featureResults = await Promise.all(featureChecks.map(async (check) => ({ label: check.label, error: (await check.query()).error })));
     const unavailable = featureResults.filter((result) => result.error);
@@ -160,6 +162,28 @@ export async function POST(request: Request) {
             : 'Event could not be created' },
         { status: error.code === '23505' ? 409 : 500 },
       );
+    }
+
+    const { error: reminderError } = await auth.admin.from('event_reminder_settings').insert({
+      reminder_key: 'organizer_event_reminder',
+      reminder_type: 'race_reminder',
+      lead_time_minutes: 10080,
+      event_id: data.id,
+      organization_id: auth.membership.organization_id,
+      enabled: false,
+      instructions: encodeReminderContent({
+        subject: `Reminder: ${data.name}`,
+        body: `This is a reminder that ${data.name} is coming up. Please review your registration for event details.`,
+        body_format: 'text',
+        dispatched_at: null,
+      }),
+      custom_schedule_at: null,
+    });
+    if (reminderError) {
+      console.error('[Creating organizer event] Default reminder settings could not be saved', reminderError);
+      const { error: rollbackError } = await auth.admin.from('events').delete().eq('id', data.id);
+      if (rollbackError) console.error('[Creating organizer event] Draft rollback failed', rollbackError);
+      return NextResponse.json({ error: 'Event defaults could not be prepared because reminder settings are unavailable. Apply the pending Supabase migrations and try again.' }, { status: 503 });
     }
 
     return NextResponse.json({ event: data }, { status: 201 });

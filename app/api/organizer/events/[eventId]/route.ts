@@ -9,23 +9,28 @@ import { MAX_RICH_CONTENT_LENGTH, richContentLength } from '@/lib/rich-text-cont
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,registration_personal_fields,is_featured,created_at,updated_at';
+const FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,logo_position_x,logo_position_y,logo_zoom,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,registration_personal_fields,is_featured,created_at,updated_at';
+const BANNER_FIELDS = 'id,organization_id,slug,name,banner_url,banner_position_x,banner_position_y,banner_zoom,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,registration_personal_fields,is_featured,created_at,updated_at';
 const LEGACY_FIELDS = 'id,organization_id,slug,name,banner_url,logo_url,description,event_date,start_time,venue,address,social_links,registration_opens_at,registration_closes_at,assembly_time,gun_start_time,cutoff_time,overall_capacity,lifecycle_status,review_status,review_feedback,registration_availability,registration_personal_fields,is_featured,created_at,updated_at';
 const BANNER_FRAME_COLUMNS = ['banner_position_x', 'banner_position_y', 'banner_zoom'] as const;
+const LOGO_FRAME_COLUMNS = ['logo_position_x', 'logo_position_y', 'logo_zoom'] as const;
 type OrganizerEvent = Database['public']['Tables']['events']['Row'] & {
   banner_position_x?: number | null;
   banner_position_y?: number | null;
   banner_zoom?: number | null;
+  logo_position_x?: number | null;
+  logo_position_y?: number | null;
+  logo_zoom?: number | null;
 };
 const jsonNoStore = (body: unknown, init?: ResponseInit) => NextResponse.json(body, {
   ...init,
   headers: { 'Cache-Control': 'no-store, max-age=0', ...init?.headers },
 });
-function isMissingBannerFrameColumns(error: { code?: string; message?: string } | null | undefined) {
+function isMissingFrameColumns(error: { code?: string; message?: string } | null | undefined, columns: readonly string[]) {
   if (!error) return false;
   const message = error.message?.toLowerCase() ?? '';
   return (error.code === '42703' || error.code === 'PGRST204')
-    && BANNER_FRAME_COLUMNS.some((column) => message.includes(column));
+    && columns.some((column) => message.includes(column));
 }
 function withDefaultBannerFrame(event: OrganizerEvent) {
   return {
@@ -33,6 +38,9 @@ function withDefaultBannerFrame(event: OrganizerEvent) {
     banner_position_x: event.banner_position_x ?? 50,
     banner_position_y: event.banner_position_y ?? 50,
     banner_zoom: event.banner_zoom ?? 1,
+    logo_position_x: event.logo_position_x ?? 50,
+    logo_position_y: event.logo_position_y ?? 50,
+    logo_zoom: event.logo_zoom ?? 1,
   };
 }
 const sameInstant = (left: unknown, right: unknown) => {
@@ -56,7 +64,11 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
   const admin = auth.admin as unknown as SupabaseClient<Database>;
   const loadEvent = async (fields: string) => await admin.from('events').select(fields).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).maybeSingle() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
   let { data, error } = await loadEvent(FIELDS);
-  if (isMissingBannerFrameColumns(error)) {
+  if (isMissingFrameColumns(error, LOGO_FRAME_COLUMNS)) {
+    console.warn('Organizer event logo framing columns are unavailable; using centered logo framing until the migration is applied.');
+    ({ data, error } = await loadEvent(BANNER_FIELDS));
+  }
+  if (isMissingFrameColumns(error, BANNER_FRAME_COLUMNS)) {
     console.warn('Organizer event banner framing columns are unavailable; using centered framing until the migration is applied.');
     ({ data, error } = await loadEvent(LEGACY_FIELDS));
   }
@@ -126,7 +138,7 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if (current.review_status === 'pending_review') {
       return NextResponse.json({ error: 'Event details cannot be changed while RaceDeck is reviewing the event.' }, { status: 409 });
     }
-    const allowed = ['name', 'slug', 'description', 'banner_url', 'banner_position_x', 'banner_position_y', 'banner_zoom', 'logo_url', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability', 'registration_personal_fields'];
+    const allowed = ['name', 'slug', 'description', 'banner_url', 'banner_position_x', 'banner_position_y', 'banner_zoom', 'logo_url', 'logo_position_x', 'logo_position_y', 'logo_zoom', 'event_date', 'start_time', 'venue', 'address', 'social_links', 'registration_opens_at', 'registration_closes_at', 'assembly_time', 'gun_start_time', 'cutoff_time', 'overall_capacity', 'registration_availability', 'registration_personal_fields'];
     const keys = Object.keys(body).filter((key) => allowed.includes(key));
     if (!keys.length) return NextResponse.json({ error: 'No event changes provided' }, { status: 400 });
     if ('description' in body && body.description !== null && typeof body.description !== 'string') {
@@ -151,13 +163,15 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     if ('registration_personal_fields' in body && (!Array.isArray(body.registration_personal_fields) || body.registration_personal_fields.some((field: unknown) => typeof field !== 'string' || !personalFieldKeys.includes(field)))) {
       return NextResponse.json({ error: 'Choose valid personal information fields to collect.' }, { status: 400 });
     }
-    for (const key of ['banner_position_x', 'banner_position_y'] as const) {
+    for (const key of ['banner_position_x', 'banner_position_y', 'logo_position_x', 'logo_position_y'] as const) {
       if (key in body && (!Number.isInteger(body[key]) || body[key] < 0 || body[key] > 100)) {
-        return NextResponse.json({ error: 'Banner framing position must be between 0 and 100.' }, { status: 400 });
+        return NextResponse.json({ error: `${key.startsWith('logo_') ? 'Logo' : 'Banner'} framing position must be between 0 and 100.` }, { status: 400 });
       }
     }
-    if ('banner_zoom' in body && (typeof body.banner_zoom !== 'number' || !Number.isFinite(body.banner_zoom) || body.banner_zoom < 1 || body.banner_zoom > 2)) {
-      return NextResponse.json({ error: 'Banner zoom must be between 100% and 200%.' }, { status: 400 });
+    for (const key of ['banner_zoom', 'logo_zoom'] as const) {
+      if (key in body && (typeof body[key] !== 'number' || !Number.isFinite(body[key]) || body[key] < 1 || body[key] > 2)) {
+        return NextResponse.json({ error: `${key.startsWith('logo_') ? 'Logo' : 'Banner'} zoom must be between 100% and 200%.` }, { status: 400 });
+      }
     }
     const update = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)).map(([key, value]) => {
       if (key === 'description' && typeof value === 'string') return [key, value.trim() ? value : ''];
@@ -193,14 +207,23 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
     const performUpdate = async (payload: Database['public']['Tables']['events']['Update'], fields: string) => await admin.from('events').update(payload).eq('id', params.eventId).eq('organization_id', auth.membership.organization_id).select(fields).single() as unknown as { data: OrganizerEvent | null; error: { code?: string; message?: string } | null };
     let { data, error } = await performUpdate(update, FIELDS);
     let bannerFrameSaved = true;
-    if (isMissingBannerFrameColumns(error)) {
+    let logoFrameSaved = true;
+    if (isMissingFrameColumns(error, LOGO_FRAME_COLUMNS)) {
       const compatibleUpdate = { ...update } as Database['public']['Tables']['events']['Update'];
-      for (const column of BANNER_FRAME_COLUMNS) delete compatibleUpdate[column];
-      bannerFrameSaved = !BANNER_FRAME_COLUMNS.some((column) => column in update);
-      console.warn('Saving event details without banner framing because the database migration is not available yet.');
-      ({ data, error } = await performUpdate(compatibleUpdate, LEGACY_FIELDS));
-      if (!error && data) data = withDefaultBannerFrame(data);
+      for (const column of LOGO_FRAME_COLUMNS) delete compatibleUpdate[column];
+      logoFrameSaved = !LOGO_FRAME_COLUMNS.some((column) => column in update);
+      console.warn('Saving event details without logo framing because the database migration is not available yet.');
+      ({ data, error } = await performUpdate(compatibleUpdate, BANNER_FIELDS));
     }
+    if (isMissingFrameColumns(error, BANNER_FRAME_COLUMNS)) {
+      const compatibleUpdate = { ...update } as Database['public']['Tables']['events']['Update'];
+      for (const column of [...BANNER_FRAME_COLUMNS, ...LOGO_FRAME_COLUMNS]) delete compatibleUpdate[column];
+      bannerFrameSaved = !BANNER_FRAME_COLUMNS.some((column) => column in update);
+      logoFrameSaved = logoFrameSaved && !LOGO_FRAME_COLUMNS.some((column) => column in update);
+      console.warn('Saving event details without image framing because the database migration is not available yet.');
+      ({ data, error } = await performUpdate(compatibleUpdate, LEGACY_FIELDS));
+    }
+    if (!error && data) data = withDefaultBannerFrame(data);
     if (error) {
       console.error('[Updating organizer event]', error);
       return NextResponse.json({ error: error.code === '23505' ? 'Event slug already exists' : process.env.NODE_ENV === 'development' ? `Event update failed: ${error.message}` : 'Event could not be updated' }, { status: error.code === '23505' ? 409 : 500 });
@@ -216,7 +239,7 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
       console.error('[Updating organizer event] Database returned values different from the submitted settings', { eventId: params.eventId });
       return NextResponse.json({ error: 'The database did not save the requested registration settings. Please retry or contact RaceDeck support.' }, { status: 500 });
     }
-    return jsonNoStore({ event: data, banner_frame_saved: bannerFrameSaved });
+    return jsonNoStore({ event: data, banner_frame_saved: bannerFrameSaved, logo_frame_saved: logoFrameSaved });
   } catch (error) {
     return errorResponse(error, 'Updating organizer event');
   }

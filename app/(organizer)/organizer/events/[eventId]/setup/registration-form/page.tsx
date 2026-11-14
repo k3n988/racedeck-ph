@@ -3,13 +3,13 @@
 import { ToastFeedback } from '@/components/toast-feedback';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CUSTOM_FIELD_TYPES, CUSTOM_FIELD_TYPE_LABELS, type CustomFieldType } from '@/lib/registration-form/config';
+import { DEFAULT_PERSONAL_INFORMATION_FIELDS, PERSONAL_INFORMATION_FIELDS, type PersonalInformationFieldKey } from '@/lib/registration-form/personal-information-fields';
 
 type Option = { id: string; field_id: string; label: string; value: string; display_order: number };
 type Field = { id: string; label: string; field_type: string; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number; options: Option[] };
 type FieldForm = { label: string; field_type: CustomFieldType; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number };
 
 const blank: FieldForm = { label: '', field_type: 'short_text', section_key: 'additional', is_required: false, is_active: true, display_order: 0 };
-const DEFAULT_FIELDS = ['First name', 'Middle name (optional)', 'Last name', 'Birthdate', 'Gender (optional)', 'Email', 'Contact number', 'Address', 'Emergency contact person', 'Emergency contact phone', 'Relationship to participant'];
 const controlClass = 'mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100';
 
 export default function RegistrationFormPage({ params }: { params: { eventId: string } }) {
@@ -20,6 +20,11 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
   const [error, setError] = useState('');
   const [loadFailed, setLoadFailed] = useState(false);
   const [notice, setNotice] = useState('');
+  const [personalFields, setPersonalFields] = useState<PersonalInformationFieldKey[]>(DEFAULT_PERSONAL_INFORMATION_FIELDS);
+  const [savedPersonalFields, setSavedPersonalFields] = useState<PersonalInformationFieldKey[]>(DEFAULT_PERSONAL_INFORMATION_FIELDS);
+  const [personalFieldsError, setPersonalFieldsError] = useState('');
+  const [personalFieldsNotice, setPersonalFieldsNotice] = useState('');
+  const [savingPersonalFields, setSavingPersonalFields] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -31,8 +36,12 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
       const response = await fetch(`/api/organizer/events/${params.eventId}/registration-form`, { cache: 'no-store' });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? `Could not load registration fields (${response.status}).`);
-      if (!Array.isArray(body)) throw new Error('The registration form returned an unexpected response. Please retry.');
-      setFields(body as Field[]);
+      if (!body || !Array.isArray(body.fields) || !Array.isArray(body.registration_personal_fields)) throw new Error('The registration form returned an unexpected response. Please retry.');
+      setFields(body.fields as Field[]);
+      const selected = PERSONAL_INFORMATION_FIELDS.map((field) => field.key).filter((key) => body.registration_personal_fields.includes(key));
+      setPersonalFields(selected);
+      setSavedPersonalFields(selected);
+      setPersonalFieldsError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Registration form could not be loaded.');
       setLoadFailed(true);
@@ -42,6 +51,32 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
   }, [params.eventId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const personalFieldsChanged = PERSONAL_INFORMATION_FIELDS.some(({ key }) => personalFields.includes(key) !== savedPersonalFields.includes(key));
+
+  async function savePersonalInformationFields() {
+    setSavingPersonalFields(true);
+    setPersonalFieldsError('');
+    setPersonalFieldsNotice('');
+    const orderedFields = PERSONAL_INFORMATION_FIELDS.filter(({ key }) => personalFields.includes(key)).map(({ key }) => key);
+    try {
+      const response = await fetch(`/api/organizer/events/${params.eventId}/registration-form`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registration_personal_fields: orderedFields }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? 'Personal information settings could not be saved.');
+      const saved = PERSONAL_INFORMATION_FIELDS.map(({ key }) => key).filter((key) => body.registration_personal_fields?.includes(key));
+      setPersonalFields(saved);
+      setSavedPersonalFields(saved);
+      setPersonalFieldsNotice('Participant information settings saved.');
+    } catch (cause) {
+      setPersonalFieldsError(cause instanceof Error ? cause.message : 'Personal information settings could not be saved.');
+    } finally {
+      setSavingPersonalFields(false);
+    }
+  }
 
   function open(field?: Field) {
     setEditing(field?.id ?? null);
@@ -82,23 +117,25 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
   return (
     <main className="min-h-full bg-slate-100 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">Event setup</p>
-            <h1 className="mt-1 text-2xl font-extrabold text-[#101c33] sm:text-3xl">Registration Form</h1>
-            <p className="mt-1 text-sm text-slate-600">Choose the information participants need to provide when they register.</p>
-          </div>
-          <button type="button" onClick={() => open()} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-offset-2">
-            <span aria-hidden="true" className="mr-2 text-lg leading-none">+</span> Add custom field
-          </button>
-        </header>
-
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-l-4 border-orange-500 px-5 py-4 sm:px-6">
             <h2 className="font-bold text-[#101c33]">RaceDeck default fields</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">These standard participant details are collected automatically. Add only event-specific questions below; default fields cannot be duplicated.</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Choose which standard participant details to collect. Selected required fields stay required; optional fields can be left blank. Add event-specific questions below.</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              {DEFAULT_FIELDS.map((field) => <span key={field} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">{field}</span>)}
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                <input type="checkbox" aria-label="Select all standard participant fields" checked={personalFields.length === PERSONAL_INFORMATION_FIELDS.length} onChange={(event) => setPersonalFields(event.target.checked ? [...DEFAULT_PERSONAL_INFORMATION_FIELDS] : [])} className="h-4 w-4 accent-orange-600" />
+                Select all
+              </label>
+              {PERSONAL_INFORMATION_FIELDS.map((field) => <label key={field.key} className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700">
+                <input type="checkbox" checked={personalFields.includes(field.key)} onChange={(event) => setPersonalFields((current) => event.target.checked ? [...current, field.key] : current.filter((key) => key !== field.key))} className="h-4 w-4 accent-orange-600" />
+                {field.label} <span className={field.required ? 'font-semibold text-orange-700' : 'text-slate-500'}>{field.required ? 'Required' : 'Optional'}</span>
+              </label>)}
+            </div>
+            {personalFieldsError && <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{personalFieldsError}</p>}
+            {personalFieldsNotice && <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">{personalFieldsNotice}</p>}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <p className="text-xs text-slate-500">{personalFields.length} of {PERSONAL_INFORMATION_FIELDS.length} standard fields selected</p>
+              <button type="button" onClick={() => void savePersonalInformationFields()} disabled={loading || savingPersonalFields || !personalFieldsChanged} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50">{savingPersonalFields ? 'Saving…' : 'Save personal information'}</button>
             </div>
           </div>
           <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs leading-5 text-slate-600 sm:px-6">
@@ -112,7 +149,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
               <h2 className="font-bold text-[#101c33]">Event-specific questions</h2>
               <p className="mt-1 text-sm text-slate-600">Use short or long text, dropdowns, radio choices, checkboxes, or yes/no questions.</p>
             </div>
-            <span className="text-xs font-semibold text-slate-500">{fields.length} custom field{fields.length === 1 ? '' : 's'}</span>
+            <div className="flex flex-wrap items-center gap-3"><span className="text-xs font-semibold text-slate-500">{fields.length} custom field{fields.length === 1 ? '' : 's'}</span><button type="button" onClick={() => open()} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-offset-2"><span aria-hidden="true" className="mr-2 text-lg leading-none">+</span> Add custom field</button></div>
           </div>
 
           {notice && <ToastFeedback message={String(notice)} tone="auto" />}
@@ -158,7 +195,7 @@ export default function RegistrationFormPage({ params }: { params: { eventId: st
         <form role="dialog" aria-modal="true" aria-labelledby="field-dialog-title" onSubmit={save} className="my-auto w-full max-w-lg space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.15em] text-orange-600">Registration form</p>
-            <h2 id="field-dialog-title" className="mt-1 text-xl font-extrabold text-[#101c33]">{editing ? 'Edit custom field' : 'Add custom field'}</h2>
+            <h2 id="field-dialog-title" className="mt-1 text-lg font-bold text-[#101c33]">{editing ? 'Edit custom field' : 'Add custom field'}</h2>
             <p className="mt-1 text-sm text-slate-600">Set the question and how participants will answer it.</p>
           </div>
           {error && <ToastFeedback message={String(error)} tone="auto" />}
@@ -215,7 +252,7 @@ function OptionManager({ eventId, field, onChange }: { eventId: string; field: F
   }
 
   return <div className="max-w-2xl border-t border-slate-100 pt-3 text-sm">
-    <div className="mb-2 flex items-center justify-between"><h4 className="font-bold text-[#101c33]">Answer options</h4><button type="button" disabled={busy} onClick={() => setAdding(!adding)} className="text-xs font-bold text-orange-700 hover:text-orange-800">{adding ? 'Cancel' : '+ Add option'}</button></div>
+    <div className="mb-2 flex items-center justify-between"><h4 className="text-sm font-bold text-[#101c33]">Answer options</h4><button type="button" disabled={busy} onClick={() => setAdding(!adding)} className="text-xs font-bold text-orange-700 hover:text-orange-800">{adding ? 'Cancel' : '+ Add option'}</button></div>
     {field.options.length ? <ul className="space-y-1.5">{field.options.map((option) => <li key={option.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><span className="text-slate-700">{option.label} <span className="text-slate-400">({option.value})</span></span><button type="button" disabled={busy} onClick={() => void remove(option)} className="text-xs font-semibold text-slate-500 hover:text-red-700">Remove</button></li>)}</ul> : <p className="text-xs text-slate-500">No answer choices yet.</p>}
     {error && <ToastFeedback message={String(error)} tone="auto" />}
     {adding && <form onSubmit={add} className="mt-3 grid gap-2 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"><label className="text-xs font-semibold text-slate-600">Option label<input required maxLength={160} value={label} onChange={(event) => setLabel(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Stored value<input maxLength={160} value={value} onChange={(event) => setValue(event.target.value)} placeholder="Defaults to label" className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-normal" /></label><button disabled={busy} className="rounded-lg bg-[#0b2b5b] px-3 py-2 text-xs font-bold text-white hover:bg-[#123b78]">{busy ? 'Adding…' : 'Save option'}</button></form>}

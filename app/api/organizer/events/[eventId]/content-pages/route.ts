@@ -66,8 +66,8 @@ export async function PUT(request: Request, { params }: { params: { eventId: str
     .maybeSingle();
   if (eventError) return errorResponse(eventError, 'Checking event before saving content');
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-  if (event.lifecycle_status !== 'draft' || !['not_submitted', 'needs_changes', 'rejected'].includes(event.review_status)) {
-    return NextResponse.json({ error: 'Event content can only be edited while the event is an editable draft.' }, { status: 409 });
+  if (event.review_status === 'pending_review' || (event.lifecycle_status === 'draft' && event.review_status === 'approved')) {
+    return NextResponse.json({ error: 'Event content cannot be edited while the event is under review.' }, { status: 409 });
   }
 
   const rows = parsed.map((page, display_order) => ({

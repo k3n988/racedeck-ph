@@ -6,9 +6,10 @@ import { createClient } from '@/lib/supabase/server';
 
 const waiverSchema = z.object({
   title: z.string().trim().min(1).max(240),
-  content: z.string().trim().min(1),
+  content: z.string().trim().min(1).max(10000),
 });
 const publishSchema = z.object({ action: z.literal('publish') });
+const retireSchema = z.object({ action: z.literal('retire') });
 
 async function authorize(eventId: string) {
   const context = await loadAuthContext();
@@ -57,6 +58,13 @@ export async function PATCH(request: Request, { params }: { params: { eventId: s
   if (!waiverId) return NextResponse.json({ error: 'Waiver id is required' }, { status: 400 });
   const { data: waiver } = await admin.from('event_waivers').select('*').eq('id', waiverId).eq('event_id', params.eventId).eq('organization_id', result.event.organization_id).maybeSingle();
   if (!waiver) return NextResponse.json({ error: 'Waiver not found for this event' }, { status: 404 });
+  if (typeof body === 'object' && body !== null && 'action' in body && body.action === 'retire') {
+    const parsed = retireSchema.safeParse(body);
+    if (!parsed.success || waiver.status !== 'published') return NextResponse.json({ error: 'Only the active published waiver can be removed from future registrations.' }, { status: 409 });
+    const { data, error } = await admin.from('event_waivers').update({ status: 'retired' }).eq('id', waiver.id).eq('event_id', params.eventId).eq('organization_id', result.event.organization_id).eq('status', 'published').select('*').single();
+    if (error) { console.error('Unable to retire event waiver', error); return NextResponse.json({ error: 'The waiver could not be removed from future registrations.' }, { status: 500 }); }
+    return NextResponse.json(data);
+  }
   if (typeof body === 'object' && body !== null && 'action' in body && body.action === 'publish') {
     const parsed = publishSchema.safeParse(body);
     if (!parsed.success || waiver.status !== 'draft') return NextResponse.json({ error: 'Only a draft waiver can be activated' }, { status: 409 });

@@ -365,7 +365,7 @@ export type Database = {
           race_category_id: string
           rank_snapshot: number | null
           registration_id: string
-          result_id: string
+          result_id: string | null
           revocation_reason: string | null
           revoked_at: string | null
           revoked_by: string | null
@@ -398,7 +398,7 @@ export type Database = {
           race_category_id: string
           rank_snapshot?: number | null
           registration_id: string
-          result_id: string
+          result_id?: string | null
           revocation_reason?: string | null
           revoked_at?: string | null
           revoked_by?: string | null
@@ -1416,6 +1416,9 @@ export type Database = {
           latitude: number | null
           lifecycle_status: Database["public"]["Enums"]["event_lifecycle_status"]
           logo_url: string | null
+          logo_position_x: number
+          logo_position_y: number
+          logo_zoom: number
           longitude: number | null
           name: string
           organization_id: string
@@ -1450,6 +1453,9 @@ export type Database = {
           latitude?: number | null
           lifecycle_status?: Database["public"]["Enums"]["event_lifecycle_status"]
           logo_url?: string | null
+          logo_position_x?: number
+          logo_position_y?: number
+          logo_zoom?: number
           longitude?: number | null
           name: string
           organization_id: string
@@ -1484,6 +1490,9 @@ export type Database = {
           latitude?: number | null
           lifecycle_status?: Database["public"]["Enums"]["event_lifecycle_status"]
           logo_url?: string | null
+          logo_position_x?: number
+          logo_position_y?: number
+          logo_zoom?: number
           longitude?: number | null
           name?: string
           organization_id?: string
@@ -4044,6 +4053,15 @@ export type Database = {
           p_event_id: string
           p_decision: Database["public"]["Enums"]["event_review_status"]
           p_feedback?: string | null
+        }
+        Returns: string
+      }
+      save_event_certificate_settings: {
+        Args: {
+          p_category_ids: string[]
+          p_event_id: string
+          p_organization_id: string
+          p_settings: Json
         }
         Returns: string
       }
