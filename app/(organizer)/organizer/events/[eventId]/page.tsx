@@ -23,7 +23,6 @@ const operationsLinks: WorkspaceLink[] = [
   { label: 'Promo Codes', href: 'promo-codes', description: 'Create and manage registration discounts.', icon: TicketCheck },
   { label: 'Bib Management', href: 'bib-management', description: 'Assign and track participant bib numbers.', icon: ClipboardList },
   { label: 'Kit Claiming', href: 'race-kit-claiming', description: 'Coordinate race-kit pickup on event day.', icon: PackageCheck },
-  { label: 'Announcements', href: 'announcements', description: 'Share event updates with participants.', icon: Megaphone },
 ];
 const insightsLinks: WorkspaceLink[] = [
   { label: 'Results', href: 'results', description: 'Publish and manage race results.', icon: Flag },

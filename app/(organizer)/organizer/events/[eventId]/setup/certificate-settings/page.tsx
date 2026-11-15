@@ -37,7 +37,7 @@ const empty: Settings = {
   category_ids: [],
 };
 
-const controlClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500';
+const controlClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-normal text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500';
 type ImageReferenceKey = 'event_logo_reference' | 'organizer_logo_reference' | 'signature_image_reference';
 type PendingImage = { file: File; url: string };
 
@@ -76,6 +76,7 @@ export default function CertificateSettingsPage({ params }: { params: { eventId:
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [issuedCount, setIssuedCount] = useState(0);
+  const [issuedCountAvailable, setIssuedCountAvailable] = useState(true);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -93,6 +94,7 @@ export default function CertificateSettingsPage({ params }: { params: { eventId:
       setEvent(data.event ?? { name: 'Event', event_date: '', logo_url: null, organizer_logo_url: null });
       setCategories(Array.isArray(data.categories) ? data.categories : []);
       setTemplates(Array.isArray(data.templates) ? data.templates : []);
+      setIssuedCountAvailable(typeof data.issued_count === 'number');
       setIssuedCount(typeof data.issued_count === 'number' ? data.issued_count : 0);
       setSettings(data.settings ? {
         ...empty,
@@ -243,9 +245,15 @@ export default function CertificateSettingsPage({ params }: { params: { eventId:
   const previewDate = event.event_date ? new Date(`${event.event_date}T12:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }) : 'Event date';
 
   return <main className="mx-auto max-w-6xl space-y-6 bg-[#f5f7fa] p-4 sm:p-6 lg:p-8">
-    {message && !loading && <ToastFeedback message={String(message)} tone={isError ? 'error' : 'auto'}>{isError ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{message}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Try again</button></div> : undefined}</ToastFeedback>}
+    {message && !loading && !loadFailed && <ToastFeedback message={String(message)} tone={isError ? 'error' : 'auto'}>{isError ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{message}</span><button type="button" onClick={() => void load()} className="shrink-0 font-semibold underline underline-offset-2">Try again</button></div> : undefined}</ToastFeedback>}
 
-    {loading ? <div role="status" className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"><span className="sr-only">Loading certificate settings…</span><div className="h-5 w-48 animate-pulse rounded bg-slate-200" /><div className="h-32 animate-pulse rounded-xl bg-slate-100" /><div className="h-32 animate-pulse rounded-xl bg-slate-100" /></div> : !loadFailed && <form onSubmit={(event) => void save(event)} className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.8fr)]">
+    {loading ? <div role="status" className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"><span className="sr-only">Loading certificate settings…</span><div className="h-5 w-48 animate-pulse rounded bg-slate-200" /><div className="h-32 animate-pulse rounded-xl bg-slate-100" /><div className="h-32 animate-pulse rounded-xl bg-slate-100" /></div> : loadFailed ? <section role="alert" className="rounded-2xl border border-red-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="mx-auto max-w-xl text-center">
+        <h1 className="text-xl font-bold text-[#071b41]">Certificate settings couldn’t load</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">{message || 'Check your connection and try again.'}</p>
+        <button type="button" onClick={() => void load()} disabled={loading} className="mt-5 min-h-11 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-orange-700 disabled:opacity-60">Try again</button>
+      </div>
+    </section> : <form onSubmit={(event) => void save(event)} className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.8fr)]">
       <div className="space-y-5">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <label className="flex cursor-pointer items-start gap-3">
@@ -317,7 +325,7 @@ export default function CertificateSettingsPage({ params }: { params: { eventId:
         </section>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-          <div className="text-sm text-slate-600">{issuedCount.toLocaleString()} certificates issued</div>
+          <div className="text-sm text-slate-600">{issuedCountAvailable ? `${issuedCount.toLocaleString()} certificates issued` : 'Issued certificate count unavailable'}</div>
           <div className="flex flex-wrap justify-end gap-3">
             <button type="button" onClick={() => void issueCertificates()} disabled={busy || dirty || !settings.enabled || !settings.template_id || settings.eligibility_mode !== 'organizer_defined'} title={dirty ? 'Save settings before issuing certificates' : undefined} className="min-h-11 rounded-xl border border-orange-300 bg-white px-5 py-2.5 text-sm font-bold text-orange-700 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50">Issue &amp; email all participants</button>
             <button disabled={busy} className="min-h-11 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200 disabled:cursor-wait disabled:opacity-60">{busy ? 'Saving…' : 'Save certificate settings'}</button>
@@ -326,19 +334,25 @@ export default function CertificateSettingsPage({ params }: { params: { eventId:
       </div>
 
       <aside className="self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:sticky xl:top-6">
-        <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-orange-600">Preview</p><h2 className="mt-1 text-lg font-bold text-[#071b41]">Finisher certificate</h2></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${settings.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{settings.enabled ? 'Enabled' : 'Disabled'}</span></div>
-        <div ref={previewRef} className="relative mt-4 aspect-[1.414/1] overflow-hidden rounded-xl border border-[#d8c79a] bg-[#fffdf7] bg-cover bg-center p-5 text-center shadow-inner sm:p-7" style={{ backgroundImage: `url("${backgroundUpload?.url ?? layout.background_reference ?? selectedTemplate?.background_asset_reference ?? ''}")` }}>
-          <div className="flex items-center justify-center gap-5">{settings.event_logo_reference && <Image src={imageUploads.event_logo_reference?.url ?? settings.event_logo_reference} alt="Event logo" width={84} height={64} unoptimized className="h-14 w-20 object-contain" />}<div className="grid h-12 w-12 place-items-center rounded-full border border-[#d8c79a] text-xl font-black text-[#b08c3f]">R</div>{settings.organizer_logo_reference && <Image src={imageUploads.organizer_logo_reference?.url ?? settings.organizer_logo_reference} alt="Organizer logo" width={84} height={64} unoptimized className="h-14 w-20 object-contain" />}</div>
-          <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.2em] text-[#9b7c3d]">{event.name}</p>
-          <p className="mt-5 text-xs uppercase tracking-[0.18em] text-slate-500">{selectedTemplate?.name ?? 'Finisher certificate'}</p>
-          <h3 className="mt-1 text-lg font-bold text-[#071b41]">{settings.certificate_title || selectedTemplate?.certificate_title || 'Certificate of Completion'}</h3>
-          <button type="button" aria-label="Drag to position sample participant name" onPointerDown={(pointerEvent) => pointerEvent.currentTarget.setPointerCapture(pointerEvent.pointerId)} onPointerMove={moveParticipantName} className="absolute z-10 max-w-[85%] touch-none cursor-move whitespace-nowrap rounded border border-dashed border-orange-500 bg-white/85 px-3 py-1 text-base font-semibold text-slate-800 shadow-sm" style={{ left: `${layout.participant_name_position.x}%`, top: `${layout.participant_name_position.y}%`, transform: 'translate(-50%, -50%)' }}>Sample Participant Name</button>
-          <p className="absolute bottom-4 left-0 right-0 text-xs text-slate-500">Participant Â· {previewDate}</p>
-          {settings.certificate_message && <p className="mt-4 text-xs leading-5 text-slate-600">{settings.certificate_message}</p>}
-          {settings.signature_image_reference && <Image src={imageUploads.signature_image_reference?.url ?? settings.signature_image_reference} alt="Signature" width={160} height={72} unoptimized className="mx-auto mt-5 h-12 max-w-40 object-contain" />}
-          {settings.signatory_name && <p className="mt-2 border-t border-slate-300 pt-2 text-sm font-semibold text-slate-700">{settings.signatory_name}<span className="block text-xs font-normal text-slate-500">{settings.signatory_position}</span></p>}
+        <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-orange-600">Preview</p><h2 className="mt-1 text-lg font-bold text-[#071b41]">Certificate preview</h2></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${settings.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{settings.enabled ? 'Enabled' : 'Disabled'}</span></div>
+        <div ref={previewRef} className="relative mt-4 aspect-[1.414/1] overflow-hidden rounded-xl border border-[#d8c79a] bg-[#fffdf7] bg-cover bg-center text-center shadow-inner" style={{ backgroundImage: `url("${backgroundUpload?.url ?? layout.background_reference ?? selectedTemplate?.background_asset_reference ?? ''}")` }}>
+          <div className="absolute left-[8%] right-[8%] top-[6%] flex h-[18%] items-center justify-center gap-3 sm:gap-5">{settings.event_logo_reference && <Image src={imageUploads.event_logo_reference?.url ?? settings.event_logo_reference} alt="Event logo" width={84} height={64} unoptimized className="h-full w-16 object-contain sm:w-20" />}<div className="grid aspect-square h-full place-items-center rounded-full border border-[#d8c79a] bg-white/70 text-lg font-black text-[#b08c3f] sm:text-xl">R</div>{settings.organizer_logo_reference && <Image src={imageUploads.organizer_logo_reference?.url ?? settings.organizer_logo_reference} alt="Organizer logo" width={84} height={64} unoptimized className="h-full w-16 object-contain sm:w-20" />}</div>
+          <p className="absolute left-[8%] right-[8%] top-[27%] truncate text-[9px] font-bold uppercase tracking-[0.15em] text-[#9b7c3d] sm:text-[10px] sm:tracking-[0.2em]">{event.name}</p>
+          <p className="absolute left-[8%] right-[8%] top-[36%] truncate text-[9px] uppercase tracking-[0.12em] text-slate-500 sm:text-[10px] sm:tracking-[0.18em]">{selectedTemplate?.name ?? 'Participation certificate'}</p>
+          <h3 className="absolute left-[8%] right-[8%] top-[43%] line-clamp-2 text-sm font-bold leading-tight text-[#071b41] sm:text-lg">{settings.certificate_title || selectedTemplate?.certificate_title || 'Certificate of Completion'}</h3>
+          <p className="absolute left-[8%] right-[8%] top-[56%] text-[9px] text-slate-600 sm:text-[10px]">Proudly presented to</p>
+          <button type="button" aria-label="Drag to position sample participant name; use arrow keys to adjust" onPointerDown={(pointerEvent) => pointerEvent.currentTarget.setPointerCapture(pointerEvent.pointerId)} onPointerMove={moveParticipantName} onKeyDown={(keyEvent) => {
+            const step = keyEvent.shiftKey ? 5 : 1;
+            if (keyEvent.key === 'ArrowLeft') { keyEvent.preventDefault(); updateLayout({ participant_name_position: { ...layout.participant_name_position, x: Math.max(10, layout.participant_name_position.x - step) } }); }
+            if (keyEvent.key === 'ArrowRight') { keyEvent.preventDefault(); updateLayout({ participant_name_position: { ...layout.participant_name_position, x: Math.min(90, layout.participant_name_position.x + step) } }); }
+            if (keyEvent.key === 'ArrowUp') { keyEvent.preventDefault(); updateLayout({ participant_name_position: { ...layout.participant_name_position, y: Math.max(20, layout.participant_name_position.y - step) } }); }
+            if (keyEvent.key === 'ArrowDown') { keyEvent.preventDefault(); updateLayout({ participant_name_position: { ...layout.participant_name_position, y: Math.min(85, layout.participant_name_position.y + step) } }); }
+          }} className="absolute z-10 max-w-[85%] touch-none cursor-grab whitespace-nowrap rounded border border-dashed border-orange-500 bg-white/90 px-2 py-1 text-xs font-semibold text-slate-800 shadow-sm active:cursor-grabbing sm:px-3 sm:text-sm" style={{ left: `${layout.participant_name_position.x}%`, top: `${layout.participant_name_position.y}%`, transform: 'translate(-50%, -50%)' }}>Sample Participant Name</button>
+          {settings.certificate_message && <p className="absolute left-[8%] right-[8%] top-[77%] line-clamp-2 text-[9px] leading-3 text-slate-600 sm:text-[10px] sm:leading-4">{settings.certificate_message}</p>}
+          <p className="absolute bottom-[6%] left-[8%] right-[8%] truncate text-[9px] text-slate-500 sm:text-[10px]">Participant · {previewDate}</p>
+          {(settings.signatory_name || settings.signature_image_reference) && <div className="absolute bottom-[5%] right-[8%] hidden max-w-[25%] text-[8px] text-slate-600 sm:block">{settings.signature_image_reference && <Image src={imageUploads.signature_image_reference?.url ?? settings.signature_image_reference} alt="Signature" width={100} height={36} unoptimized className="mx-auto h-6 max-w-20 object-contain" />}{settings.signatory_name && <span className="block truncate border-t border-slate-400 pt-0.5">{settings.signatory_name}</span>}</div>}
         </div>
-        <p className="mt-3 text-xs leading-5 text-slate-500">Drag the sample name to set where each participant’s name appears. Save settings, then issue certificates to queue one email per confirmed participant.</p>
+        <p className="mt-3 text-xs leading-5 text-slate-500">Drag the sample name, or focus it and use the arrow keys to adjust its position. Save settings, then issue certificates to queue one email per confirmed participant.</p>
       </aside>
     </form>}
   </main>;

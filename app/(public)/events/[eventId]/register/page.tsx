@@ -408,7 +408,7 @@ function RegistrantFields({
     const price = Number(earlyBirdActive ? category.early_bird_fee : category.regular_registration_fee);
     const periodEnd = earlyBirdActive ? category.early_bird_deadline : category.registration_closes_at ?? data.event.registration_closes_at;
     const includedItems = data.kits.filter((kit) => kit.category_id === null || kit.category_id === category.id)
-      .flatMap((kit) => kit.race_kit_items ?? []).filter((item) => item.is_active)
+      .flatMap((kit) => kit.race_kit_items ?? []).filter((item) => item.is_active && item.item_name.trim().toLowerCase() !== "race kit claiming")
       .sort((a, b) => a.display_order - b.display_order);
     const distanceLabel = category.distance_km === null ? category.name : `${category.distance_km}K`;
     return <label key={category.id} className={`block rounded-xl border p-4 transition focus-within:ring-2 focus-within:ring-orange-200 ${available ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'} ${selected ? 'border-orange-500 bg-orange-50/60 shadow-sm' : 'border-slate-200 bg-slate-50 hover:border-orange-300 hover:bg-white'}`}>
@@ -514,8 +514,8 @@ function RegistrantFields({
 
         {selectedKits.length > 0 && <section>
           <h2 className="text-lg font-bold text-slate-900">Included race kit</h2><p className="mt-1 text-sm text-slate-600">Items configured for this selected category. Select a size or option for every item that offers choices.</p>
-          <div className="mt-4 space-y-3">{selectedKits.map((item) => { const details = kitDetails(item.details); return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
-            <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{item.item_name}</h3><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Included</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
+          <div className="mt-4 space-y-3">{selectedKits.map((item) => { const details = kitDetails(item.details); const isClaimingItem = item.item_name.trim().toLocaleLowerCase() === "race kit claiming"; return <article key={item.id} className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[minmax(0,1fr)_200px]">
+            <div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-[#071b41]">{isClaimingItem ? "Pickup or delivery" : item.item_name}</h3><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${isClaimingItem ? "bg-orange-50 text-orange-800" : "bg-emerald-50 text-emerald-700"}`}>{isClaimingItem ? "Required" : "Included"}</span></div>{details.description && <p className="mt-1 text-sm text-slate-600">{details.description}</p>}
               {details.variants.length > 0 && <VariantChoiceGroup label={item.item_name.trim().toLowerCase() === "race kit claiming" ? "Pickup or delivery" : "Size / option"} name={`kit-${registrant.id}-${item.id}`} value={registrant.kitSelections[item.id] ?? ""} variants={details.variants} unavailableVariants={item.unavailable_variants} required={item.is_required} onChange={(value) => onChange({ kitSelections: { ...registrant.kitSelections, [item.id]: value } })} />}
             </div>
             {details.images.length > 0 && <ProductImageCarousel images={details.images} label={item.item_name} />}
@@ -887,7 +887,7 @@ export default function RegisterPage({
                       const includedItems = data.kits
                         .filter((kitConfig) => kitConfig.category_id === null || kitConfig.category_id === category?.id)
                         .flatMap((kitConfig) => kitConfig.race_kit_items ?? [])
-                        .filter((item) => item.is_active)
+                        .filter((item) => item.is_active && item.item_name.trim().toLocaleLowerCase() !== "race kit claiming")
                         .sort((a, b) => a.display_order - b.display_order);
                       const selectedKitOptions = includedItems.filter((item) => registrant.kitSelections[item.id]);
                       const label = category?.distance_km ? `${category.distance_km}K` : category?.name ?? "Race category";

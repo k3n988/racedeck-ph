@@ -1,10 +1,14 @@
 'use client';
 
 import { ToastFeedback } from '@/components/toast-feedback';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { EventResultsShowcase } from '@/components/public/event-results-showcase';
+import ResultsTable from '@/app/(public)/results/results-table';
+import type { PublicWinnerGroup } from '@/lib/public/events';
 
 type Batch = { id: string; validation_status: string; publication_status: string; row_count: number; valid_row_count: number; unmatched_row_count: number };
 type Preview = { id: string; source_row_number: number; source_bib: string; corrected_bib?: string; validation_status: string; participant_display_name: string | null; result_status: string };
+type ShowcaseData = { event: { id: string; name: string; event_date: string; banner_url: string | null }; groups: PublicWinnerGroup[]; published: boolean };
 
 const controlClass = 'min-h-11 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500';
 const statusClass = (status: string) => status === 'valid' || status === 'published' ? 'bg-emerald-50 text-emerald-700' : status === 'unmatched' || status === 'invalid' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600';
@@ -16,6 +20,22 @@ export default function OrganizerEventResultsPage({ params }: { params: { eventI
   const [busy, setBusy] = useState(false);
   const [editingRow, setEditingRow] = useState<string | null>(null);
   const [bibDraft, setBibDraft] = useState('');
+  const [showcase, setShowcase] = useState<ShowcaseData | null>(null);
+  const [showcaseError, setShowcaseError] = useState('');
+
+  const loadShowcase = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/organizer/events/${params.eventId}/results`, { cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? 'Published event results could not be loaded.');
+      setShowcase(body as ShowcaseData);
+      setShowcaseError('');
+    } catch (error) {
+      setShowcaseError(error instanceof Error ? error.message : 'Published event results could not be loaded.');
+    }
+  }, [params.eventId]);
+
+  useEffect(() => { void loadShowcase(); }, [loadShowcase]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,6 +107,7 @@ export default function OrganizerEventResultsPage({ params }: { params: { eventI
       if (!response.ok) throw new Error(body.error ?? 'Results could not be published.');
       setBatch({ ...batch, publication_status: 'published' });
       setMessage(`Results published. Notifications were queued for ${body.notified_participants ?? 0} participant${body.notified_participants === 1 ? '' : 's'}.`);
+      await loadShowcase();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Results could not be published.');
     } finally {
@@ -107,6 +128,11 @@ export default function OrganizerEventResultsPage({ params }: { params: { eventI
       </header>
 
       {message && <ToastFeedback message={String(message)} tone="auto" />}
+
+      {showcaseError && <ToastFeedback message={showcaseError} tone="error" />}
+      {showcase?.published && <EventResultsShowcase eventName={showcase.event.name} eventDate={showcase.event.event_date} bannerUrl={showcase.event.banner_url} groups={showcase.groups}>
+        <ResultsTable initial={{ event: showcase.event.id }} updateUrl={false} />
+      </EventResultsShowcase>}
 
       <form onSubmit={(event) => void upload(event)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-5"><h2 className="text-lg font-bold text-[#071b41]">Import results CSV</h2><p className="mt-1 text-sm text-slate-600">Required column: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">bib</code> or <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">bib_number</code>. Optional columns: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">status</code> and <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">gun_time</code>.</p></div>

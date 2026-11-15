@@ -42,7 +42,7 @@ export default function OrganizerEventPreview({ params }: { params: { eventId: s
       const draftPages = (eventBody.content_pages ?? []) as PreviewPage[];
       setContentPages(draftPages);
       const firstVisiblePage = draftPages.filter((page) => page.visible).sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0))[0];
-      setTab(firstVisiblePage?.id ?? 'announcements');
+      setTab(firstVisiblePage?.id ?? 'event-details');
       const publicBody = contentResponse?.ok ? await contentResponse.json() : null;
       const publicEvent = publicBody?.event as PublicEventDetails | undefined;
       if (publicEvent && publicEvent.id === eventBody.event.id) {
@@ -50,7 +50,7 @@ export default function OrganizerEventPreview({ params }: { params: { eventId: s
         const publicPages = publicEvent.content_pages ?? [];
         setContentPages(publicPages);
         const firstPublicPage = publicPages[0];
-        setTab(firstPublicPage?.id ?? 'announcements');
+        setTab(firstPublicPage?.id ?? 'event-details');
         setEvent({ ...eventBody.event, ...publicEvent, lifecycle_status: publicEvent.event_status ?? eventBody.event.lifecycle_status });
       } else {
         setEvent(eventBody.event);
@@ -69,10 +69,9 @@ export default function OrganizerEventPreview({ params }: { params: { eventId: s
   const mechanicsPage = contentPages.find((page) => page.id === 'race-mechanics')?.content ?? '';
   const mechanics = hasRichContent(mechanicsPage) ? mechanicsPage : text.mechanics || content?.description && splitContent(content.description).mechanics;
   const visiblePages = contentPages.filter((page) => page.visible).sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0));
-  const tabs = contentPages.length ? [...visiblePages, { id: 'announcements', title: 'Announcements', type: 'system' as const, content: '', visible: true }] : [
+  const tabs = visiblePages.length ? visiblePages : [
     { id: 'event-details', title: 'Event Details', type: 'system' as const, content: '', visible: true },
     { id: 'race-mechanics', title: 'Race Mechanics', type: 'system' as const, content: '', visible: true },
-    { id: 'announcements', title: 'Announcements', type: 'system' as const, content: '', visible: true },
     { id: 'faqs', title: 'FAQs', type: 'system' as const, content: '', visible: true },
   ];
   const activeContentPage = contentPages.find((page) => page.id === tab);
@@ -115,11 +114,6 @@ export default function OrganizerEventPreview({ params }: { params: { eventId: s
           {tab === 'race-mechanics' && (
             <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-8">
               {mechanics ? <div className="text-base leading-8 text-slate-600"><ContentEditor value={mechanics} onChange={() => undefined} editorLabel="Race mechanics preview" editable={false} /></div> : <p className="text-base leading-8 text-slate-500">Race mechanics will appear here after you add them in Content &amp; Media.</p>}
-            </section>
-          )}
-          {tab === 'announcements' && (
-            <section className="space-y-4">
-              {content?.announcements?.length ? content.announcements.map((item) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="font-bold text-[#071b41]">{item.title}</h2><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.message}</p></article>) : <PreviewEmpty text="Published event announcements will appear here." />}
             </section>
           )}
           {tab === 'faqs' && (faqContent ? <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-8"><ContentEditor value={faqContent} onChange={() => undefined} editorLabel="Frequently asked questions preview" editable={false} /></section> : <PreviewEmpty text="Frequently asked questions will appear here after you add them." />)}

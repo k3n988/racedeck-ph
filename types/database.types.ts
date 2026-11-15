@@ -3020,7 +3020,7 @@ export type Database = {
       }
       race_kit_claims: {
         Row: {
-          bib_id: string
+          bib_id: string | null
           category_id: string
           claim_method: Database["public"]["Enums"]["race_kit_claim_method"]
           claimed_at: string
@@ -3035,7 +3035,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          bib_id: string
+          bib_id?: string | null
           category_id: string
           claim_method: Database["public"]["Enums"]["race_kit_claim_method"]
           claimed_at?: string

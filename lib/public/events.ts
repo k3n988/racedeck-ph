@@ -60,7 +60,6 @@ export type PublicEventDetails = PublicEventCard & {
   partners: Array<{ id: string; name: string; logo_url: string | null; partner_type: string | null }>;
   partners_load_error: boolean;
   organizer_details: { name: string; slug: string; logo_url: string | null; description: string | null; website: string | null; social_links: unknown } | null;
-  announcements: Array<{ id: string; title: string; message: string; published_at: string | null }>;
   results_available: boolean;
 };
 type EventRow = { id: string; organization_id: string; slug: string; name: string; banner_url: string | null; banner_position_x?: number | null; banner_position_y?: number | null; banner_zoom?: number | null; logo_url: string | null; logo_position_x?: number | null; logo_position_y?: number | null; logo_zoom?: number | null; description: string | null; event_date: string; start_time: string | null; venue: string | null; address: string | null; social_links: EventSocialLinks | null; registration_availability: string; registration_opens_at: string | null; registration_closes_at: string | null; assembly_time: string | null; gun_start_time: string | null; cutoff_time: string | null; overall_capacity: number | null; is_featured?: boolean; created_at?: string; lifecycle_status?: string };
@@ -166,9 +165,15 @@ function card(event: EventRow, categories: CategoryRow[], organizer: { name: str
   const closesAt = event.registration_closes_at ? new Date(event.registration_closes_at).getTime() : null;
   const closingSoon = availability === 'open' && closesAt !== null && closesAt > Date.now() && closesAt <= Date.now() + 7 * 24 * 60 * 60 * 1000;
   const finalAvailability = closingSoon ? 'closing_soon' : availability;
-  const registrationEnabled = event.lifecycle_status !== 'completed' && ['open', 'closing_soon'].includes(finalAvailability) && availableCategories.length > 0 && !overallCapacityReached;
+  const today = manilaDate(new Date());
+  const eventPeriod: PublicEventCard['event_period'] = event.lifecycle_status === 'completed' || event.event_date < today
+    ? 'past'
+    : event.lifecycle_status === 'ongoing'
+      ? 'ongoing'
+      : 'upcoming';
+  const registrationEnabled = eventPeriod !== 'past' && ['open', 'closing_soon'].includes(finalAvailability) && availableCategories.length > 0 && !overallCapacityReached;
   const priceAvailable = event.lifecycle_status !== 'completed' && !['closed', 'sold_out'].includes(finalAvailability);
-  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, banner_position_x: event.banner_position_x ?? 50, banner_position_y: event.banner_position_y ?? 50, banner_zoom: event.banner_zoom ?? 1, event_date: event.event_date, venue: event.venue, address: event.address, organizer, social_links: event.social_links, distances, category_labels: categoryLabels, registration_availability: finalAvailability, registration_closes_at: event.registration_closes_at, starting_registration_fee: priceAvailable && fees.length ? Math.min(...fees) : null, registration_enabled: registrationEnabled, event_status: event.lifecycle_status ?? null, results_available: false, poster_fallback: false, event_period: 'upcoming' };
+  return { id: event.id, slug: event.slug, name: event.name, banner_url: event.banner_url, banner_position_x: event.banner_position_x ?? 50, banner_position_y: event.banner_position_y ?? 50, banner_zoom: event.banner_zoom ?? 1, event_date: event.event_date, venue: event.venue, address: event.address, organizer, social_links: event.social_links, distances, category_labels: categoryLabels, registration_availability: finalAvailability, registration_closes_at: event.registration_closes_at, starting_registration_fee: priceAvailable && fees.length ? Math.min(...fees) : null, registration_enabled: registrationEnabled, event_status: event.lifecycle_status ?? null, results_available: false, poster_fallback: false, event_period: eventPeriod };
 }
 export const effectiveAvailability = effectiveRegistrationAvailability;
 function extractTagline(description: string | null) {
@@ -248,8 +253,8 @@ export async function getHomepagePublicEvents(): Promise<HomepagePublicEventsDat
   const today = manilaDate(new Date());
   const events = rows.map((event) => {
     const poster = !event.banner_url ? posterByEvent.get(event.id) ?? null : null;
-    const isOngoing = event.lifecycle_status === 'ongoing';
-    const eventPeriod: PublicEventCard['event_period'] = isOngoing ? 'ongoing' : event.lifecycle_status === 'completed' || event.event_date < today ? 'past' : 'upcoming';
+    const isPast = event.lifecycle_status === 'completed' || event.event_date < today;
+    const eventPeriod: PublicEventCard['event_period'] = isPast ? 'past' : event.lifecycle_status === 'ongoing' ? 'ongoing' : 'upcoming';
     const eventCard = card({ ...event, banner_url: event.banner_url ?? poster, social_links: event.social_links ?? null }, categoriesByEvent.get(event.id) ?? [], organizationsById.get(event.organization_id) ?? null);
     return {
       ...eventCard,
@@ -366,13 +371,12 @@ export async function getPublicEvents(input: { search?: string; location?: strin
 export async function getPublicEventDetails(identifier: string): Promise<PublicEventDetails | null> {
   noStore();
   const event = await getVisibleEvent(identifier); if (!event) return null; const admin = createAdminClient(); const db = admin as unknown as SupabaseClient;
-  const [categories, organizer, schedules, routes, partners, kits, announcements, resultBatches, contentImages, contentPages] = await Promise.all([
+  const [categories, organizer, schedules, routes, partners, kits, resultBatches, contentImages, contentPages] = await Promise.all([
     categoriesForEvent(event.id), organizerForEvent(event.organization_id),
     admin.from('event_schedules').select('id,label,scheduled_at,notes').eq('event_id', event.id).order('scheduled_at'),
     admin.from('event_routes').select('id,category_label,route_map_url,starting_point,finish_point,description').eq('event_id', event.id).order('id'),
     admin.from('event_partners').select('id,name,logo_url,partner_type').eq('event_id', event.id).order('display_order').order('name'),
     admin.from('race_kit_configs').select('id,category_id,name,description,race_kit_items(id,item_name,quantity,details)').eq('event_id', event.id).eq('status', 'active').order('name'),
-    admin.from('announcements').select('id,title,message,published_at').eq('event_id', event.id).in('status', ['published', 'sent']).order('published_at', { ascending: false }),
     admin.from('result_batches').select('id').eq('event_id', event.id).eq('publication_status', 'published').limit(1),
     db.from('event_content_images').select('id,image_url,display_order').eq('event_id', event.id).order('display_order').order('created_at'),
     db.from('event_content_pages').select('page_key,title,page_type,content,is_visible,display_order').eq('event_id', event.id).eq('is_visible', true).order('display_order').order('created_at'),
@@ -397,7 +401,7 @@ export async function getPublicEventDetails(identifier: string): Promise<PublicE
   const detailPoster = event.banner_url ? null : contentImages.data?.[0]?.image_url ?? null;
   const displayEvent = { ...event, banner_url: event.banner_url ?? detailPoster };
   const categoryViews = categories.map((category) => ({ ...category, registration_availability: ['sold_out', 'closed'].includes(category.registration_availability) ? category.registration_availability : availability, registration_fee: getCategoryPricing(category).amount, regular_registration_fee: Number(category.registration_fee), early_bird_fee: category.early_bird_fee === null ? null : Number(category.early_bird_fee), early_bird_deadline: category.early_bird_deadline, available_slots: category.max_slots === null ? null : Math.max(0, category.max_slots - category.confirmed_count) }));
-  return { ...card(displayEvent, categories, organizer), poster_fallback: Boolean(detailPoster), description: event.description, tagline: extractTagline(event.description), logo_url: event.logo_url, logo_position_x: event.logo_position_x ?? 50, logo_position_y: event.logo_position_y ?? 50, logo_zoom: event.logo_zoom ?? 1, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], content_pages: (contentPages.data ?? []).map((page) => ({ id: page.page_key, title: page.title, type: page.page_type as 'custom' | 'system', content: page.content, visible: page.is_visible, display_order: page.display_order })), kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: eventPartners, partners_load_error: partnersLoadError, organizer_details: organizer, announcements: announcements.data ?? [], results_available: (resultBatches.data?.length ?? 0) > 0 };
+  return { ...card(displayEvent, categories, organizer), poster_fallback: Boolean(detailPoster), description: event.description, tagline: extractTagline(event.description), logo_url: event.logo_url, logo_position_x: event.logo_position_x ?? 50, logo_position_y: event.logo_position_y ?? 50, logo_zoom: event.logo_zoom ?? 1, start_time: event.start_time, registration_opens_at: event.registration_opens_at, assembly_time: event.assembly_time, gun_start_time: event.gun_start_time, cutoff_time: event.cutoff_time, overall_capacity: event.overall_capacity, categories: categoryViews, schedules: schedules.data ?? [], routes: routes.data ?? [], content_images: contentImages.data ?? [], content_pages: (contentPages.data ?? []).map((page) => ({ id: page.page_key, title: page.title, type: page.page_type as 'custom' | 'system', content: page.content, visible: page.is_visible, display_order: page.display_order })), kits: (kits.data ?? []).map((kit) => ({ id: kit.id, category_id: kit.category_id, name: kit.name, description: kit.description, items: kit.race_kit_items ?? [] })), partners: eventPartners, partners_load_error: partnersLoadError, organizer_details: organizer, results_available: (resultBatches.data?.length ?? 0) > 0 };
 }
 export async function getPublicResults(input: { event?: string; participant?: string; bib?: string; category?: string; page?: number }) {
   const admin = createAdminClient(); const page = Math.max(1, input.page ?? 1);
@@ -408,4 +412,53 @@ export async function getPublicResults(input: { event?: string; participant?: st
   if (input.category?.trim()) query = query.ilike('category_name', `%${input.category.trim().replace(/[%_]/g, '\\$&')}%`);
   const { data, count, error } = await query.order('event_id').order('overall_rank', { ascending: true, nullsFirst: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1); if (error) throw new Error('Public results could not be loaded');
   return { results: (data ?? []).map((row) => ({ event_id: row.event_id, bib: row.bib_code ?? row.bib_number, participant_name: row.participant_display_name, category: row.category_name, gun_time: row.gun_time, overall_rank: row.overall_rank, classification_rank: row.classification_rank, category_rank: row.category_rank, status: row.result_status })), page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / PAGE_SIZE) };
+}
+
+export type PublicWinner = { rank: number; bib: string | number | null; name: string; finish_time: string };
+export type PublicWinnerGroup = { id: string; title: string; distance: string | null; total: number; winners: PublicWinner[] };
+
+/** Public podiums contain only finished rows from published result batches. */
+export async function getPublicEventWinnerGroups(eventId: string): Promise<PublicWinnerGroup[]> {
+  const admin = createAdminClient();
+  const [{ data: batches, error: batchesError }, { data: categories, error: categoriesError }] = await Promise.all([
+    admin.from('result_batches').select('id').eq('event_id', eventId).eq('publication_status', 'published'),
+    admin.from('race_categories').select('id,name,category_group_name,distance_km').eq('event_id', eventId).order('distance_km', { ascending: true, nullsFirst: false }).order('name'),
+  ]);
+  if (batchesError) throw new Error('Published results could not be loaded');
+  if (categoriesError) throw new Error('Event result categories could not be loaded');
+  const batchIds = (batches ?? []).map((batch) => batch.id);
+  if (!batchIds.length) return [];
+
+  const groups = await Promise.all((categories ?? []).map(async (category) => {
+    const { data, count, error } = await admin.from('results')
+      .select('bib_code,bib_number,participant_display_name,gun_time,category_rank', { count: 'exact' })
+      .eq('event_id', eventId)
+      .eq('race_category_id', category.id)
+      .in('result_batch_id', batchIds)
+      .eq('validation_status', 'valid')
+      .eq('result_status', 'finished')
+      .not('gun_time', 'is', null)
+      .order('category_rank', { ascending: true, nullsFirst: false })
+      .order('gun_time', { ascending: true })
+      .limit(3);
+    if (error) throw new Error('Published event winners could not be loaded');
+    const groupName = category.category_group_name?.trim();
+    const categoryName = category.name.trim();
+    const title = groupName && !categoryName.toLocaleLowerCase().startsWith(groupName.toLocaleLowerCase())
+      ? `${groupName} - ${categoryName}`
+      : categoryName || groupName || 'Race category';
+    return {
+      id: category.id,
+      title,
+      distance: category.distance_km == null ? null : `${category.distance_km} km`,
+      total: count ?? 0,
+      winners: (data ?? []).map((winner, index) => ({
+        rank: winner.category_rank ?? index + 1,
+        bib: winner.bib_code ?? winner.bib_number,
+        name: winner.participant_display_name ?? 'Participant',
+        finish_time: winner.gun_time ?? '',
+      })),
+    } satisfies PublicWinnerGroup;
+  }));
+  return groups.filter((group) => group.total > 0 && group.winners.length > 0);
 }

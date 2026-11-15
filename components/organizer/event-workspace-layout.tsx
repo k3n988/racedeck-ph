@@ -67,7 +67,6 @@ const groups = [
       ['Promo Codes', 'promo-codes'],
       ['Bib Management', 'bib-management'],
       ['Kit Claiming', 'race-kit-claiming'],
-      ['Announcements', 'announcements'],
     ],
   },
   {
@@ -173,7 +172,6 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
   const statusColor = event?.review_status === 'pending_review' ? 'bg-blue-50 text-blue-800 ring-blue-200' : event?.lifecycle_status === 'published' ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : event?.lifecycle_status === 'cancelled' ? 'bg-red-50 text-red-800 ring-red-200' : 'bg-amber-50 text-amber-900 ring-amber-200';
   const statusLabel = event?.review_status === 'pending_review' ? 'Pending Review' : event ? `${titleCase(event.lifecycle_status)} · ${titleCase(event.review_status)}` : '';
   const context = useMemo(() => ({ event, readiness }), [event, readiness]);
-  const isRegistrationSection = pathname.startsWith(`/organizer/events/${eventId}/registrations`);
   const renderDirectLink = ({ label, path, icon: Icon }: typeof directLinks[number]) => {
     const href = `/organizer/events/${eventId}${path ? `/${path}` : ''}`;
     const active = pathname === href;
@@ -184,7 +182,7 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
 
   return (
     <EventWorkspaceContext.Provider value={context}>
-      {!isRegistrationSection && <div className="border-b border-slate-200 bg-white">
+      <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
@@ -204,7 +202,7 @@ export default function EventWorkspaceLayout({ eventId, children }: { eventId: s
             {renderDirectLink(directLinks[1])}
           </nav>
         </div>
-      </div>}
+      </div>
       {children}
     </EventWorkspaceContext.Provider>
   );

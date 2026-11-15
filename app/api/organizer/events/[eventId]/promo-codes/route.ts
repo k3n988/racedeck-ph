@@ -31,17 +31,36 @@ async function access(eventId: string) {
   for (const item of context.memberships) { if (await hasPermission(item.organization_id, 'manage_promo_codes', eventId)) { membership = item; break; } }
   if (!membership || !(await hasPermission(membership.organization_id, 'manage_promo_codes', eventId))) return { response: NextResponse.json({ error: 'Promo-code management permission required' }, { status: 403 }) } as const;
   const supabase = await createClient();
-  const { data: event } = await supabase.from('events').select('id,organization_id').eq('id', eventId).eq('organization_id', membership.organization_id).maybeSingle();
+  const { data: event, error: eventError } = await supabase.from('events').select('id,organization_id').eq('id', eventId).eq('organization_id', membership.organization_id).maybeSingle();
+  if (eventError) {
+    console.error('Unable to verify promo-code event access', { code: eventError.code, message: eventError.message });
+    return { response: NextResponse.json({ error: 'Event access could not be checked.' }, { status: 500 }) } as const;
+  }
   if (!event) return { response: NextResponse.json({ error: 'Event not found' }, { status: 404 }) } as const;
   return { supabase, event, membership } as const;
+}
+
+function databaseLoadMessage(error: { code?: string; message?: string }, resource: string) {
+  console.error(`Unable to load ${resource}`, { code: error.code, message: error.message });
+  if (error.code === '42P01' || error.code === 'PGRST205') {
+    return 'Promo-code database tables are unavailable. Apply the pending promo-code Supabase migration, then try again.';
+  }
+  if (error.code === '42703' || error.code === 'PGRST204') {
+    return 'Promo-code database schema is out of date. Apply pending Supabase migrations, then try again.';
+  }
+  if (error.code === '42501') {
+    return 'Organizer access to promo-code data is missing. Apply the promo-code permissions migration, then try again.';
+  }
+  return error.code ? `${resource} could not be loaded (database error ${error.code}).` : `${resource} could not be loaded.`;
 }
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const result = await access(params.eventId); if ('response' in result) return result.response;
   const { data: codes, error } = await result.supabase.from('promo_codes').select('id,event_id,code,description,discount_type,discount_value,starts_at,expires_at,usage_limit,usage_count,per_user_limit,status,applies_to_all_categories,created_at,updated_at').eq('event_id', params.eventId).order('created_at', { ascending: false });
-  if (error) return NextResponse.json({ error: 'Promo codes could not be loaded' }, { status: 500 });
+  if (error) return NextResponse.json({ error: databaseLoadMessage(error, 'Promo codes') }, { status: 500 });
   const ids = (codes ?? []).map((item) => item.id);
-  const { data: restrictions } = ids.length ? await result.supabase.from('promo_code_categories').select('promo_code_id,category_id,race_categories(id,name)').in('promo_code_id', ids) : { data: [] as Array<{ promo_code_id: string; category_id: string; race_categories: { id: string; name: string } | null }> };
+  const { data: restrictions, error: restrictionsError } = ids.length ? await result.supabase.from('promo_code_categories').select('promo_code_id,category_id,race_categories(id,name)').in('promo_code_id', ids) : { data: [] as Array<{ promo_code_id: string; category_id: string; race_categories: { id: string; name: string } | null }>, error: null };
+  if (restrictionsError) return NextResponse.json({ error: databaseLoadMessage(restrictionsError, 'Promo-code category rules') }, { status: 500 });
   const categoriesByCode = new Map<string, Array<{ id: string; name: string }>>(); for (const row of restrictions ?? []) { const category = row.race_categories; if (category) categoriesByCode.set(row.promo_code_id, [...(categoriesByCode.get(row.promo_code_id) ?? []), category]); }
   return NextResponse.json((codes ?? []).map((code) => ({ ...code, categories: categoriesByCode.get(code.id) ?? [] })));
 }
@@ -49,7 +68,8 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
 export async function POST(request: Request, { params }: { params: { eventId: string } }) {
   const result = await access(params.eventId); if ('response' in result) return result.response;
   const parsed = input.safeParse(await request.json().catch(() => null)); if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid promo code details' }, { status: 400 });
-  const { data: categories } = parsed.data.category_ids.length ? await result.supabase.from('race_categories').select('id').eq('event_id', params.eventId).in('id', parsed.data.category_ids) : { data: [] as Array<{ id: string }> };
+  const { data: categories, error: categoryError } = parsed.data.category_ids.length ? await result.supabase.from('race_categories').select('id').eq('event_id', params.eventId).in('id', parsed.data.category_ids) : { data: [] as Array<{ id: string }>, error: null };
+  if (categoryError) return NextResponse.json({ error: 'Promo categories could not be checked' }, { status: 500 });
   if (categories?.length !== parsed.data.category_ids.length) return NextResponse.json({ error: 'One or more categories do not belong to this event' }, { status: 400 });
   const { category_ids, ...promoInput } = parsed.data;
   const { data: promo, error } = await result.supabase.from('promo_codes').insert({ ...promoInput, event_id: result.event.id, organization_id: result.event.organization_id }).select('*').single();

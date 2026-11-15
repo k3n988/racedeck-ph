@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
 });
 
 export function CertificateTemplate({ data }: { data: CertificateData }) {
-  const position = data.participantNamePosition ?? { x: 50, y: 54 };
+  const position = data.participantNamePosition ?? { x: 50, y: 64 };
   const left = Math.min(70, Math.max(0, position.x - 30));
   const top = Math.min(85, Math.max(20, position.y));
   const hasRaceResult = Boolean(data.bib || data.finishTime || data.rank);

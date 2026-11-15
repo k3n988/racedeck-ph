@@ -41,30 +41,32 @@ async function authorize(eventId: string) {
     .maybeSingle();
   if (error) return { response: NextResponse.json({ error: 'Event could not be checked' }, { status: 500 }) } as const;
   if (!event) return { response: NextResponse.json({ error: 'Event not found' }, { status: 404 }) } as const;
-  return { context, event } as const;
+  return { context, event, supabase } as const;
 }
 
 export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
   const result = await authorize(params.eventId);
   if ('response' in result) return result.response;
-  const admin = createAdminClient();
+  // Read through the organizer's authenticated session so certificate settings
+  // use the same permission and RLS policies as the rest of the workspace.
+  // The service-role client is reserved for writes and certificate issuance.
+  const db = result.supabase;
   const [settingsResult, categoriesResult, templatesResult, organizationResult, issuedCountResult] = await Promise.all([
-    admin.from('event_certificate_settings')
+    db.from('event_certificate_settings')
       .select('id,event_id,organization_id,enabled,template_id,certificate_title,event_logo_reference,organizer_logo_reference,sponsor_logo_config,signature_image_reference,signatory_name,signatory_position,certificate_message,eligibility_mode,created_at,updated_at,event_certificate_categories(race_category_id)')
       .eq('event_id', params.eventId).eq('organization_id', result.event.organization_id).maybeSingle(),
-    admin.from('race_categories').select('id,name').eq('event_id', params.eventId).order('name'),
-    admin.from('certificate_templates')
+    db.from('race_categories').select('id,name').eq('event_id', params.eventId).order('name'),
+    db.from('certificate_templates')
       .select('id,name,certificate_title,version,status,is_system_template,organization_id,background_asset_reference,layout_config')
       .eq('status', 'active').or(`is_system_template.eq.true,organization_id.eq.${result.event.organization_id}`).order('name'),
-    admin.from('organizations').select('logo_url').eq('id', result.event.organization_id).maybeSingle(),
-    admin.from('certificates').select('id', { count: 'exact', head: true }).eq('event_id', params.eventId).eq('status', 'issued'),
+    db.from('organizations').select('logo_url').eq('id', result.event.organization_id).maybeSingle(),
+    db.from('certificates').select('id', { count: 'exact', head: true }).eq('event_id', params.eventId).eq('status', 'issued'),
   ]);
   const failures = [
     ['certificate settings', settingsResult.error],
     ['event categories', categoriesResult.error],
     ['certificate templates', templatesResult.error],
     ['organizer details', organizationResult.error],
-    ['issued certificates', issuedCountResult.error],
   ] as const;
   const failedQuery = failures.find(([, queryError]) => queryError);
   if (failedQuery) {
@@ -75,15 +77,16 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     const message = migrationIssue
       ? `The ${section} schema is not available in Supabase. Apply the pending certificate module migrations and try again.`
       : `The ${section} could not be loaded${code ? ` (database error ${code})` : ''}. Try again.`;
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: migrationIssue ? 503 : 500 });
   }
+  if (issuedCountResult.error) console.warn('Issued certificate count is unavailable', issuedCountResult.error);
   const savedSettings = settingsResult.data;
   return NextResponse.json({
     event: { name: result.event.name, event_date: result.event.event_date, logo_url: result.event.logo_url, organizer_logo_url: organizationResult.data?.logo_url ?? null },
     settings: savedSettings ? { ...savedSettings, category_ids: savedSettings.event_certificate_categories.map((item) => item.race_category_id) } : null,
     categories: categoriesResult.data ?? [],
     templates: templatesResult.data ?? [],
-    issued_count: issuedCountResult.count ?? 0,
+    issued_count: issuedCountResult.error ? null : issuedCountResult.count ?? 0,
   });
 }
 

@@ -45,8 +45,7 @@ Public Registration Labels: Not Yet Open · Registration Open · Registration Cl
 5. Event Details Page
 Left Panel: logo, name, date, location, organizer, Verified Organizer badge, categories, registration availability, countdown, Register button, partners/sponsors
 Main Area: large banner
-Tabs: Event Details · Race Mechanics · Announcements · FAQs · Results
-Hide Announcements if none exist
+Tabs: Event Details · Race Mechanics · FAQs · Results
 Hide Results until published
 Event Details content: description, venue, date/time, categories, fees, available slots, registration dates, assembly time, gun start, cut-off, route/map, race-kit inclusions, claiming info, shirt info, organizer info
 Mobile: sticky Register Now
@@ -89,7 +88,7 @@ Flow: Register → Create Organization → Complete Profile → Upload Verificat
 16. Team Members & Permissions
 [CORE] Organizer Owner can invite/remove/activate/deactivate staff, assign roles and permissions, restrict staff to selected events.
 Role presets: Organizer Owner · Event Manager · Registration Staff · Race Kit Staff · Results Staff
-Granular permissions: View/Create/Edit/Submit Events, Manage Registrations, View Participant Info, Manage Promo Codes, Assign Bibs, Scan Race Kits, Manage Announcements, Manage Email Reminders, Upload/Publish Results, Manage Certificates, View Reports, View Financials, Manage Team
+Granular permissions: View/Create/Edit/Submit Events, Manage Registrations, View Participant Info, Manage Promo Codes, Assign Bibs, Scan Race Kits, Manage Email Reminders, Upload/Publish Results, Manage Certificates, View Reports, View Financials, Manage Team
 Organizer Owner receives full permissions.
 
 17. Events Management
@@ -109,7 +108,7 @@ Automatic rules: before open date → Not Yet Open; open date reached → Open; 
 Events → [Event Name] opens the Event Workspace:
 Overview
 Event Setup: Event Details · Categories & Pricing · Registration Form · Event Waiver · Race Kit Configuration · Email & Reminders · Certificate Settings
-Operations: Registrations · Promo Codes · Bib Management · Race Kit Claiming · Announcements · Results
+Operations: Registrations · Promo Codes · Bib Management · Race Kit Claiming · Results
 Analytics: Reports
 Configuration: Settings
 
@@ -197,7 +196,7 @@ Contains: participant name, event name/date, location, category, Registration ID
 Sent alongside §35.2 once §33/§34 documents are generated.
 35.4 Race Reminder Automation
 Triggered by proximity to event date, only for Registration Status = Confirmed.
-Default schedule: 7 days before (date/venue/category/assembly/gun start/kit details), 3 days before (final prep, venue, schedule, mechanics, announcements), 1 day before (Race Tomorrow, event time, venue, assembly, QR reminder, kit reminder).
+Default schedule: 7 days before (date/venue/category/assembly/gun start/kit details), 3 days before (final prep, venue, schedule, mechanics, special instructions), 1 day before (Race Tomorrow, event time, venue, assembly, QR reminder, kit reminder).
 Organizer may enable/disable each reminder and configure additional schedules (14 days, custom). RaceDeck prevents excessive/duplicate sends.
 35.5 Race Kit Email Automation (Optional)
 Race Kit Available — sent when claiming period opens (event, venue, date/time, Registration ID, QR, kit inclusions)
@@ -209,15 +208,6 @@ Sent automatically when Refund Status = Completed (§40): Your Refund Has Been P
 Sent when a result batch's Publication Status = Published (§37): Your Results Are Available — [Event Name]
 35.8 E-Certificate Ready Notification
 Sent when a certificate is generated per §41's eligibility flow: Your E-Certificate Is Ready — [Event Name]
-35.9 Organizer Announcements Email
-Triggered manually by organizer per §36.
-
-36. Organizer Announcements
-Event-specific. Organizer targets: all confirmed participants, or a specific category.
-Channels: In-App, Email
-Examples: venue update, route change, gun start update, weather advisory, kit claiming update, important instruction.
-Every announcement is logged.
-
 37. Email Delivery Management
 [CORE] RaceDeck tracks every transactional email.
 Email Status: Queued · Sending · Delivered · Failed · Bounced · Suppressed
@@ -225,7 +215,7 @@ Stored per message: recipient, event, registration, email type, template, sent t
 Failed transactional emails may auto-retry. Admin can view failed emails, retry, inspect reason, search recipient, view delivery history (see §47). Organizers may view event-related delivery status only — not global email infrastructure.
 
 38. Email Templates
-System templates (RaceDeck-managed): organizer verification, event approval, registration pending, payment successful/failed, registration confirmed, receipt, invoice, refund, race reminder, kit reminder, announcement, results published, e-certificate available
+System templates (RaceDeck-managed): organizer verification, event approval, registration pending, payment successful/failed, registration confirmed, receipt, invoice, refund, race reminder, kit reminder, results published, e-certificate available
 Organizer customization (limited): event message, reminder instructions, race day/kit instructions, certificate message
 Organizer must NOT edit: payment amount, transaction info, Registration IDs, legal system notices, security elements, RaceDeck transactional footer
 
@@ -336,7 +326,7 @@ Use granular permissions rather than hardcoded UI assumptions.
 Stored: actor, action, resource, timestamp, previous value (where appropriate), new value, IP/device context (where appropriate)
 
 63. Notifications
-Participant (automatic): registration created, payment pending/confirmation/failure, registration confirmation, receipt/invoice available, refund completed, kit available/deadline, event reminder, organizer announcement, race tomorrow, results published, e-certificate ready
+Participant (automatic): registration created, payment pending/confirmation/failure, registration confirmation, receipt/invoice available, refund completed, kit available/deadline, event reminder, race tomorrow, results published, e-certificate ready
 Organizer: organizer verification result, event review result, new registration, payment notification, refund, important delivery failure
 Channels: In-App, Email [CORE] · SMS, Push [PHASE 2]
 
@@ -377,7 +367,6 @@ User
            │    ├── Race Categories
            │    ├── Registration Form Fields
            │    ├── Promo Codes
-           │    ├── Announcements
            │    ├── Result Batches
            │    └── Certificate Settings
 
@@ -400,8 +389,8 @@ Participant/User
 Public: Marketing · Events · Event Details · Public Results · Organizer Profile · Legal pages
 Participant: Account · Registration · Payments · My Races · QR · Bib · Kit info · Results · Certificates · Notifications · Profile
 Organizer: Verification · Organization profile · Dashboard · Team Members · Events · Event Workspace · Registrations · Payments · Reports
-Event Operations: Categories · Capacity · Slot holds · Registration form · Promo codes · Bibs · QR · Race kits · Announcements · Results import/publication · Certificate settings
-Transactional Email [CORE]: registration pending, payment confirmation, registration confirmation, QR/ticket, receipt, invoice (where configured), payment failure, refund notification, race reminders, kit reminders, organizer announcements, results published, e-certificate ready
+Event Operations: Categories · Capacity · Slot holds · Registration form · Promo codes · Bibs · QR · Race kits · Results import/publication · Certificate settings
+Transactional Email [CORE]: registration pending, payment confirmation, registration confirmation, QR/ticket, receipt, invoice (where configured), payment failure, refund notification, race reminders, kit reminders, results published, e-certificate ready
 E-Certificate [OPTIONAL PER EVENT]: enable/disable, template, generation, email delivery, download, verification
 Admin: Organizers · Events · Participants · Finance · Email Delivery · Content · Support · Roles · Audit · Settings
 Finance: Transactions · Payment webhooks · Refunds · Fees · Fee bearer · Reconciliation
@@ -414,7 +403,7 @@ Future (Phase 2+): RFID/chip timing, live race results, live leaderboard, SMS, p
 71. Final Production Navigation
 Participant: Dashboard · My Races · Results · Payments · Notifications · Profile
 Organizer: Dashboard · Events · Registrations · Payments · Reports · Team Members · Organization · Settings
-Event Workspace: Overview · Event Setup (Event Details, Categories & Pricing, Registration Form, Event Waiver, Race Kit Configuration, Email & Reminders, Certificate Settings) · Registrations · Promo Codes · Bib Management · Race Kit Claiming · Announcements · Results · Reports · Settings
+Event Workspace: Overview · Event Setup (Event Details, Categories & Pricing, Registration Form, Event Waiver, Race Kit Configuration, Email & Reminders, Certificate Settings) · Registrations · Promo Codes · Bib Management · Race Kit Claiming · Results · Reports · Settings
 RaceDeck Admin: Dashboard · Management (Organizers, Events, Participants) · Finance (Transactions, Refunds, Platform Fees, Reconciliation) · Platform (Content Management, Email Delivery, Support/Issues, Roles & Permissions, Audit Logs, Platform Settings)
 
 Final RaceDeck Principle

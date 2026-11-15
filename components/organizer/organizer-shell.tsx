@@ -40,7 +40,7 @@ const settingsSoonItems = ['Integrations', 'Validation lists'] as const;
 const routeLabels: Record<string, string> = {
   dashboard: 'Dashboard', events: 'Events', registrations: 'Registrations', payments: 'Payments',
   reports: 'Reports', 'team-members': 'Team Members', organization: 'Organization details',
-  settings: 'Settings', create: 'Create Event', preview: 'Preview', results: 'Results', announcements: 'Announcements',
+  settings: 'Settings', create: 'Create Event', preview: 'Preview', results: 'Results',
   'promo-codes': 'Promo Codes', 'race-kit-claiming': 'Race Kit Claiming', 'bib-management': 'Bib Management',
   'registration-form': 'Registration Form', waiver: 'Waiver', 'categories-pricing': 'Categories & Pricing',
   'race-kit-config': 'Race Kit Configuration', details: 'Event Details', 'email-reminders': 'Email & Reminders',

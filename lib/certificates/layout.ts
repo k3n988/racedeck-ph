@@ -5,7 +5,7 @@ export type CertificateLayoutSettings = {
 };
 
 const LAYOUT_KEY = 'racedeck_certificate_layout';
-const defaultPosition: ParticipantNamePosition = { x: 50, y: 54 };
+const defaultPosition: ParticipantNamePosition = { x: 50, y: 64 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

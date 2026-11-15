@@ -14,13 +14,8 @@ function formatEventDate(value: string) {
 function EventActions({ event }: { event: PublicEventCard }) {
   const detailsHref = `/events/${event.slug}`;
   const primaryActionClass = 'inline-flex min-h-12 w-fit items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-[#111827] transition hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2';
-  const completed = event.event_status === 'completed' || event.registration_availability === 'completed';
-  if (completed) {
-    return event.results_available ? (
-      <Link href={`/results?event=${encodeURIComponent(event.id)}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">View Results</Link>
-    ) : (
-      <Link href={detailsHref} className={primaryActionClass}>View Details <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>
-    );
+  if (event.event_period === 'past') {
+    return <Link href={`/results?event=${encodeURIComponent(event.id)}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">View Results <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;
   }
   if (!event.registration_enabled) {
     return <Link href={detailsHref} className={primaryActionClass}>View Details <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>;

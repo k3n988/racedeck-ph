@@ -19,6 +19,7 @@ import { RACE_KIT_CLAIMING_ITEM, RACE_KIT_DELIVERY_OPTION } from "@/lib/events/r
 import { DEFAULT_PARTICIPANT_WAIVER_CONTENT, DEFAULT_PARTICIPANT_WAIVER_TITLE, eventWaiverContentForTitle } from "@/lib/events/default-participant-waiver";
 
 type KitItem = { kind: "product" | "inclusion"; name: string; description: string; quantity: number; variants: string[]; variantSlots: Record<string, string>; productImages: UploadValue[]; referenceImage: UploadValue };
+type SimpleInclusionDraft = { name: string; description: string; editingIndex: number | null };
 type MerchandiseItem = { name: string; description: string; unitPrice: string; variants: string[]; variantSlots: Record<string, string>; images: UploadValue[] };
 type Category = {
   // Persisted as the participant-facing category group name when group mode is selected.
@@ -265,12 +266,12 @@ function KitItemEditor({ item, onChange, onRemove }: { item: KitItem; onChange: 
     <div className="grid gap-3 md:grid-cols-2">
       <label className="block text-sm font-semibold text-slate-700">{item.kind === "inclusion" ? "Inclusion name" : "Product name"}<input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} placeholder={item.kind === "inclusion" ? "e.g. E-certificate or Sports headband" : "e.g. Race singlet"} maxLength={160} className={input} /></label>
       <label className="block text-sm font-semibold text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span><input value={item.description} onChange={(event) => onChange({ ...item, description: event.target.value })} placeholder={item.kind === "inclusion" ? "Add any helpful details" : "Add fabric, fit, or other helpful details"} maxLength={1000} className={input} /></label>
-      <label className="block max-w-48 text-sm font-semibold text-slate-700">Quantity included<input type="number" min="1" max="100" step="1" value={item.quantity} onChange={(event) => onChange({ ...item, quantity: Number(event.target.value) })} className={input} /></label>
+      {item.kind === "product" && <label className="block max-w-48 text-sm font-semibold text-slate-700">Quantity included<input type="number" min="1" max="100" step="1" value={item.quantity} onChange={(event) => onChange({ ...item, quantity: Number(event.target.value) })} className={input} /></label>}
     </div>
     {item.kind === "product" && <><div className="mt-4">
       <label className="block text-sm font-semibold text-slate-700">Available variants <span className="font-normal text-slate-400">(sizes, colors, or other options)</span></label>
-      <div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span>{item.name.trim().toLowerCase() !== "race kit claiming" && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label>}<button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} className="rounded px-2 py-1 text-slate-600 hover:bg-white" aria-label={`Remove ${variant}`}>×</button></div>)}</div>
-      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><input value={variantDraft} maxLength={item.name.trim().toLocaleLowerCase() === "race kit claiming" ? 160 : 80} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
+      <div className="mt-2 space-y-2">{item.variants.map((variant) => <div key={variant} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="min-w-0 break-words text-sm font-semibold text-slate-700">{variant}</span><label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs font-semibold text-slate-600">Slots (optional)<input type="number" min="0" max="1000000" step="1" inputMode="numeric" value={item.variantSlots[variant] ?? ""} onChange={(event) => onChange({ ...item, variantSlots: { ...item.variantSlots, [variant]: event.target.value } })} aria-label={`Optional private slot count for ${variant}`} placeholder="No limit" className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" /></label><button type="button" onClick={() => { const variantSlots = { ...item.variantSlots }; delete variantSlots[variant]; onChange({ ...item, variants: item.variants.filter((value) => value !== variant), variantSlots }); }} className="rounded px-2 py-1 text-slate-600 hover:bg-white" aria-label={`Remove ${variant}`}>×</button></div>)}</div>
+      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><input value={variantDraft} maxLength={80} onChange={(event) => setVariantDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addVariant(); } }} placeholder="Add a variant, e.g. Kids Small" className={`${input} mt-0`} /><button type="button" onClick={addVariant} disabled={!variantDraft.trim()} className="shrink-0 rounded-lg border border-orange-300 px-3 text-sm font-bold text-orange-700 disabled:opacity-50">Add</button></div>
     </div>
     <div className="mt-4 grid gap-4 lg:grid-cols-2">
       <Upload label="Product photos" value={item.productImages} multiple onChange={(file, url) => onChange({ ...item, productImages: [...item.productImages, { file, url }] })} onRemove={(imageIndex) => { const image = item.productImages[imageIndex]; if (image?.url.startsWith("blob:")) URL.revokeObjectURL(image.url); onChange({ ...item, productImages: item.productImages.filter((_, index) => index !== imageIndex) }); }} />
@@ -326,6 +327,7 @@ export default function CreateEventPage() {
   const [bannerFrame, setBannerFrame] = useState<BannerFrame>({ x: 50, y: 50, zoom: 1 });
   const [logoFrame, setLogoFrame] = useState<BannerFrame>({ x: 50, y: 50, zoom: 1 });
   const [categories, setCategories] = useState<Category[]>([]);
+  const [simpleInclusionDrafts, setSimpleInclusionDrafts] = useState<Record<number, SimpleInclusionDraft>>({});
   const [categoryMode, setCategoryMode] = useState<"groups" | "distances" | null>(null);
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [kitClaimingLocations, setKitClaimingLocations] = useState<string[]>([]);
@@ -363,6 +365,20 @@ export default function CreateEventPage() {
     "Official Partners": [],
     "Supported By": [],
   });
+  const saveSimpleInclusion = (categoryIndex: number) => {
+    const draft = simpleInclusionDrafts[categoryIndex] ?? { name: "", description: "", editingIndex: null };
+    const name = draft.name.trim();
+    if (!name) return;
+    setCategories((current) => current.map((category, index) => {
+      if (index !== categoryIndex) return category;
+      const kitItems = [...category.kitItems];
+      const existing = draft.editingIndex === null ? null : kitItems[draft.editingIndex];
+      if (existing) kitItems[draft.editingIndex!] = { ...existing, name, description: draft.description.trim() };
+      else kitItems.push({ ...emptyKitItem("inclusion"), name, description: draft.description.trim() });
+      return { ...category, kitItems };
+    }));
+    setSimpleInclusionDrafts((current) => ({ ...current, [categoryIndex]: { name: "", description: "", editingIndex: null } }));
+  };
   useEffect(() => {
     let active = true;
     fetch("/api/organizer/organization", { cache: "no-store" })
@@ -435,7 +451,7 @@ export default function CreateEventPage() {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "") || `custom-${Date.now()}`;
-    if (id === "announcements" || eventPages.some((page) => page.id === id)) {
+    if (eventPages.some((page) => page.id === id)) {
       setMessage("A tab with a similar name already exists. Choose a different title.");
       return;
     }
@@ -477,13 +493,7 @@ export default function CreateEventPage() {
       earlyBirdWindowValid,
     );
   };
-  // Claiming is shared across both category modes: distances-only and
-  // group-with-distances both store included products on their distance rows.
-  // Optional merchandise uses the same participant pickup/delivery choice.
-  const hasPhysicalRaceKit = categories
-    .flatMap((category) => category.kitItems)
-    .some((item) => item.kind === "product" && Boolean(item.name.trim())) ||
-    merchandise.some((item) => Boolean(item.name.trim()));
+  const hasPhysicalRaceKit = categories.flatMap((category) => category.kitItems).some((item) => item.kind === "product" && Boolean(item.name.trim())) || merchandise.some((item) => Boolean(item.name.trim()));
   const pickupLocationsReady = !hasPhysicalRaceKit || kitClaimingLocations.length > 0 || raceKitDeliveryEnabled;
   const categoriesReady = Boolean(categoryMode) && categories.length > 0 && categories.every(categoryIsValid) && (categoryMode !== "groups" || categoryGroups.every((group) => group.name.trim() && categories.some((category) => category.groupId === group.id))) && pickupLocationsReady;
   const manilaToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -1445,12 +1455,16 @@ export default function CreateEventPage() {
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                     <h3 className="font-bold text-[#071b41]">Inclusions for {[group?.name.trim(), category.distance.trim() ? `${category.distance}K` : ""].filter(Boolean).join(" · ") || "this race option"} <span className="text-orange-600">*</span></h3>
                     <p className="mt-1 text-sm text-slate-600">These items are included for this race option. Participants choose product sizes during registration.</p>
-                    {category.kitItems.map((item, itemIndex) => <KitItemEditor key={`${item.kind}-${itemIndex}`} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} />)}
-                    {attemptedSteps[2] && !categoryHasRequiredInclusion(category) && <p className="mt-3 text-sm font-semibold text-red-600" role="alert">Add at least one simple inclusion or included product.</p>}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("inclusion")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add simple inclusion</button>
-                      <button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("product")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add product with choices</button>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <label className="block text-sm font-semibold text-slate-700">Inclusion name<input value={simpleInclusionDrafts[index]?.name ?? ""} onChange={(event) => setSimpleInclusionDrafts((current) => ({ ...current, [index]: { ...(current[index] ?? { name: "", description: "", editingIndex: null }), name: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveSimpleInclusion(index); } }} placeholder="e.g. E-certificate or Sports headband" maxLength={160} className={`${input} mt-1`} /></label>
+                        <div className="flex gap-2"><button type="button" disabled={!simpleInclusionDrafts[index]?.name.trim()} onClick={() => saveSimpleInclusion(index)} className="min-h-10 rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-bold text-orange-700 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50">{simpleInclusionDrafts[index]?.editingIndex !== null && simpleInclusionDrafts[index]?.editingIndex !== undefined ? "Save" : "+ Add inclusion"}</button>{simpleInclusionDrafts[index]?.editingIndex !== null && simpleInclusionDrafts[index]?.editingIndex !== undefined && <button type="button" onClick={() => setSimpleInclusionDrafts((current) => ({ ...current, [index]: { name: "", description: "", editingIndex: null } }))} className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600">Cancel</button>}</div>
+                      </div>
+                      {category.kitItems.some((item) => item.kind === "inclusion") ? <div className="mt-3 flex flex-wrap gap-2" aria-label="Added simple inclusions">{category.kitItems.map((item, itemIndex) => item.kind === "inclusion" ? <span key={`inclusion-chip-${itemIndex}`} className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-white py-1 pl-3 pr-1 text-sm text-slate-700 shadow-sm"><span className="max-w-64 truncate">{item.name || "Unnamed inclusion"}</span><button type="button" onClick={() => setSimpleInclusionDrafts((current) => ({ ...current, [index]: { name: item.name, description: item.description, editingIndex: itemIndex } }))} aria-label={`Edit ${item.name || "inclusion"}`} className="rounded-full px-2 py-1 text-xs font-semibold text-[#0b2b5b] hover:bg-slate-100">Edit</button><button type="button" onClick={() => { setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry)); setSimpleInclusionDrafts((current) => current[index]?.editingIndex === itemIndex ? { ...current, [index]: { name: "", description: "", editingIndex: null } } : current); }} aria-label={`Remove ${item.name || "inclusion"}`} className="grid h-7 w-7 place-items-center rounded-full text-slate-500 hover:bg-red-50 hover:text-red-600"><X size={14} aria-hidden="true" /></button></span> : null)}</div> : <p className="mt-3 text-xs text-slate-500">Added inclusions will appear here.</p>}
                     </div>
+                    {category.kitItems.map((item, itemIndex) => item.kind === "product" ? <KitItemEditor key={`product-${itemIndex}`} item={item} onChange={(value) => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.map((kit, kitIndex) => kitIndex === itemIndex ? value : kit) } : entry))} onRemove={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: entry.kitItems.filter((_, kitIndex) => kitIndex !== itemIndex) } : entry))} /> : null)}
+                    {attemptedSteps[2] && !categoryHasRequiredInclusion(category) && <p className="mt-3 text-sm font-semibold text-red-600" role="alert">Add at least one simple inclusion or included product.</p>}
+                    <div className="mt-3"><button type="button" onClick={() => setCategories((current) => current.map((entry, categoryIndex) => categoryIndex === index ? { ...entry, kitItems: [...entry.kitItems, emptyKitItem("product")] } : entry))} className="rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">+ Add product with choices</button></div>
                   </div>
                   <button
                     type="button"
@@ -1477,68 +1491,16 @@ export default function CreateEventPage() {
                 + {categories.length === 0 ? "Add first distance" : "Add another distance"}
               </button>}
               </section>
-              {categoryMode && <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-orange-700">Race kit pickup</p>
+
+              {categoryMode && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-[#071b41]">Race Kit Claiming</h3><p className="mt-1 max-w-2xl text-sm text-slate-600">Add the places where participants can collect their included race kit. You can also let them choose delivery to their registration address.</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{kitClaimingLocations.length} locations</span></div>
+                <div className="mt-4 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="kit-claiming-location">Pickup location{hasPhysicalRaceKit && <span className="ml-1 text-orange-600">*</span>}<input id="kit-claiming-location" value={kitClaimingLocationDraft} maxLength={160} onChange={(event) => setKitClaimingLocationDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); const next = kitClaimingLocationDraft.trim(); if (next && next.toLowerCase() !== RACE_KIT_DELIVERY_OPTION.toLowerCase() && kitClaimingLocations.length < 40 && !kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) { setKitClaimingLocations((current) => [...current, next]); setKitClaimingLocationDraft(""); } } }} placeholder="e.g. Bacolod City Government Center" className={input} /></label>
+                  <button type="button" disabled={!kitClaimingLocationDraft.trim() || kitClaimingLocationDraft.trim().toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase() || kitClaimingLocations.length >= 40 || kitClaimingLocations.some((location) => location.toLowerCase() === kitClaimingLocationDraft.trim().toLowerCase())} onClick={() => { const next = kitClaimingLocationDraft.trim(); if (!next || next.toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase() || kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) return; setKitClaimingLocations((current) => [...current, next]); setKitClaimingLocationDraft(""); }} className="min-h-11 rounded-lg border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50">+ Add location</button>
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-semibold text-slate-800"><input type="checkbox" checked={raceKitDeliveryEnabled} onChange={(event) => setRaceKitDeliveryEnabled(event.target.checked)} className="h-4 w-4 shrink-0 accent-orange-600" /><span>Enable Race Kit Delivery</span></label>
                 </div>
-                <div className="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700" htmlFor="kit-claiming-location">Add a pickup location <span className="text-orange-600">*</span></label>
-                    <div className="flex gap-2">
-                      <input
-                        id="kit-claiming-location"
-                        value={kitClaimingLocationDraft}
-                        maxLength={160}
-                        onChange={(event) => setKitClaimingLocationDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            const next = kitClaimingLocationDraft.trim();
-                            if (next && next.toLowerCase() !== RACE_KIT_DELIVERY_OPTION.toLowerCase() && kitClaimingLocations.length < 40 && !kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) {
-                              setKitClaimingLocations((current) => [...current, next]);
-                              setKitClaimingLocationDraft("");
-                            }
-                          }
-                        }}
-                        placeholder="e.g. Bacolod City Government Center - race day"
-                        className={`${input} mt-0 min-h-11 min-w-0 flex-1`}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!kitClaimingLocationDraft.trim() || kitClaimingLocationDraft.trim().toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase() || kitClaimingLocations.length >= 40 || kitClaimingLocations.some((location) => location.toLowerCase() === kitClaimingLocationDraft.trim().toLowerCase())}
-                    onClick={() => {
-                      const next = kitClaimingLocationDraft.trim();
-                      if (!next || next.toLowerCase() === RACE_KIT_DELIVERY_OPTION.toLowerCase() || kitClaimingLocations.some((location) => location.toLowerCase() === next.toLowerCase())) return;
-                      setKitClaimingLocations((current) => [...current, next]);
-                      setKitClaimingLocationDraft("");
-                    }}
-                    className="min-h-11 rounded-lg border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >+ Add location</button>
-                  <label className="inline-flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-slate-800 lg:self-end lg:mb-3">
-                    <input
-                      type="checkbox"
-                      checked={raceKitDeliveryEnabled}
-                      onChange={(event) => setRaceKitDeliveryEnabled(event.target.checked)}
-                      className="h-4 w-4 shrink-0 accent-orange-600"
-                    />
-                    <span className="whitespace-nowrap">Enable Race Kit Delivery</span>
-                  </label>
-                  </div>
-                  {raceKitDeliveryEnabled && <p className="mt-2 text-sm text-slate-600">Participants will also see <span className="font-semibold text-[#071b41]">{RACE_KIT_DELIVERY_OPTION}</span> in the required pickup dropdown. Delivery uses the address entered during registration.</p>}
-                    {kitClaimingLocations.length ? (
-                      <ul className="mt-3 flex flex-wrap gap-2" aria-label="Pickup locations">
-                        {kitClaimingLocations.map((location, index) => (
-                          <li key={`${location}-${index}`} className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700">
-                            <span className="break-words">{location}</span>
-                            <button type="button" onClick={() => setKitClaimingLocations((current) => current.filter((_, optionIndex) => optionIndex !== index))} aria-label={`Remove ${location}`} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-orange-50 hover:text-orange-700"><X size={14} aria-hidden="true" /></button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className={`mt-3 text-sm ${attemptedSteps[2] && hasPhysicalRaceKit && !raceKitDeliveryEnabled ? "font-semibold text-red-600" : "text-slate-500"}`} role={attemptedSteps[2] && hasPhysicalRaceKit && !raceKitDeliveryEnabled ? "alert" : undefined}>{raceKitDeliveryEnabled ? "Delivery is enabled. Participants can choose Race Kit Delivery during registration." : hasPhysicalRaceKit ? attemptedSteps[2] ? "Add at least one pickup location or enable Race Kit Delivery before continuing." : "No pickup locations added yet. At least one pickup location or delivery option is required for these products." : "No pickup locations added. This becomes required if you add an included product or optional merchandise."}</p>
-                    )}
+                {raceKitDeliveryEnabled && <p className="mt-2 text-sm text-slate-600">Participants may choose delivery to the address entered during registration.</p>}
+                {kitClaimingLocations.length > 0 ? <ul className="mt-3 flex flex-wrap gap-2" aria-label="Race kit pickup locations">{kitClaimingLocations.map((location, locationIndex) => <li key={`${location}-${locationIndex}`} className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700"><span className="break-words">{location}</span><button type="button" onClick={() => setKitClaimingLocations((current) => current.filter((_, index) => index !== locationIndex))} aria-label={`Remove ${location}`} className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-orange-50 hover:text-orange-700"><X size={14} aria-hidden="true" /></button></li>)}</ul> : <p className={`mt-3 text-sm ${attemptedSteps[2] && hasPhysicalRaceKit && !raceKitDeliveryEnabled ? "font-semibold text-red-600" : "text-slate-500"}`} role={attemptedSteps[2] && hasPhysicalRaceKit && !raceKitDeliveryEnabled ? "alert" : undefined}>{hasPhysicalRaceKit ? raceKitDeliveryEnabled ? "Delivery is enabled; participants may choose it at registration." : "Add a pickup location or enable delivery to continue." : "Pickup locations are optional until you add a physical race kit item or paid merchandise."}</p>}
               </section>}
 
               <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">

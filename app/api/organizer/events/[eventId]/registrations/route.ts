@@ -105,7 +105,8 @@ export async function GET(request: Request, { params }: { params: { eventId: str
   const categoryId = url.searchParams.get('categoryId') ?? '';
   const isCsv = url.searchParams.get('export') === 'csv';
   const page = Math.max(1, Math.floor(Number(url.searchParams.get('page') ?? 1) || 1));
-  const pageSize = Math.min(50, Math.max(1, Math.floor(Number(url.searchParams.get('pageSize') ?? 25) || 25)));
+  const requestedPageSize = Number(url.searchParams.get('pageSize') ?? 20);
+  const pageSize = [20, 30, 50].includes(requestedPageSize) ? requestedPageSize : 20;
 
   if (status && !REGISTRATION_STATUSES.has(status)) {
     return NextResponse.json({ error: 'Choose a valid registration status.' }, { status: 400 });

@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { hasPermission, loadAuthContext } from '@/lib/auth/permissions';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { raceKitItemSchema } from '@/lib/events/race-kit-config';
 import { RACE_KIT_CLAIMING_ITEM } from '@/lib/events/race-kit';
+import { raceKitItemSchema } from '@/lib/events/race-kit-config';
 import type { Json } from '@/types/database.types';
 const batchSchema = z.object({ items: z.array(raceKitItemSchema).min(1).max(80) });
 async function auth(eventId: string, configId: string) { const context = await loadAuthContext(); if (!context) return { response: NextResponse.json({ error: 'Authentication required' }, { status: 401 }) } as const; const membership = context.memberships[0]; if (!membership || !(await hasPermission(membership.organization_id, 'edit_events', eventId))) return { response: NextResponse.json({ error: 'Race kit permission required' }, { status: 403 }) } as const; const supabase = await createClient(); const { data: event } = await supabase.from('events').select('id,organization_id').eq('id', eventId).eq('organization_id', membership.organization_id).maybeSingle(); if (!event) return { response: NextResponse.json({ error: 'Event not found' }, { status: 404 }) } as const; const admin = createAdminClient(); const { data: config } = await admin.from('race_kit_configs').select('id,category_id').eq('id', configId).eq('event_id', eventId).maybeSingle(); if (!config) return { response: NextResponse.json({ error: 'Configuration not found for this event' }, { status: 404 }) } as const; return { admin, config } as const; }

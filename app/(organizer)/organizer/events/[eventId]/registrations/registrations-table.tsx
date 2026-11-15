@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Eye } from 'lucide-react';
 import { ToastFeedback } from '@/components/toast-feedback';
 
 type Category = { id: string; name: string };
@@ -10,6 +11,7 @@ type Registration = {
   id: string;
   registration_number: string | null;
   first_name?: string | null;
+  middle_name?: string | null;
   last_name?: string | null;
   email?: string | null;
   status: string;
@@ -58,6 +60,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState('');
   const [retryToken, setRetryToken] = useState(0);
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [status, setStatus] = useState(params.get('status') ?? '');
@@ -91,12 +94,6 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
     return () => controller.abort();
   }, [eventId, queryString, retryToken]);
 
-  const range = useMemo(() => {
-    if (!data || data.total === 0) return '0 records';
-    const start = (data.page - 1) * data.pageSize + 1;
-    return `${start}–${Math.min(data.page * data.pageSize, data.total)} of ${data.total}`;
-  }, [data]);
-
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     updateQueryFilters(search.trim(), status, categoryId);
@@ -127,8 +124,16 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
     router.push(`?${next.toString()}`);
   }
 
+  function changePageSize(nextPageSize: string) {
+    const next = new URLSearchParams(queryString);
+    next.set('pageSize', nextPageSize);
+    next.set('page', '1');
+    router.push(`?${next.toString()}`);
+  }
+
   async function exportCsv() {
     setIsExporting(true);
+    setExportNotice('');
     try {
       const next = new URLSearchParams(queryString);
       next.set('export', 'csv');
@@ -137,6 +142,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error ?? 'CSV export could not be prepared.');
       }
+      if (response.headers.get('X-Export-Truncated') === 'true') setExportNotice('This export is capped at 100,000 matching registrations. Narrow the filters to export the remaining rows.');
       const blob = await response.blob();
       const href = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -145,7 +151,7 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(href);
+      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'CSV export could not be prepared.');
       setLoadFailed(false);
@@ -160,24 +166,12 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
     <>
     {error && <ToastFeedback message={error} tone="auto">{loadFailed ? <div className="flex flex-wrap items-center justify-between gap-3"><span>{error}</span><button type="button" onClick={() => setRetryToken((value) => value + 1)} className="shrink-0 font-semibold underline underline-offset-2">Retry loading registrations</button></div> : undefined}</ToastFeedback>}
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-        <div>
-          <h2 className="font-semibold text-slate-900">Participant registrations</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-500" aria-live="polite">{isLoading ? 'Loading…' : range}</span>
-          <button type="button" onClick={() => void exportCsv()} disabled={isExporting || isLoading || !data || data.total === 0} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
-            {isExporting ? 'Preparing…' : 'Export CSV'}
-          </button>
-        </div>
-      </div>
-
-      <form onSubmit={applyFilters} className="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto_auto] xl:items-end">
-        <label className="col-span-2 block text-xs font-semibold uppercase tracking-wide text-slate-500 sm:col-span-1">
+      <form onSubmit={applyFilters} className="flex flex-wrap items-end gap-3 border-b border-slate-200 px-4 py-3">
+        <label className="min-w-[220px] flex-[1.25] text-xs font-semibold uppercase tracking-wide text-slate-500">
           Search
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={data?.canViewPii ? 'Registration no., name, or email' : 'Registration number'} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
         </label>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <label className="min-w-[180px] flex-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Registration status
           <select value={status} onChange={(event) => { const value = event.target.value; setStatus(value); updateQueryFilters(search.trim(), value, categoryId); }} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
             <option value="">All statuses</option>
@@ -189,15 +183,19 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
             <option value="expired">Expired</option>
           </select>
         </label>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <label className="min-w-[180px] flex-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Race category
           <select value={categoryId} onChange={(event) => { const value = event.target.value; setCategoryId(value); updateQueryFilters(search.trim(), status, value); }} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
             <option value="">All categories</option>
             {(data?.categories ?? []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
         </label>
-        {hasFilters && <button type="button" onClick={resetFilters} className="h-11 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-white hover:text-slate-900">Clear</button>}
+        {hasFilters && <button type="button" onClick={resetFilters} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900">Clear</button>}
+        <button type="button" onClick={() => void exportCsv()} disabled={isExporting || isLoading || !data || data.total === 0} className="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+          {isExporting ? 'Preparing…' : 'Export CSV'}
+        </button>
       </form>
+      {exportNotice && <p role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">{exportNotice}</p>}
 
       {isLoading ? (
         <div className="space-y-3 p-5" aria-label="Loading registrations">
@@ -209,9 +207,11 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th scope="col" className="px-4 py-3">Registration / participant</th>
-                  <th scope="col" className="px-4 py-3">Category</th>
+                  <th scope="col" className="w-12 px-4 py-3 text-center">#</th>
                   <th scope="col" className="px-4 py-3">Registration</th>
+                  <th scope="col" className="px-4 py-3">Participant</th>
+                  <th scope="col" className="px-4 py-3">Category</th>
+                  <th scope="col" className="px-4 py-3">Registration status</th>
                   <th scope="col" className="px-4 py-3">Payment</th>
                   <th scope="col" className="px-4 py-3">Bib number</th>
                   <th scope="col" className="px-4 py-3">Race kit</th>
@@ -220,9 +220,9 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data?.registrations.length === 0 && !error ? (
+                {loadFailed ? <tr><td colSpan={10} className="px-4 py-8"><div role="alert" className="mx-auto max-w-lg rounded-xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-800"><p>{error || 'Registrations could not be loaded.'}</p><button type="button" onClick={() => setRetryToken((value) => value + 1)} className="mt-2 font-semibold underline">Retry loading registrations</button></div></td></tr> : data?.registrations.length === 0 && !error ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-3">
+                    <td colSpan={10} className="px-4 py-3">
                       <div className="flex min-h-36 flex-col items-center justify-center px-4 py-5 text-center sm:min-h-44">
                         <span className="mb-2 grid h-11 w-11 place-items-center rounded-full bg-orange-50"><EmptyIcon /></span>
                         <h3 className="font-semibold text-slate-900">{hasFilters ? 'No matching registrations' : 'No registrations yet'}</h3>
@@ -231,40 +231,51 @@ export default function RegistrationsTable({ eventId }: { eventId: string }) {
                       </div>
                     </td>
                   </tr>
-                ) : data?.registrations.map((row) => {
+                ) : data?.registrations.map((row, index) => {
                   const payment = first(row.payments);
                   const bib = first(row.bibs);
-                  const participant = [row.first_name, row.last_name].filter(Boolean).join(' ');
+                  const participant = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ');
                   return (
                     <tr key={row.id} className="text-slate-700 hover:bg-slate-50/80">
-                      <td className="px-4 py-3.5">
-                        <div className="font-semibold text-slate-900">{data.canViewPii ? (participant || 'Participant details unavailable') : 'Participant details restricted'}</div>
-                        <div className="mt-0.5 text-xs text-slate-500">{row.registration_number ?? row.id}{data.canViewPii && row.email ? ` · ${row.email}` : ''}</div>
+                      <td className="px-4 py-1.5 text-center text-xs tabular-nums text-slate-500">{(data.page - 1) * data.pageSize + index + 1}</td>
+                      <td className="whitespace-nowrap px-4 py-1.5 font-medium text-slate-600">{row.registration_number ?? row.id}</td>
+                      <td className="px-4 py-1.5">
+                        <span className="whitespace-nowrap font-semibold text-slate-900">{data.canViewPii ? (participant || 'Participant details unavailable') : 'Participant details restricted'}</span>
+                        {data.canViewPii && row.email && <div className="mt-0.5 text-xs text-slate-500">{row.email}</div>}
                       </td>
-                      <td className="px-4 py-3.5">{first(row.race_categories)?.name ?? '—'}</td>
-                      <td className="px-4 py-3.5"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{statusLabel(row.status)}</span></td>
-                      <td className="px-4 py-3.5">{payment?.status ? statusLabel(payment.status) : 'No payment'}</td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-1.5">{first(row.race_categories)?.name ?? '—'}</td>
+                      <td className="px-4 py-1.5"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{statusLabel(row.status)}</span></td>
+                      <td className="px-4 py-1.5">{payment?.status ? statusLabel(payment.status) : 'No payment'}</td>
+                      <td className="px-4 py-1.5">
                         {bib?.status === 'active' && (bib.bib_code || bib.bib_number != null) ? (
                           <span className="inline-flex rounded-full bg-orange-50 px-2.5 py-1 font-mono text-xs font-bold text-orange-800">
                             {bib.bib_code ?? `${bib.prefix ?? ''}${bib.bib_number}`}
                           </span>
                         ) : <span className="text-slate-500">Not assigned</span>}
                       </td>
-                      <td className="px-4 py-3.5">{row.race_kit_claims?.some((claim) => claim.claimed_at) ? 'Claimed' : 'Not claimed'}</td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">{formatDate(row.created_at)}</td>
-                      <td className="px-4 py-3.5 text-right"><Link className="font-semibold text-orange-700 hover:text-orange-800 hover:underline" href={`/organizer/events/${eventId}/registrations/${row.id}`}>View participant<span className="sr-only"> profile for registration {row.registration_number ?? row.id}</span></Link></td>
+                      <td className="px-4 py-1.5">{row.race_kit_claims?.some((claim) => claim.claimed_at) ? 'Claimed' : 'Not claimed'}</td>
+                      <td className="px-4 py-1.5 whitespace-nowrap">{formatDate(row.created_at)}</td>
+                      <td className="px-4 py-1.5 text-right"><Link aria-label={`See participant details for registration ${row.registration_number ?? row.id}`} title="See participant" className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50 hover:text-orange-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500" href={`/organizer/events/${eventId}/registrations/${row.id}`}><Eye size={17} aria-hidden="true" /><span>See</span></Link></td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          {data && data.total > data.pageSize && (
-            <nav aria-label="Registration pages" className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
-              <span className="text-sm text-slate-500">Page {data.page} of {Math.ceil(data.total / data.pageSize)}</span>
+          {data && !isLoading && (
+            <nav aria-label="Registration pages" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-slate-500">Page {data.page} of {Math.max(1, Math.ceil(data.total / data.pageSize))}</span>
+                <label className="flex items-center gap-2 text-sm text-slate-600">Rows per page
+                  <select value={String(data.pageSize)} onChange={(event) => changePageSize(event.target.value)} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="50">50</option>
+                  </select>
+                </label>
+              </div>
               <div className="flex gap-2">
-                <button type="button" disabled={data.page <= 1} onClick={() => movePage(data.page - 1)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                <button type="button" disabled={data.page <= 1 || data.total === 0} onClick={() => movePage(data.page - 1)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
                 <button type="button" disabled={data.page * data.pageSize >= data.total} onClick={() => movePage(data.page + 1)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
               </div>
             </nav>

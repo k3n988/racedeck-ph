@@ -1,7 +1,34 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { hasPermission, loadAuthContext } from '@/lib/auth/permissions';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { getPublicEventWinnerGroups } from '@/lib/public/events';
+
+export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
+  const context = await loadAuthContext();
+  if (!context) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const supabase = await createClient();
+  const { data: event } = await supabase.from('events').select('id,organization_id,name,event_date,banner_url').eq('id', params.eventId).maybeSingle();
+  if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  const internal = context.internalRoles.includes('admin') || context.internalRoles.includes('super_admin');
+  if (!internal && !(await hasPermission(event.organization_id, 'view_events', params.eventId))) {
+    return NextResponse.json({ error: 'Viewing this event requires view_events permission' }, { status: 403 });
+  }
+  try {
+    const admin = createAdminClient();
+    const [{ data: groups }, { data: publishedBatches, error: batchError }] = await Promise.all([
+      getPublicEventWinnerGroups(event.id).then((result) => ({ data: result })),
+      admin.from('result_batches').select('id').eq('event_id', event.id).eq('publication_status', 'published').limit(1),
+    ]);
+    if (batchError) throw batchError;
+    return NextResponse.json({ event: { id: event.id, name: event.name, event_date: event.event_date, banner_url: event.banner_url }, groups, published: Boolean(publishedBatches?.length) }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    });
+  } catch (error) {
+    console.error('Organizer event results could not be loaded', error instanceof Error ? error.message : 'Unknown error');
+    return NextResponse.json({ error: 'Published results could not be loaded' }, { status: 500 });
+  }
+}
 
 function parseCsv(text: string) { const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false; const source = text.replace(/^\uFEFF/, ''); for (let index = 0; index < source.length; index++) { const char = source[index]; if (char === '"' && source[index + 1] === '"') { cell += '"'; index++; } else if (char === '"') quoted = !quoted; else if (char === ',' && !quoted) { row.push(cell.trim()); cell = ''; } else if ((char === '\n' || char === '\r') && !quoted) { if (char === '\r' && source[index + 1] === '\n') index++; row.push(cell.trim()); if (row.some(Boolean)) rows.push(row); row = []; cell = ''; } else cell += char; } if (cell || row.length) { row.push(cell.trim()); rows.push(row); } return rows; }
 
@@ -12,8 +39,40 @@ async function uploadResults(request: Request, eventId: string) {
   const file = (await request.formData()).get('file'); if (!(file instanceof File) || !file.name.toLowerCase().endsWith('.csv')) return NextResponse.json({ error: 'Upload a CSV file' }, { status: 400 });
   const rows = parseCsv(await file.text()); if (rows.length < 2) return NextResponse.json({ error: 'CSV must include a header and at least one row' }, { status: 400 }); const headers = rows[0].map((header) => header.toLowerCase().replace(/\s+/g, '_')); const bibIndex = headers.includes('bib') ? headers.indexOf('bib') : headers.indexOf('bib_number'); if (bibIndex < 0) return NextResponse.json({ error: 'CSV requires a bib or bib_number column' }, { status: 400 }); const statusIndex = headers.indexOf('status'); const timeIndex = headers.indexOf('gun_time');
   const admin = createAdminClient(); const { data: batch, error: batchError } = await admin.from('result_batches').insert({ organization_id: event.organization_id, event_id: eventId, imported_by: context.user.id, source_filename: file.name, row_count: rows.length - 1, validation_status: 'validating', validation_summary: { headers } }).select('id').single(); if (batchError || !batch) return NextResponse.json({ error: 'Result batch could not be created' }, { status: 500 });
-  const bibValues = rows.slice(1).map((row) => row[bibIndex]).filter(Boolean); const { data: bibs } = await admin.from('bibs').select('id,bib_code,bib_number,registrations!inner(id,user_id,first_name,last_name,category_id,status)').eq('event_id', eventId).eq('status', 'active').in('bib_code', bibValues); const bibMap = new Map((bibs ?? []).map((bib) => [bib.bib_code, bib]));
-  const resultRows = rows.slice(1).map((row, offset) => { const bib = bibMap.get(row[bibIndex]); const registration = bib?.registrations; const matched = Boolean(bib && registration?.status === 'confirmed'); const sourceStatus = statusIndex >= 0 ? row[statusIndex]?.toLowerCase() : 'finished'; const validStatus = ['finished', 'dnf', 'dns', 'dq'].includes(sourceStatus); const resultStatus = validStatus && (sourceStatus !== 'finished' || (timeIndex >= 0 && row[timeIndex])) ? sourceStatus as 'finished' | 'dnf' | 'dns' | 'dq' : 'dnf'; return { result_batch_id: batch.id, organization_id: event.organization_id, event_id: eventId, registration_id: matched ? registration!.id : null, participant_id: matched ? registration!.user_id : null, race_category_id: matched ? registration!.category_id : null, bib_id: matched ? bib!.id : null, participant_display_name: matched ? `${registration!.first_name} ${registration!.last_name}` : null, category_name: null, bib_code: matched ? bib!.bib_code : null, bib_number: matched ? bib!.bib_number : null, gun_time: matched && timeIndex >= 0 && row[timeIndex] ? row[timeIndex] : null, result_status: resultStatus, validation_status: matched ? 'valid' as const : 'unmatched' as const, validation_errors: matched ? {} : { bib: 'Bib did not match an active bib for a confirmed registration' }, source_row_number: offset + 2, source_bib: row[bibIndex] ?? '' }; });
+  const bibValues = rows.slice(1).map((row) => row[bibIndex]).filter(Boolean);
+  const { data: bibs } = await admin.from('bibs').select('id,bib_code,bib_number,registrations!inner(id,user_id,first_name,last_name,category_id,status)').eq('event_id', eventId).eq('status', 'active').in('bib_code', bibValues);
+  const bibMap = new Map((bibs ?? []).map((bib) => [bib.bib_code, bib]));
+  const categoryIds = Array.from(new Set((bibs ?? []).map((bib) => bib.registrations?.category_id).filter((id): id is string => Boolean(id))));
+  const { data: categories } = categoryIds.length ? await admin.from('race_categories').select('id,name').in('id', categoryIds) : { data: [] };
+  const categoryNames = new Map((categories ?? []).map((category) => [category.id, category.name]));
+  const resultRows = rows.slice(1).map((row, offset) => {
+    const bib = bibMap.get(row[bibIndex]);
+    const registration = bib?.registrations;
+    const categoryName = registration?.category_id ? categoryNames.get(registration.category_id) : undefined;
+    const matched = Boolean(bib && registration?.status === 'confirmed' && categoryName);
+    const sourceStatus = statusIndex >= 0 ? row[statusIndex]?.toLowerCase() : 'finished';
+    const validStatus = ['finished', 'dnf', 'dns', 'dq'].includes(sourceStatus);
+    const resultStatus = validStatus && (sourceStatus !== 'finished' || (timeIndex >= 0 && row[timeIndex])) ? sourceStatus as 'finished' | 'dnf' | 'dns' | 'dq' : 'dnf';
+    return {
+      result_batch_id: batch.id,
+      organization_id: event.organization_id,
+      event_id: eventId,
+      registration_id: matched ? registration!.id : null,
+      participant_id: matched ? registration!.user_id : null,
+      race_category_id: matched ? registration!.category_id : null,
+      bib_id: matched ? bib!.id : null,
+      participant_display_name: matched ? `${registration!.first_name} ${registration!.last_name}` : null,
+      category_name: matched ? categoryName! : null,
+      bib_code: matched ? bib!.bib_code : null,
+      bib_number: matched ? bib!.bib_number : null,
+      gun_time: matched && timeIndex >= 0 && row[timeIndex] ? row[timeIndex] : null,
+      result_status: resultStatus,
+      validation_status: matched ? 'valid' as const : 'unmatched' as const,
+      validation_errors: matched ? {} : { bib: 'Bib must match an active bib, confirmed registration, and race category.' },
+      source_row_number: offset + 2,
+      source_bib: row[bibIndex] ?? '',
+    };
+  });
   const { error: rowError } = await admin.from('results').insert(resultRows); if (rowError) { await admin.from('result_batches').delete().eq('id', batch.id); return NextResponse.json({ error: 'Result rows could not be imported' }, { status: 500 }); } const valid = resultRows.filter((row) => row.validation_status === 'valid').length; const unmatched = resultRows.length - valid; const { data: updated } = await admin.from('result_batches').update({ validation_status: unmatched ? 'invalid' : 'valid', valid_row_count: valid, invalid_row_count: 0, unmatched_row_count: unmatched, validation_summary: { headers } }).eq('id', batch.id).select('id,validation_status,publication_status,row_count,valid_row_count,unmatched_row_count').single(); return NextResponse.json({ batch: updated, preview: resultRows }, { status: 201 });
 }
 
@@ -23,5 +82,52 @@ export async function POST(request: Request, { params }: { params: { eventId: st
 }
 
 export async function PATCH(request: Request, { params }: { params: { eventId: string } }) {
-  const context = await loadAuthContext(); if (!context) return NextResponse.json({ error: 'Authentication required' }, { status: 401 }); const body = await request.json().catch(() => null) as { batch_id?: string; result_id?: string; bib_code?: string; exclude?: boolean } | null; if (!body?.batch_id || !body.result_id || (!body.exclude && !body.bib_code)) return NextResponse.json({ error: 'batch_id, result_id, and bib_code or exclude are required' }, { status: 400 }); const supabase = await createClient(); const { data: event } = await supabase.from('events').select('id,organization_id').eq('id', params.eventId).maybeSingle(); if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 }); const internal = context.internalRoles.includes('admin') || context.internalRoles.includes('super_admin'); if (!internal && !(await hasPermission(event.organization_id, 'upload_results', params.eventId))) return NextResponse.json({ error: 'Uploading results requires upload_results permission' }, { status: 403 }); const admin = createAdminClient(); const { data: result } = await admin.from('results').select('id,result_batch_id,source_row_number').eq('id', body.result_id).eq('result_batch_id', body.batch_id).eq('event_id', params.eventId).maybeSingle(); if (!result) return NextResponse.json({ error: 'Staged result row not found' }, { status: 404 }); if (body.exclude) { const { error } = await admin.from('results').delete().eq('id', result.id); if (error) return NextResponse.json({ error: 'Row could not be excluded' }, { status: 409 }); } else { const { data: bib } = await admin.from('bibs').select('id,bib_code,bib_number,registrations!inner(id,user_id,first_name,last_name,category_id,status)').eq('event_id', params.eventId).eq('status', 'active').eq('bib_code', body.bib_code!.trim()).maybeSingle(); const registration = bib?.registrations; if (!bib || registration?.status !== 'confirmed') return NextResponse.json({ error: 'Bib must belong to an active bib assigned to a confirmed registration' }, { status: 400 }); const { error } = await admin.from('results').update({ registration_id: registration.id, participant_id: registration.user_id, race_category_id: registration.category_id, bib_id: bib.id, participant_display_name: `${registration.first_name} ${registration.last_name}`, bib_code: bib.bib_code, bib_number: bib.bib_number, validation_status: 'valid', validation_errors: {} }).eq('id', result.id); if (error) return NextResponse.json({ error: 'Row correction could not be saved' }, { status: 409 }); } const { data: rows } = await admin.from('results').select('validation_status').eq('result_batch_id', body.batch_id); const unmatched = (rows ?? []).filter((row) => row.validation_status === 'unmatched').length; const valid = (rows ?? []).filter((row) => row.validation_status === 'valid').length; await admin.from('result_batches').update({ validation_status: unmatched ? 'invalid' : 'valid', valid_row_count: valid, unmatched_row_count: unmatched, row_count: rows?.length ?? 0 }).eq('id', body.batch_id); return NextResponse.json({ corrected: true, unmatched_row_count: unmatched });
+  const context = await loadAuthContext();
+  if (!context) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  const body = await request.json().catch(() => null) as { batch_id?: string; result_id?: string; bib_code?: string; exclude?: boolean } | null;
+  if (!body?.batch_id || !body.result_id || (!body.exclude && !body.bib_code)) {
+    return NextResponse.json({ error: 'batch_id, result_id, and bib_code or exclude are required' }, { status: 400 });
+  }
+  const supabase = await createClient();
+  const { data: event } = await supabase.from('events').select('id,organization_id').eq('id', params.eventId).maybeSingle();
+  if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  const internal = context.internalRoles.includes('admin') || context.internalRoles.includes('super_admin');
+  if (!internal && !(await hasPermission(event.organization_id, 'upload_results', params.eventId))) {
+    return NextResponse.json({ error: 'Uploading results requires upload_results permission' }, { status: 403 });
+  }
+  const admin = createAdminClient();
+  const { data: result } = await admin.from('results').select('id,result_batch_id,source_row_number').eq('id', body.result_id).eq('result_batch_id', body.batch_id).eq('event_id', params.eventId).maybeSingle();
+  if (!result) return NextResponse.json({ error: 'Staged result row not found' }, { status: 404 });
+
+  if (body.exclude) {
+    const { error } = await admin.from('results').delete().eq('id', result.id);
+    if (error) return NextResponse.json({ error: 'Row could not be excluded' }, { status: 409 });
+  } else {
+    const { data: bib } = await admin.from('bibs').select('id,bib_code,bib_number,registrations!inner(id,user_id,first_name,last_name,category_id,status)').eq('event_id', params.eventId).eq('status', 'active').eq('bib_code', body.bib_code!.trim()).maybeSingle();
+    const registration = bib?.registrations;
+    if (!bib || registration?.status !== 'confirmed' || !registration.category_id) {
+      return NextResponse.json({ error: 'Bib must belong to an active bib assigned to a confirmed registration with a race category' }, { status: 400 });
+    }
+    const { data: category } = await admin.from('race_categories').select('id,name').eq('id', registration.category_id).eq('event_id', params.eventId).maybeSingle();
+    if (!category) return NextResponse.json({ error: 'The registration race category could not be found' }, { status: 400 });
+    const { error } = await admin.from('results').update({
+      registration_id: registration.id,
+      participant_id: registration.user_id,
+      race_category_id: category.id,
+      bib_id: bib.id,
+      participant_display_name: `${registration.first_name} ${registration.last_name}`,
+      category_name: category.name,
+      bib_code: bib.bib_code,
+      bib_number: bib.bib_number,
+      validation_status: 'valid',
+      validation_errors: {},
+    }).eq('id', result.id);
+    if (error) return NextResponse.json({ error: 'Row correction could not be saved' }, { status: 409 });
+  }
+
+  const { data: rows } = await admin.from('results').select('validation_status').eq('result_batch_id', body.batch_id);
+  const unmatched = (rows ?? []).filter((row) => row.validation_status === 'unmatched').length;
+  const valid = (rows ?? []).filter((row) => row.validation_status === 'valid').length;
+  await admin.from('result_batches').update({ validation_status: unmatched ? 'invalid' : 'valid', valid_row_count: valid, unmatched_row_count: unmatched, row_count: rows?.length ?? 0 }).eq('id', body.batch_id);
+  return NextResponse.json({ corrected: true, unmatched_row_count: unmatched });
 }

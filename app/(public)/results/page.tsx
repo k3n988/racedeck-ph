@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
 import ResultsTable from './results-table';
-import { getHomepagePublicEvents, type PublicEventCard } from '@/lib/public/events';
+import { getHomepagePublicEvents, getPublicEventWinnerGroups, type PublicEventCard } from '@/lib/public/events';
+import { EventResultsShowcase } from '@/components/public/event-results-showcase';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,17 +54,27 @@ export default async function PublicResultsPage({ searchParams }: { searchParams
   }
 
   const requestedEventId = Array.isArray(searchParams?.event) ? searchParams.event[0] : searchParams?.event;
-  const selectedEvent = events.find((event) => event.id === requestedEventId && event.results_available);
+  const selectedEvent = events.find((event) => event.id === requestedEventId);
 
   if (selectedEvent) {
+    let winnerGroups = [] as Awaited<ReturnType<typeof getPublicEventWinnerGroups>>;
+    let winnersFailedToLoad = false;
+    if (selectedEvent.results_available) {
+      try {
+        winnerGroups = await getPublicEventWinnerGroups(selectedEvent.id);
+      } catch (error) {
+        console.error('Public event winners could not be loaded:', error instanceof Error ? error.message : 'Unknown error');
+        winnersFailedToLoad = true;
+      }
+    }
     return (
       <main className="mx-auto min-h-screen max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Link href="/results" className="inline-flex min-h-10 items-center font-semibold text-orange-700 hover:text-orange-800">← All finished events</Link>
-        <header className="mb-6 mt-5">
-          <p className="text-sm font-bold uppercase tracking-[0.14em] text-orange-600">Race Results</p>
-          <h1 className="mt-1 text-3xl font-bold text-[#09204a]">{selectedEvent.name}</h1>
-        </header>
-        <ResultsTable initial={{ event: selectedEvent.id }} />
+        {selectedEvent.results_available ? <div className="mt-4">
+          <EventResultsShowcase eventName={selectedEvent.name} eventDate={selectedEvent.event_date} bannerUrl={selectedEvent.banner_url} groups={winnerGroups}>
+            {winnersFailedToLoad ? <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Published results are temporarily unavailable. Please refresh the page to try again.</p> : <ResultsTable initial={{ event: selectedEvent.id }} />}
+          </EventResultsShowcase>
+        </div> : <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Results for this event have not been published yet. Please check again later.</p>}
       </main>
     );
   }
