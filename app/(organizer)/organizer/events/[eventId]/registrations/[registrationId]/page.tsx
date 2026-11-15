@@ -63,11 +63,6 @@ function displayAnswer(raw: unknown, options: Array<{ label?: string | null; val
   return displayOption(raw);
 }
 
-function Detail({ label, value }: { label: string; value: unknown }) {
-  const text = value == null || value === '' ? 'Not provided' : String(value);
-  return <div className="min-w-0"><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 break-words text-sm text-slate-800">{text}</dd></div>;
-}
-
 function Section({ title, icon: Icon, children }: { title: string; icon?: typeof UserRound; children: React.ReactNode }) {
   return <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">{Icon ? <Icon size={16} className="shrink-0 text-slate-600" aria-hidden="true" /> : null}<h2 className="text-sm font-bold text-[#0b2348]">{title}</h2></header><div className="p-4">{children}</div></section>;
 }

@@ -3616,6 +3616,8 @@ export type Database = {
       result_batches: {
         Row: {
           created_at: string
+          division: string | null
+          entry_mode: string
           event_id: string
           id: string
           imported_at: string
@@ -3624,6 +3626,7 @@ export type Database = {
           metadata: Json
           organization_id: string
           publication_status: Database["public"]["Enums"]["result_batch_publication_status"]
+          race_category_id: string | null
           published_at: string | null
           published_by: string | null
           row_count: number
@@ -3634,9 +3637,12 @@ export type Database = {
           valid_row_count: number
           validation_status: Database["public"]["Enums"]["result_batch_validation_status"]
           validation_summary: Json
+          winner_limit: number | null
         }
         Insert: {
           created_at?: string
+          division?: string | null
+          entry_mode?: string
           event_id: string
           id?: string
           imported_at?: string
@@ -3645,6 +3651,7 @@ export type Database = {
           metadata?: Json
           organization_id: string
           publication_status?: Database["public"]["Enums"]["result_batch_publication_status"]
+          race_category_id?: string | null
           published_at?: string | null
           published_by?: string | null
           row_count?: number
@@ -3655,9 +3662,12 @@ export type Database = {
           valid_row_count?: number
           validation_status?: Database["public"]["Enums"]["result_batch_validation_status"]
           validation_summary?: Json
+          winner_limit?: number | null
         }
         Update: {
           created_at?: string
+          division?: string | null
+          entry_mode?: string
           event_id?: string
           id?: string
           imported_at?: string
@@ -3666,6 +3676,7 @@ export type Database = {
           metadata?: Json
           organization_id?: string
           publication_status?: Database["public"]["Enums"]["result_batch_publication_status"]
+          race_category_id?: string | null
           published_at?: string | null
           published_by?: string | null
           row_count?: number
@@ -3676,6 +3687,7 @@ export type Database = {
           valid_row_count?: number
           validation_status?: Database["public"]["Enums"]["result_batch_validation_status"]
           validation_summary?: Json
+          winner_limit?: number | null
         }
         Relationships: [
           {
@@ -3686,7 +3698,65 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "result_batches_race_category_id_fkey"
+            columns: ["race_category_id"]
+            isOneToOne: false
+            referencedRelation: "race_categories"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "result_batches_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_result_audit_logs: {
+        Row: {
+          action: string
+          actor_user_id: string
+          after_snapshot: Json | null
+          before_snapshot: Json | null
+          created_at: string
+          event_id: string
+          id: string
+          organization_id: string
+          result_batch_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          after_snapshot?: Json | null
+          before_snapshot?: Json | null
+          created_at?: string
+          event_id: string
+          id?: string
+          organization_id: string
+          result_batch_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          after_snapshot?: Json | null
+          before_snapshot?: Json | null
+          created_at?: string
+          event_id?: string
+          id?: string
+          organization_id?: string
+          result_batch_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_result_audit_logs_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_result_audit_logs_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -4065,6 +4135,17 @@ export type Database = {
         }
         Returns: string
       }
+      save_manual_result_group: {
+        Args: {
+          p_division: string
+          p_entries: Json
+          p_event_id: string
+          p_group_id: string | null
+          p_race_category_id: string
+          p_winner_limit: number
+        }
+        Returns: string
+      }
       reserve_registration_slot: {
         Args: {
           p_category_id: string
@@ -4080,6 +4161,10 @@ export type Database = {
         Returns: boolean
       }
       submit_event_for_review: { Args: { p_event_id: string }; Returns: string }
+      transition_manual_result_group: {
+        Args: { p_action: string; p_group_id: string }
+        Returns: Json
+      }
       verify_certificate: {
         Args: { p_verification_token: string }
         Returns: {

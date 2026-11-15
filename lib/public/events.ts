@@ -405,42 +405,49 @@ export async function getPublicEventDetails(identifier: string): Promise<PublicE
 }
 export async function getPublicResults(input: { event?: string; participant?: string; bib?: string; category?: string; page?: number }) {
   const admin = createAdminClient(); const page = Math.max(1, input.page ?? 1);
-  let query = admin.from('results').select('event_id,bib_code,bib_number,participant_display_name,category_name,gun_time,overall_rank,classification_rank,category_rank,result_status,result_batches!inner(publication_status)', { count: 'exact' }).eq('result_batches.publication_status', 'published');
+  let query = admin.from('results').select('event_id,bib_code,bib_number,participant_display_name,category_name,gun_time,overall_rank,classification_rank,category_rank,result_status,result_batches!inner(publication_status,division)', { count: 'exact' }).eq('result_batches.publication_status', 'published');
   if (input.event?.trim()) query = query.eq('event_id', input.event.trim());
   if (input.participant?.trim()) query = query.ilike('participant_display_name', `%${input.participant.trim().replace(/[%_]/g, '\\$&')}%`);
   if (input.bib?.trim()) query = query.or(`bib_code.ilike.%${input.bib.trim()}%,source_bib.ilike.%${input.bib.trim()}%`);
   if (input.category?.trim()) query = query.ilike('category_name', `%${input.category.trim().replace(/[%_]/g, '\\$&')}%`);
   const { data, count, error } = await query.order('event_id').order('overall_rank', { ascending: true, nullsFirst: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1); if (error) throw new Error('Public results could not be loaded');
-  return { results: (data ?? []).map((row) => ({ event_id: row.event_id, bib: row.bib_code ?? row.bib_number, participant_name: row.participant_display_name, category: row.category_name, gun_time: row.gun_time, overall_rank: row.overall_rank, classification_rank: row.classification_rank, category_rank: row.category_rank, status: row.result_status })), page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / PAGE_SIZE) };
+  return { results: (data ?? []).map((row) => ({ event_id: row.event_id, bib: row.bib_code ?? row.bib_number, participant_name: row.participant_display_name, category: row.category_name, division: row.result_batches.division, gun_time: row.gun_time, overall_rank: row.overall_rank, classification_rank: row.classification_rank, category_rank: row.category_rank, status: row.result_status })), page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: Math.ceil((count ?? 0) / PAGE_SIZE) };
 }
 
 export type PublicWinner = { rank: number; bib: string | number | null; name: string; finish_time: string };
-export type PublicWinnerGroup = { id: string; title: string; distance: string | null; total: number; winners: PublicWinner[] };
+export type PublicWinnerGroup = { id: string; title: string; distance: string | null; total: number; winnerLimit: number | null; division: string | null; winners: PublicWinner[] };
 
 /** Public podiums contain only finished rows from published result batches. */
 export async function getPublicEventWinnerGroups(eventId: string): Promise<PublicWinnerGroup[]> {
   const admin = createAdminClient();
   const [{ data: batches, error: batchesError }, { data: categories, error: categoriesError }] = await Promise.all([
-    admin.from('result_batches').select('id').eq('event_id', eventId).eq('publication_status', 'published'),
+    admin.from('result_batches').select('id,race_category_id,division,winner_limit,entry_mode').eq('event_id', eventId).eq('publication_status', 'published'),
     admin.from('race_categories').select('id,name,category_group_name,distance_km').eq('event_id', eventId).order('distance_km', { ascending: true, nullsFirst: false }).order('name'),
   ]);
   if (batchesError) throw new Error('Published results could not be loaded');
   if (categoriesError) throw new Error('Event result categories could not be loaded');
-  const batchIds = (batches ?? []).map((batch) => batch.id);
-  if (!batchIds.length) return [];
+  if (!(batches ?? []).length) return [];
+  const categoryById = new Map((categories ?? []).map((category) => [category.id, category]));
+  const manualGroups = (batches ?? []).flatMap((batch) => batch.entry_mode === 'manual' && batch.race_category_id
+    ? [{ id: batch.id, category_id: batch.race_category_id, batch_ids: [batch.id], division: batch.division, winner_limit: batch.winner_limit }]
+    : []);
+  const legacyCsvBatchIds = (batches ?? []).filter((batch) => batch.entry_mode !== 'manual').map((batch) => batch.id);
+  const legacyGroups = legacyCsvBatchIds.length ? (categories ?? []).map((category) => ({ id: `legacy-${eventId}-${category.id}`, category_id: category.id, batch_ids: legacyCsvBatchIds, division: null, winner_limit: 3 })) : [];
+  const groupsToLoad = [...manualGroups, ...legacyGroups];
 
-  const groups = await Promise.all((categories ?? []).map(async (category) => {
+  const groups = await Promise.all(groupsToLoad.map(async (group) => {
+    const category = categoryById.get(group.category_id);
+    if (!category) return null;
     const { data, count, error } = await admin.from('results')
       .select('bib_code,bib_number,participant_display_name,gun_time,category_rank', { count: 'exact' })
       .eq('event_id', eventId)
-      .eq('race_category_id', category.id)
-      .in('result_batch_id', batchIds)
+      .eq('race_category_id', group.category_id)
+      .in('result_batch_id', group.batch_ids)
       .eq('validation_status', 'valid')
       .eq('result_status', 'finished')
-      .not('gun_time', 'is', null)
       .order('category_rank', { ascending: true, nullsFirst: false })
-      .order('gun_time', { ascending: true })
-      .limit(3);
+      .order('gun_time', { ascending: true, nullsFirst: false })
+      .limit(group.winner_limit ?? 3);
     if (error) throw new Error('Published event winners could not be loaded');
     const groupName = category.category_group_name?.trim();
     const categoryName = category.name.trim();
@@ -448,17 +455,19 @@ export async function getPublicEventWinnerGroups(eventId: string): Promise<Publi
       ? `${groupName} - ${categoryName}`
       : categoryName || groupName || 'Race category';
     return {
-      id: category.id,
-      title,
+      id: group.id,
+      title: group.division && group.division !== 'overall' ? `${title} ${group.division[0].toUpperCase()}${group.division.slice(1)}` : group.division === 'overall' ? `${title} Overall/Open` : title,
       distance: category.distance_km == null ? null : `${category.distance_km} km`,
       total: count ?? 0,
+      winnerLimit: group.winner_limit,
+      division: group.division,
       winners: (data ?? []).map((winner, index) => ({
         rank: winner.category_rank ?? index + 1,
         bib: winner.bib_code ?? winner.bib_number,
         name: winner.participant_display_name ?? 'Participant',
         finish_time: winner.gun_time ?? '',
       })),
-    } satisfies PublicWinnerGroup;
+      } satisfies PublicWinnerGroup;
   }));
-  return groups.filter((group) => group.total > 0 && group.winners.length > 0);
+  return groups.filter((group): group is PublicWinnerGroup => Boolean(group && group.total > 0 && group.winners.length > 0));
 }

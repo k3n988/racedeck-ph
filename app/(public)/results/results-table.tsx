@@ -7,6 +7,7 @@ type Result = {
   bib: string | number | null;
   participant_name: string | null;
   category: string | null;
+  division: string | null;
   gun_time: string | null;
   overall_rank: number | null;
   classification_rank: number | null;
@@ -68,9 +69,9 @@ export default function ResultsTable({ initial, updateUrl = true }: { initial: R
     </form>
 
     {message ? <p role={message.startsWith('Loading') ? 'status' : 'alert'} className={`mt-4 rounded-lg p-4 text-sm ${message.startsWith('Loading') ? 'bg-slate-50 text-slate-600' : 'border border-amber-200 bg-amber-50 text-amber-900'}`}>{message}</p> : rows.length ? <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full min-w-[760px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Place</th><th className="px-4 py-3">Bib</th><th className="px-4 py-3">Participant</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Finish time</th><th className="px-4 py-3">Status</th></tr></thead>
-        <tbody className="divide-y divide-slate-100">{rows.map((row, index) => <tr key={`${row.event_id}-${row.bib}-${index}`} className="hover:bg-slate-50/70"><td className="px-4 py-3 font-bold text-slate-700">{row.overall_rank ?? row.category_rank ?? row.classification_rank ?? '—'}</td><td className="px-4 py-3 font-mono font-semibold text-slate-700">{row.bib ?? '—'}</td><td className="px-4 py-3 font-semibold text-[#10213d]">{row.participant_name ?? '—'}</td><td className="px-4 py-3 text-slate-600">{row.category ?? '—'}</td><td className="px-4 py-3 font-mono tabular-nums text-slate-700">{row.gun_time ?? '—'}</td><td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold capitalize text-emerald-700">{row.status}</span></td></tr>)}</tbody>
+      <table className="w-full min-w-[820px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Place</th><th className="px-4 py-3">Bib</th><th className="px-4 py-3">Participant</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Division</th><th className="px-4 py-3">Finish time</th><th className="px-4 py-3">Status</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{rows.map((row, index) => <tr key={`${row.event_id}-${row.bib}-${index}`} className="hover:bg-slate-50/70"><td className="px-4 py-3 font-bold text-slate-700">{row.overall_rank ?? row.category_rank ?? row.classification_rank ?? '—'}</td><td className="px-4 py-3 font-mono font-semibold text-slate-700">{row.bib ?? '—'}</td><td className="px-4 py-3 font-semibold text-[#10213d]">{row.participant_name ?? '—'}</td><td className="px-4 py-3 text-slate-600">{row.category ?? '—'}</td><td className="px-4 py-3 capitalize text-slate-600">{row.division === 'overall' ? 'Overall/Open' : row.division ?? '—'}</td><td className="px-4 py-3 font-mono tabular-nums text-slate-700">{row.gun_time ?? '—'}</td><td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold capitalize text-emerald-700">{row.status}</span></td></tr>)}</tbody>
       </table>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
         <span>Showing {(page - 1) * 12 + 1}–{Math.min(page * 12, total)} of {total.toLocaleString()} results</span>
