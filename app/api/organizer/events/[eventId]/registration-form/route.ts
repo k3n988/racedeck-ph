@@ -25,7 +25,7 @@ export async function GET(_r:Request,{params}:{params:{eventId:string}}){
   // client for this scoped read so organizer visibility isn't limited by the
   // public-only active-field RLS policy.
   const admin=createAdminClient();
-  const{data:fields,error}=await admin.from('event_registration_fields').select('id,event_id,label,field_type,section_key,is_required,is_active,display_order,created_at').eq('event_id',params.eventId).order('display_order').order('created_at');
+  const{data:fields,error}=await admin.from('event_registration_fields').select('id,event_id,label,field_type,section_key,is_required,is_active,display_order,created_at,validation_list_id').eq('event_id',params.eventId).order('display_order').order('created_at');
   if(error){console.error('Unable to load registration form fields',{code:error.code,message:error.message});return NextResponse.json({error:'Registration form could not be loaded'},{status:500})}
   const ids=(fields??[]).map(f=>f.id);
   const{data:options,error:optionsError}=ids.length?await admin.from('event_registration_field_options').select('id,field_id,label,value,display_order').in('field_id',ids).order('display_order'): {data:[],error:null};

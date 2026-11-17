@@ -13,10 +13,12 @@ import {
   CreditCard,
   Download,
   LayoutDashboard,
+  Link2,
   Menu,
   RefreshCw,
   Settings,
   UsersRound,
+  ListChecks,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -31,17 +33,17 @@ const navigationGroups: { label?: string; items: { label: string; href: string; 
 
 const settingsItems: { label: string; href: string; icon: LucideIcon }[] = [
   { label: 'Organization details', href: '/organizer/organization', icon: Building2 },
+  { label: 'Integrations', href: '/organizer/settings/integrations', icon: Link2 },
+  { label: 'Validation lists', href: '/organizer/settings/validation-lists', icon: ListChecks },
   { label: 'Payment profiles', href: '/organizer/payments/profile', icon: CreditCard },
   { label: 'Staff', href: '/organizer/team-members', icon: UsersRound },
   { label: 'Verification', href: '/organizer/verification', icon: BadgeCheck },
 ];
 
-const settingsSoonItems = ['Integrations', 'Validation lists'] as const;
-
 const routeLabels: Record<string, string> = {
   dashboard: 'Dashboard', events: 'Events', registrations: 'Registrations', payments: 'Payments',
   reports: 'Reports', 'team-members': 'Team Members', organization: 'Organization details', profile: 'Payment profiles',
-  settings: 'Settings', create: 'Create Event', preview: 'Preview', results: 'Results',
+  settings: 'Settings', integrations: 'Integrations', 'validation-lists': 'Validation lists', create: 'Create Event', preview: 'Preview', results: 'Results',
   'promo-codes': 'Promo Codes', 'race-kit-claiming': 'Race Kit Claiming', 'bib-management': 'Bib Management',
   'registration-form': 'Registration Form', waiver: 'Waiver', 'categories-pricing': 'Categories & Pricing',
   'race-kit-config': 'Race Kit Configuration', details: 'Event Details', 'email-reminders': 'Email & Reminders',
@@ -210,9 +212,6 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
                     </Link>
                   );
                 })}
-                <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
-                  {settingsSoonItems.map((label) => <div key={label} aria-disabled="true" className="flex min-h-9 items-center justify-between rounded-lg px-3 text-xs text-white/40"><span>{label}</span><span className="text-[9px] font-bold uppercase tracking-wide">Soon</span></div>)}
-                </div>
               </div>
             )}
           </div>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PublicEventTracking } from '@/components/public/public-event-tracking';
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         </nav>
       </header>
       {children}
+      <PublicEventTracking />
       <footer className="mt-20 border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-7 text-sm text-slate-600 sm:px-6">
           <div><p className="font-bold text-slate-900">RaceDeck PH</p><p className="mt-1 text-xs">Race registration and event operations.</p></div>

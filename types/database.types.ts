@@ -1017,6 +1017,7 @@ export type Database = {
           is_required: boolean
           label: string
           section_key: string
+          validation_list_id: string | null
         }
         Insert: {
           created_at?: string
@@ -1028,6 +1029,7 @@ export type Database = {
           is_required?: boolean
           label: string
           section_key?: string
+          validation_list_id?: string | null
         }
         Update: {
           created_at?: string
@@ -1039,6 +1041,7 @@ export type Database = {
           is_required?: boolean
           label?: string
           section_key?: string
+          validation_list_id?: string | null
         }
         Relationships: [
           {
@@ -1046,6 +1049,13 @@ export type Database = {
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_registration_fields_validation_list_id_fkey"
+            columns: ["validation_list_id"]
+            isOneToOne: false
+            referencedRelation: "organization_validation_lists"
             referencedColumns: ["id"]
           },
         ]
@@ -2076,6 +2086,18 @@ export type Database = {
           role?: Database["public"]["Enums"]["organization_role"]
         }
         Relationships: []
+      }
+      organization_integrations: {
+        Row: { id: string; organization_id: string; google_analytics_id: string | null; meta_pixel_id: string | null; updated_at: string }
+        Insert: { id?: string; organization_id: string; google_analytics_id?: string | null; meta_pixel_id?: string | null; updated_at?: string }
+        Update: { id?: string; organization_id?: string; google_analytics_id?: string | null; meta_pixel_id?: string | null; updated_at?: string }
+        Relationships: [{ foreignKeyName: "organization_integrations_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: true; referencedRelation: "organizations"; referencedColumns: ["id"] }]
+      }
+      organization_validation_lists: {
+        Row: { id: string; organization_id: string; name: string; options: Json; created_at: string; updated_at: string }
+        Insert: { id?: string; organization_id: string; name: string; options?: Json; created_at?: string; updated_at?: string }
+        Update: { id?: string; organization_id?: string; name?: string; options?: Json; created_at?: string; updated_at?: string }
+        Relationships: [{ foreignKeyName: "organization_validation_lists_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] }]
       }
       organizations: {
         Row: {

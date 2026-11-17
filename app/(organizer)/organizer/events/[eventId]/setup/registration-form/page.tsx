@@ -6,7 +6,7 @@ import { CUSTOM_FIELD_TYPES, CUSTOM_FIELD_TYPE_LABELS, type CustomFieldType } fr
 import { DEFAULT_PERSONAL_INFORMATION_FIELDS, PERSONAL_INFORMATION_FIELDS, type PersonalInformationFieldKey } from '@/lib/registration-form/personal-information-fields';
 
 type Option = { id: string; field_id: string; label: string; value: string; display_order: number };
-type Field = { id: string; label: string; field_type: string; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number; options: Option[] };
+type Field = { id: string; label: string; field_type: string; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number; validation_list_id?: string | null; options: Option[] };
 type FieldForm = { label: string; field_type: CustomFieldType; section_key: 'additional' | 'health'; is_required: boolean; is_active: boolean; display_order: number };
 
 const blank: FieldForm = { label: '', field_type: 'short_text', section_key: 'additional', is_required: false, is_active: true, display_order: 0 };
@@ -228,6 +228,27 @@ function OptionManager({ eventId, field, onChange }: { eventId: string; field: F
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
+  const [lists, setLists] = useState<{ id: string; name: string; options: Option[] }[]>([]);
+  const [selectedList, setSelectedList] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/organizer/settings/validation-lists', { cache: 'no-store' }).then(async response => {
+      const body = await response.json().catch(() => ({}));
+      if (response.ok && active) setLists(body.lists ?? []);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  async function applyList() {
+    if (!selectedList) return;
+    setBusy(true); setError('');
+    const response = await fetch(`/api/organizer/events/${eventId}/registration-form/${field.id}/validation-list`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ list_id: selectedList }) });
+    const body = await response.json().catch(() => ({}));
+    setBusy(false);
+    if (!response.ok) { setError(body.error ?? 'Validation list could not be applied.'); return; }
+    setSelectedList(''); await onChange();
+  }
 
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -252,6 +273,8 @@ function OptionManager({ eventId, field, onChange }: { eventId: string; field: F
   }
 
   return <div className="max-w-2xl border-t border-slate-100 pt-3 text-sm">
+    {lists.length > 0 && <div className="mb-3 flex flex-col gap-2 rounded-lg border border-orange-100 bg-orange-50/60 p-3 sm:flex-row sm:items-end"><label className="min-w-0 flex-1 text-xs font-semibold text-slate-700">Apply a reusable list<select value={selectedList} onChange={event => setSelectedList(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-normal"><option value="">Choose a validation list</option>{lists.map(list => <option key={list.id} value={list.id}>{list.name} ({list.options.length})</option>)}</select></label><button type="button" disabled={busy || !selectedList} onClick={() => void applyList()} className="min-h-9 rounded-lg bg-[#0b2b5b] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Applying…' : 'Apply list'}</button></div>}
+    {field.validation_list_id && <p className="mb-2 text-xs text-emerald-700">Reusable list is linked. Event options are a snapshot; applying another list replaces the current options.</p>}
     <div className="mb-2 flex items-center justify-between"><h4 className="text-sm font-bold text-[#101c33]">Answer options</h4><button type="button" disabled={busy} onClick={() => setAdding(!adding)} className="text-xs font-bold text-orange-700 hover:text-orange-800">{adding ? 'Cancel' : '+ Add option'}</button></div>
     {field.options.length ? <ul className="space-y-1.5">{field.options.map((option) => <li key={option.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"><span className="text-slate-700">{option.label} <span className="text-slate-400">({option.value})</span></span><button type="button" disabled={busy} onClick={() => void remove(option)} className="text-xs font-semibold text-slate-500 hover:text-red-700">Remove</button></li>)}</ul> : <p className="text-xs text-slate-500">No answer choices yet.</p>}
     {error && <ToastFeedback message={String(error)} tone="auto" />}
