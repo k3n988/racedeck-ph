@@ -271,8 +271,8 @@ Example: Registration ₱1,000, RaceDeck Fee ₱40 → Participant Pays: ₱1,04
 Status: Pending · Processing · Completed · Failed · Cancelled
 On Completed → triggers §35.6
 
-50. Payment Settlement
-PayMongo handles organizer/platform settlement through its configured split workflow. RaceDeck records payment and reconciliation information, with no bank-account storage or disbursement controls.
+50. Organizer Payment Profiles
+Organization owners can save multiple profiles with contact, address, bank, SWIFT/BIC, currency, and direct-deposit preferences at Organizer Settings â†’ Payment Profiles. Bank account numbers are encrypted server-side with AES-256-GCM; APIs return only the last four digits. Configure a persistent 32-byte hex `PAYMENT_PROFILE_ENCRYPTION_KEY` in local and production server environments. Generate one with `openssl rand -hex 32` and store it as a secret. The profile records a weekly direct-deposit preference for future transactions; payout execution remains a separate finance workflow.
 
 51. Organizer Reports
 [CORE] Registrations, event performance, gross sales, discounts, refunds, RaceDeck fees, net revenue, payments, category performance, kit claiming, email delivery, results, certificates issued

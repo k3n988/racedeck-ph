@@ -144,7 +144,7 @@ export default function RegistrationsWorkspace() {
       {!error && <>
         <section aria-label="Registration summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {metrics.map(({ name, value, icon: Icon, note }) => <article key={name} className="flex min-h-[132px] min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase leading-5 tracking-[0.08em] text-slate-500">{name}</p><p className="mt-3 text-2xl font-black tracking-tight text-[#071b41] sm:text-3xl">{loading ? '—' : value.toLocaleString()}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{note}</p></div><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-orange-50 text-orange-600"><Icon aria-hidden="true" size={18} /></span></div>
+            <div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase leading-5 tracking-[0.08em] text-slate-500">{name}</p><p className="mt-3 text-2xl font-black tracking-tight text-[#071b41] sm:text-3xl">{loading ? '—' : value.toLocaleString()}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{note}</p></div><span className="grid h-9 w-9 shrink-0 place-items-center text-slate-600"><Icon aria-hidden="true" size={18} /></span></div>
           </article>)}
         </section>
 

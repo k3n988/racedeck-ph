@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
-  CalendarDays, CreditCard, FileText, LayoutDashboard,
+  CalendarDays, CreditCard, FileText, LayoutDashboard, Plus,
   LifeBuoy, Mail, Menu, Percent, RotateCcw, Scale, ScrollText, Settings,
   ShieldCheck, Users, X,
 } from 'lucide-react';
@@ -115,10 +115,6 @@ export default function AdminShell({ children, email }: { children: React.ReactN
           </Link>
           <button type="button" className="rounded p-1 text-white/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400 lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu"><X size={20} /></button>
         </div>
-        <div className="px-6 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-300">Platform admin</p>
-          <p className="mt-1 text-xs text-white/45">Platform control center</p>
-        </div>
         <nav className="scrollbar-hidden min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 pb-6" aria-label="Platform admin navigation">
           {groups.map((group) => (
             <div key={group.label}>
@@ -154,6 +150,7 @@ export default function AdminShell({ children, email }: { children: React.ReactN
               {isDetailPage && activeItem && <><Link href={activeItem.href} className="hover:text-orange-600">{activeItem.label}</Link><span className="mx-2">/</span></>}
               <span className="font-semibold text-slate-800">{isDetailPage ? detailLabel : activeItem?.label ?? (pathname.startsWith('/admin/payment-operations') ? 'Payment operations' : 'Dashboard')}</span>
             </nav>
+            {pathname === '/admin/content-management' && <Link href="/admin/content-management?create=1" className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#071b41] px-3 text-xs font-bold text-white hover:bg-[#102b58] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 sm:px-4 sm:text-sm"><Plus size={15} aria-hidden="true" />Create content</Link>}
           </div>
         </header>
         {children}

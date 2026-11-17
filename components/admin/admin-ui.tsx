@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { Inbox } from 'lucide-react';
 
-export function AdminPage({ eyebrow = 'RaceDeck platform', title, description, action, showHeading = false, compactTop = false, children }: { eyebrow?: string; title: string; description: string; action?: React.ReactNode; showHeading?: boolean; compactTop?: boolean; children: React.ReactNode }) {
-  return <main className={`min-h-[calc(100dvh-4rem)] bg-[#f4f6fa] px-4 text-slate-900 sm:px-6 lg:px-8 ${compactTop ? 'pb-5 pt-3' : 'py-5'}`}><div className="mx-auto max-w-[1500px] space-y-6">{showHeading ? <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-orange-600">{eyebrow}</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#071b41] sm:text-3xl">{title}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">{description}</p></div>{action}</div> : (description || action) ? <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">{description && <p className="max-w-3xl text-sm text-slate-600">{description}</p>}{action}</div> : null}{children}</div></main>;
+export function AdminPage({ eyebrow = 'RaceDeck platform', title, description, action, showHeading = false, compactTop = false, compactSections = false, children }: { eyebrow?: string; title: string; description: string; action?: React.ReactNode; showHeading?: boolean; compactTop?: boolean; compactSections?: boolean; children: React.ReactNode }) {
+  return <main className={`min-h-[calc(100dvh-4rem)] bg-[#f4f6fa] px-4 text-slate-900 sm:px-6 lg:px-8 ${compactTop ? 'pb-5 pt-3' : 'py-5'}`}><div className={`mx-auto max-w-[1500px] ${compactSections ? 'space-y-2' : 'space-y-6'}`}>{showHeading ? <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-orange-600">{eyebrow}</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#071b41] sm:text-3xl">{title}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500">{description}</p></div>{action}</div> : (description || action) ? <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">{description && <p className="max-w-3xl text-sm text-slate-600">{description}</p>}{action}</div> : null}{children}</div></main>;
 }
 
 export function StatCard({ label, value, detail, tone = 'plain' }: { label: string; value: React.ReactNode; detail?: string; tone?: 'plain' | 'orange' | 'green' | 'amber' }) {
-  const colors = { plain: 'border-slate-200 bg-white', orange: 'border-orange-200 bg-orange-50', green: 'border-emerald-200 bg-emerald-50', amber: 'border-amber-200 bg-amber-50' };
-  return <div className={`rounded-xl border p-4 shadow-sm ${colors[tone]}`}><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 text-2xl font-black text-[#071b41]">{value}</p>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>;
+  void tone;
+  return <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 text-2xl font-black text-[#071b41]">{value}</p>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>;
 }
 
 export function StatusBadge({ value, tone }: { value: string; tone?: 'green' | 'amber' | 'red' | 'blue' | 'slate' }) {
@@ -20,8 +20,8 @@ export function Toolbar({ placeholder = 'Search...', children }: { placeholder?:
   return <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm"><input aria-label="Search" placeholder={placeholder} className="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />{children}<button className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:border-orange-400">Clear filters</button></div>;
 }
 
-export function DataTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
-  return <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50"><tr>{headers.map((header) => <th key={header} className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table></div>;
+export function DataTable({ headers, children, footer }: { headers: string[]; children: React.ReactNode; footer?: React.ReactNode }) {
+  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50"><tr>{headers.map((header) => <th key={header} className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table></div>{footer && <div className="border-t border-slate-100 px-4 py-3">{footer}</div>}</div>;
 }
 
 export function EmptyState({ message, href, label, icon: Icon = Inbox }: { message: string; href?: string; label?: string; icon?: typeof Inbox }) {

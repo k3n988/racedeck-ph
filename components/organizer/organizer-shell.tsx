@@ -31,6 +31,7 @@ const navigationGroups: { label?: string; items: { label: string; href: string; 
 
 const settingsItems: { label: string; href: string; icon: LucideIcon }[] = [
   { label: 'Organization details', href: '/organizer/organization', icon: Building2 },
+  { label: 'Payment profiles', href: '/organizer/payments/profile', icon: CreditCard },
   { label: 'Staff', href: '/organizer/team-members', icon: UsersRound },
   { label: 'Verification', href: '/organizer/verification', icon: BadgeCheck },
 ];
@@ -39,7 +40,7 @@ const settingsSoonItems = ['Integrations', 'Validation lists'] as const;
 
 const routeLabels: Record<string, string> = {
   dashboard: 'Dashboard', events: 'Events', registrations: 'Registrations', payments: 'Payments',
-  reports: 'Reports', 'team-members': 'Team Members', organization: 'Organization details',
+  reports: 'Reports', 'team-members': 'Team Members', organization: 'Organization details', profile: 'Payment profiles',
   settings: 'Settings', create: 'Create Event', preview: 'Preview', results: 'Results',
   'promo-codes': 'Promo Codes', 'race-kit-claiming': 'Race Kit Claiming', 'bib-management': 'Bib Management',
   'registration-form': 'Registration Form', waiver: 'Waiver', 'categories-pricing': 'Categories & Pricing',
@@ -169,7 +170,7 @@ function OrganizerShellContent({ children, email }: { children: React.ReactNode;
               {group.label && <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{group.label}</p>}
               <div className="space-y-1">
                 {group.items.map(({ label, href, icon: Icon }) => {
-                  const active = pathname === href || pathname.startsWith(`${href}/`);
+                  const active = pathname === href || (href !== '/organizer/payments' && pathname.startsWith(`${href}/`));
                   return (
                     <Link
                       key={href}
