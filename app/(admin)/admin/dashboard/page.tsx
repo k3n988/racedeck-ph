@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { AlertCircle, ArrowRight, CalendarDays, CheckCircle2, MailWarning, Scale, Users } from 'lucide-react';
+import { adminDateRange } from '@/lib/admin/list-query';
 import { createAdminClient } from '@/lib/supabase/admin';
+import DashboardFilters from './dashboard-filters';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +15,7 @@ function QueueEmptyState({ icon: Icon, title, description }: { icon: typeof Cale
 }
 
 function Metric({ label, value, href, icon: Icon }: {
-  label: string; value: number | null; href: string; icon: typeof CalendarDays;
+  label: string; value: number | string | null; href: string; icon: typeof CalendarDays;
 }) {
   return <Link href={href} className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
     <div><p className="text-sm font-semibold text-slate-600">{label}</p><p className="mt-2 text-3xl font-black text-[#071b41]">{value == null ? '—' : value.toLocaleString()}</p></div>
@@ -21,30 +23,87 @@ function Metric({ label, value, href, icon: Icon }: {
   </Link>;
 }
 
-export default async function AdminDashboardPage() {
+async function getCollectedPlatformRevenue(db: ReturnType<typeof createAdminClient>, eventId: string, range: ReturnType<typeof adminDateRange>) {
+  const totalsByCurrency = new Map<string, number>();
+  let offset = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    let query = db.from('platform_fees').select('amount,currency').eq('status', 'collected').order('collected_at', { ascending: true }).range(offset, offset + pageSize - 1);
+    if (eventId) query = query.eq('event_id', eventId);
+    if (range.from) query = query.gte('collected_at', range.from);
+    if (range.toExclusive) query = query.lt('collected_at', range.toExclusive);
+    const result = await query;
+    if (result.error) return { data: null, error: result.error };
+
+    for (const fee of result.data ?? []) {
+      const cents = Math.round(Number(fee.amount) * 100);
+      totalsByCurrency.set(fee.currency, (totalsByCurrency.get(fee.currency) ?? 0) + cents);
+    }
+    if ((result.data?.length ?? 0) < pageSize) break;
+    offset += pageSize;
+  }
+
+  return { data: totalsByCurrency, error: null };
+}
+
+function formatCurrencyTotals(totals: Map<string, number>) {
+  if (totals.size === 0) return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(0);
+  return Array.from(totals.entries()).map(([currency, cents]) => new Intl.NumberFormat('en-PH', {
+    style: 'currency', currency, maximumFractionDigits: 2,
+  }).format(cents / 100)).join(' · ');
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function AdminDashboardPage({ searchParams }: { searchParams?: { from?: string; to?: string; event?: string } }) {
   const db = createAdminClient();
-  const [eventCount, organizerCount, liveCount, registrationCount, pendingEvents, pendingOrganizers, reconciliationCount, emailCount] = await Promise.all([
-    db.from('events').select('id', { count: 'exact', head: true }).eq('review_status', 'pending_review'),
+  const from = searchParams?.from ?? '';
+  const to = searchParams?.to ?? '';
+  const range = adminDateRange(from, to);
+  const eventId = UUID.test(searchParams?.event ?? '') ? searchParams!.event! : '';
+  const eventsQuery = () => {
+    let query = db.from('events').select('id', { count: 'exact', head: true });
+    if (eventId) query = query.eq('id', eventId);
+    if (from && !range.error) query = query.gte('event_date', from);
+    if (to && !range.error) query = query.lte('event_date', to);
+    return query;
+  };
+  let pendingEventsQuery = db.from('events').select('id,name,event_date,updated_at,organizations(name)').eq('review_status', 'pending_review');
+  if (eventId) pendingEventsQuery = pendingEventsQuery.eq('id', eventId);
+  if (from && !range.error) pendingEventsQuery = pendingEventsQuery.gte('event_date', from);
+  if (to && !range.error) pendingEventsQuery = pendingEventsQuery.lte('event_date', to);
+  let registrationsQuery = db.from('registrations').select('id', { count: 'exact', head: true });
+  if (eventId) registrationsQuery = registrationsQuery.eq('event_id', eventId);
+  if (range.from) registrationsQuery = registrationsQuery.gte('created_at', range.from);
+  if (range.toExclusive) registrationsQuery = registrationsQuery.lt('created_at', range.toExclusive);
+  const [eventCount, organizerCount, liveCount, registrationCount, pendingEvents, pendingOrganizers, reconciliationCount, emailCount, eventOptions, platformRevenue] = await Promise.all([
+    eventsQuery().eq('review_status', 'pending_review'),
     db.from('organizer_verifications').select('id', { count: 'exact', head: true }).eq('status', 'pending_review'),
-    db.from('events').select('id', { count: 'exact', head: true }).in('lifecycle_status', ['published', 'ongoing']).eq('review_status', 'approved'),
-    db.from('registrations').select('id', { count: 'exact', head: true }),
-    db.from('events').select('id,name,event_date,updated_at,organizations(name)').eq('review_status', 'pending_review').order('updated_at', { ascending: true }).limit(5),
+    eventsQuery().in('lifecycle_status', ['published', 'ongoing']).eq('review_status', 'approved'),
+    registrationsQuery,
+    pendingEventsQuery.order('updated_at', { ascending: true }).limit(5),
     db.from('organizer_verifications').select('organization_id,submitted_at,organizations!inner(name)').eq('status', 'pending_review').order('submitted_at', { ascending: true }).limit(5),
     db.from('finance_reconciliation_records').select('id', { count: 'exact', head: true }).eq('discrepancy_status', 'open'),
     db.from('email_messages').select('id', { count: 'exact', head: true }).in('status', ['failed', 'bounced', 'suppressed']),
+    db.from('events').select('id,name').order('event_date', { ascending: false }),
+    getCollectedPlatformRevenue(db, eventId, range),
   ]);
-  const loadFailed = [eventCount, organizerCount, liveCount, registrationCount, pendingEvents, pendingOrganizers, reconciliationCount, emailCount].some((result) => result.error);
+  const loadFailed = [eventCount, organizerCount, liveCount, registrationCount, pendingEvents, pendingOrganizers, reconciliationCount, emailCount, eventOptions, platformRevenue].some((result) => result.error);
   const eventRows = pendingEvents.data ?? [];
   const organizerRows = pendingOrganizers.data ?? [];
   const issueCount = (reconciliationCount.count ?? 0) + (emailCount.count ?? 0);
 
   return <main className="mx-auto max-w-[1500px] space-y-5 px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
+    <DashboardFilters events={eventOptions.data ?? []} from={from} to={to} eventId={eventId} />
     {loadFailed && <p role="alert" className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle size={18} aria-hidden="true" /> Some dashboard data could not be loaded. Unavailable counts are shown as a dash; refresh to try again.</p>}
-    <section aria-label="Platform metrics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {range.error && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{range.error}</p>}
+    <section aria-label="Platform metrics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <Metric label="Events awaiting review" value={eventCount.error ? null : eventCount.count} href="/admin/events?review=pending_review" icon={CalendarDays} />
       <Metric label="Organizers awaiting review" value={organizerCount.error ? null : organizerCount.count} href="/admin/organizers" icon={Users} />
       <Metric label="Public events" value={liveCount.error ? null : liveCount.count} href="/admin/events" icon={CheckCircle2} />
       <Metric label="Registrations" value={registrationCount.error ? null : registrationCount.count} href="/admin/participants" icon={Users} />
+      <Metric label="Platform revenue collected" value={platformRevenue.error ? null : formatCurrencyTotals(platformRevenue.data ?? new Map())} href="/admin/finance/platform-fees?status=collected" icon={Scale} />
     </section>
     <div className="grid gap-5 xl:grid-cols-2">
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">

@@ -143,13 +143,16 @@ export default function AdminShell({ children, email }: { children: React.ReactN
       </aside>
       <div ref={contentRef} aria-hidden={open} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
+          <div className="flex min-h-16 flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
             <button ref={menuButtonRef} type="button" onClick={() => setOpen(true)} className="rounded-lg border border-slate-200 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500 lg:hidden" aria-label="Open menu" aria-expanded={open} aria-controls="admin-sidebar"><Menu size={20} /></button>
-            <nav aria-label="Breadcrumb" className="min-w-0 truncate text-sm text-slate-500">
+            <nav aria-label="Breadcrumb" className="min-w-0 flex-1 truncate text-sm text-slate-500">
               <Link href="/admin/dashboard" className="hover:text-orange-600">Platform</Link><span className="mx-2">/</span>
               {isDetailPage && activeItem && <><Link href={activeItem.href} className="hover:text-orange-600">{activeItem.label}</Link><span className="mx-2">/</span></>}
               <span className="font-semibold text-slate-800">{isDetailPage ? detailLabel : activeItem?.label ?? (pathname.startsWith('/admin/payment-operations') ? 'Payment operations' : 'Dashboard')}</span>
             </nav>
+            {pathname === '/admin/dashboard' && <div id="admin-dashboard-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/organizers' && <div id="admin-organizer-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/events' && <div id="admin-event-filters" className="w-full lg:ml-auto lg:w-auto" />}
             {pathname === '/admin/content-management' && <Link href="/admin/content-management?create=1" className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#071b41] px-3 text-xs font-bold text-white hover:bg-[#102b58] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 sm:px-4 sm:text-sm"><Plus size={15} aria-hidden="true" />Create content</Link>}
           </div>
         </header>
