@@ -19,6 +19,7 @@ import {
   Settings,
   UsersRound,
   ListChecks,
+  LifeBuoy,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ const navigationGroups: { label?: string; items: { label: string; href: string; 
   { items: [{ label: 'Events', href: '/organizer/events', icon: CalendarDays }, { label: 'Registrations', href: '/organizer/registrations', icon: UsersRound }] },
   { label: 'Finance', items: [{ label: 'Payments', href: '/organizer/payments', icon: CreditCard }] },
   { label: 'Analytics', items: [{ label: 'Reports', href: '/organizer/reports', icon: BarChart3 }] },
+  { label: 'Help', items: [{ label: 'Report an issue', href: '/support/report', icon: LifeBuoy }] },
 ];
 
 const settingsItems: { label: string; href: string; icon: LucideIcon }[] = [
@@ -47,7 +49,7 @@ const routeLabels: Record<string, string> = {
   'promo-codes': 'Promo Codes', 'race-kit-claiming': 'Race Kit Claiming', 'bib-management': 'Bib Management',
   'registration-form': 'Registration Form', waiver: 'Waiver', 'categories-pricing': 'Categories & Pricing',
   'race-kit-config': 'Race Kit Configuration', details: 'Event Details', 'email-reminders': 'Email & Reminders',
-  'certificate-settings': 'Certificate Settings',
+  'certificate-settings': 'Certificate Settings', 'support': 'Report an issue',
 };
 
 function pageTitle(pathname: string) {

@@ -13,7 +13,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   if (!event || !membership || !(await hasPermission(membership.organization_id, 'edit_events', params.eventId))) return NextResponse.json({ error: 'Event edit permission required' }, { status: 403 });
   const parsed = z.object({ list_id: z.string().uuid() }).safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Choose a validation list.' }, { status: 400 });
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { data: count, error } = await admin.rpc('apply_registration_validation_list', { p_event_id: params.eventId, p_field_id: params.fieldId, p_list_id: parsed.data.list_id });
   if (error) {
     const conflict = error.message?.includes('participant responses');

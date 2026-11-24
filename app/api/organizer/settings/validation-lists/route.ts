@@ -17,7 +17,7 @@ async function organizationAccess() {
 export async function GET() {
   const access = await organizationAccess();
   if ('response' in access) return access.response;
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { data, error } = await admin.from('organization_validation_lists').select('id,name,options,created_at,updated_at').eq('organization_id', access.organizationId).order('name');
   if (error) return NextResponse.json({ error: 'Validation lists could not be loaded' }, { status: 500 });
   return NextResponse.json({ lists: data ?? [] });
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   if ('response' in access) return access.response;
   const parsed = listSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Check the list name and options.' }, { status: 400 });
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { data, error } = await admin.from('organization_validation_lists').insert({ ...parsed.data, organization_id: access.organizationId }).select('id,name,options,created_at,updated_at').single();
   if (error) return NextResponse.json({ error: error.code === '23505' ? 'A list with that name already exists.' : 'Validation list could not be created.' }, { status: error.code === '23505' ? 409 : 500 });
   return NextResponse.json({ list: data }, { status: 201 });
@@ -42,7 +42,7 @@ export async function PUT(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Check the list name and options.' }, { status: 400 });
   const { id, ...values } = parsed.data;
   if (new Set(values.options.map(o => o.value)).size !== values.options.length) return NextResponse.json({ error: 'Option values must be unique.' }, { status: 400 });
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { data, error } = await admin.from('organization_validation_lists').update({ ...values, updated_at: new Date().toISOString() }).eq('id', id).eq('organization_id', access.organizationId).select('id,name,options,created_at,updated_at').maybeSingle();
   if (error) return NextResponse.json({ error: error.code === '23505' ? 'A list with that name already exists.' : 'Validation list could not be updated.' }, { status: error.code === '23505' ? 409 : 500 });
   if (!data) return NextResponse.json({ error: 'Validation list not found.' }, { status: 404 });
@@ -54,7 +54,7 @@ export async function DELETE(request: Request) {
   if ('response' in access) return access.response;
   const parsed = z.object({ id: z.string().uuid() }).safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Choose a valid validation list.' }, { status: 400 });
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { error } = await admin.from('organization_validation_lists').delete().eq('id', parsed.data.id).eq('organization_id', access.organizationId);
   if (error) return NextResponse.json({ error: 'Validation list could not be deleted.' }, { status: 500 });
   return NextResponse.json({ ok: true });

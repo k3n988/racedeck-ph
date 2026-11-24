@@ -18,7 +18,7 @@ const blankForm: Form = { profile_name: '', currency: 'PHP', account_holder_name
 const regions = ['Bangsamoro', 'Bicol Region', 'Cagayan Valley', 'Calabarzon', 'Caraga', 'Central Luzon', 'Central Visayas', 'Cordillera Administrative Region', 'Davao Region', 'Eastern Visayas', 'Ilocos Region', 'National Capital Region', 'Northern Mindanao', 'Soccsksargen', 'Southwestern Tagalog Region', 'Western Visayas', 'Zamboanga Peninsula'];
 const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
 const commonCountries = ['PH', 'US', 'CA', 'AU', 'NZ', 'JP', 'ID', 'VN', 'TH', 'MY'];
-const countryOptions = [...new Set([...commonCountries, ...ORGANIZATION_COUNTRY_CODES])]
+const countryOptions = Array.from(new Set([...commonCountries, ...ORGANIZATION_COUNTRY_CODES]))
   .map((code) => ({ code, name: code === 'XK' ? 'Kosovo' : countryNames.of(code) ?? code }))
   .sort((a, b) => commonCountries.includes(a.code) && commonCountries.includes(b.code)
     ? commonCountries.indexOf(a.code) - commonCountries.indexOf(b.code)

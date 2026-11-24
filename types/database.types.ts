@@ -3953,7 +3953,8 @@ export type Database = {
           refund_id: string | null
           registration_id: string | null
           requester_organization_id: string | null
-          requester_user_id: string
+          requester_email: string | null
+          requester_user_id: string | null
           resolution_notes: string | null
           resolved_at: string | null
           status: Database["public"]["Enums"]["support_case_status"]
@@ -3976,7 +3977,8 @@ export type Database = {
           refund_id?: string | null
           registration_id?: string | null
           requester_organization_id?: string | null
-          requester_user_id: string
+          requester_email?: string | null
+          requester_user_id?: string | null
           resolution_notes?: string | null
           resolved_at?: string | null
           status?: Database["public"]["Enums"]["support_case_status"]
@@ -3999,7 +4001,8 @@ export type Database = {
           refund_id?: string | null
           registration_id?: string | null
           requester_organization_id?: string | null
-          requester_user_id?: string
+          requester_email?: string | null
+          requester_user_id?: string | null
           resolution_notes?: string | null
           resolved_at?: string | null
           status?: Database["public"]["Enums"]["support_case_status"]
@@ -4106,6 +4109,18 @@ export type Database = {
         }
         Returns: string[]
       }
+      apply_registration_validation_list: {
+        Args: { p_event_id: string; p_field_id: string; p_list_id: string }
+        Returns: number
+      }
+      grant_internal_user_roles: {
+        Args: {
+          p_actor_user_id: string
+          p_roles: Database["public"]["Enums"]["racedeck_internal_role"][]
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       confirm_registration: {
         Args: { p_registration_id: string }
         Returns: boolean
@@ -4177,6 +4192,14 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
+      }
+      revoke_internal_user_role: {
+        Args: {
+          p_actor_user_id: string
+          p_role: Database["public"]["Enums"]["racedeck_internal_role"]
+          p_user_id: string
+        }
+        Returns: undefined
       }
       reverse_promo_redemption: {
         Args: { p_payment_id: string; p_registration_id: string }

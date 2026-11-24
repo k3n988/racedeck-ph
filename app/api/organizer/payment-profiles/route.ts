@@ -61,7 +61,7 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient() as unknown as SupabaseClient;
-  const { bank_account_number: _accountNumber, ...fields } = parsed.data;
+  const fields = Object.fromEntries(Object.entries(parsed.data).filter(([key]) => key !== 'bank_account_number')) as Omit<typeof parsed.data, 'bank_account_number'>;
   const { data, error } = await admin.from('organization_payment_profiles').insert({
     organization_id: membership.organization_id,
     created_by: context.user.id,

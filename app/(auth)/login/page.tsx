@@ -52,7 +52,7 @@ export default function LoginPage() {
     if (!landingResponse.ok || !landing.route) {
       await supabase.auth.signOut();
       setBusy(false);
-      setMessage(landing.error ?? "This login is only for RaceDeck organizers and administrators.");
+      setMessage(landing.error ?? "This login is for RaceDeck organizers and authorized staff.");
       return;
     }
 
@@ -64,8 +64,8 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-[#f7f8fb] px-4 py-12 text-slate-900 sm:px-6">
       <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <p className="text-sm font-bold uppercase tracking-[0.16em] text-orange-600">RaceDeck PH</p>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">Organizer and Admin Login</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">Sign in to manage events and RaceDeck operations.</p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">Organizer and Staff Login</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Sign in to manage events or access your assigned RaceDeck admin tools.</p>
 
         <form onSubmit={submit} className="mt-6 space-y-4">
           <div>

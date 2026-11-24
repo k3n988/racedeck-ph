@@ -13,7 +13,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
           <div className="ml-auto hidden items-center gap-7 text-sm font-bold lg:flex">
             <Link href="/#home-events" className="transition hover:text-orange-600">Events</Link>
             <Link href="/results" className="transition hover:text-orange-600">Results</Link>
-            <Link href="/contact" className="transition hover:text-orange-600">Contact Us</Link>
+            <Link href="/support/report" className="transition hover:text-orange-600">Contact Us</Link>
           </div>
         </nav>
       </header>
@@ -23,6 +23,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-7 text-sm text-slate-600 sm:px-6">
           <div><p className="font-bold text-slate-900">RaceDeck PH</p><p className="mt-1 text-xs">Race registration and event operations.</p></div>
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold">
+            <Link href="/support/report" className="hover:text-orange-600">Report an issue</Link>
             <Link href="/login" className="hover:text-orange-600">Login</Link>
             <Link href="/legal/privacy" className="hover:text-orange-600">Privacy</Link>
             <Link href="/legal/terms" className="hover:text-orange-600">Terms</Link>

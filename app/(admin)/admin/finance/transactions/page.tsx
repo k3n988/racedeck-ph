@@ -1,14 +1,19 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { CreditCard, Search } from 'lucide-react';
-import { AdminPage, DataTable, Money, StatusBadge } from '@/components/admin/admin-ui';
+import { CreditCard } from 'lucide-react';
+import { AdminPage, AdminPagination, DataTable, Money, StatusBadge } from '@/components/admin/admin-ui';
 import { adminDateRange, adminPageNumber, adminSearch } from '@/lib/admin/list-query';
 import { createAdminClient } from '@/lib/supabase/admin';
+import TransactionFilters from './transaction-filters';
 
 export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 20;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUSES = ['all', 'pending', 'processing', 'succeeded', 'failed', 'cancelled', 'partially_refunded', 'refunded', 'expired'] as const;
+const shortenName = (value: string) => {
+  const characters = Array.from(value);
+  return characters.length > 20 ? `${characters.slice(0, 20).join('')}...` : value;
+};
 
 export default async function AdminTransactionsPage({ searchParams }: { searchParams?: { q?: string; status?: string; from?: string; to?: string; page?: string } }) {
   const db = createAdminClient();
@@ -18,7 +23,7 @@ export default async function AdminTransactionsPage({ searchParams }: { searchPa
   const to = searchParams?.to ?? '';
   const range = adminDateRange(from, to);
   const page = adminPageNumber(searchParams?.page);
-  let query = db.from('payments').select('id,registration_id,amount_due,amount_paid,amount_refunded,currency,status,gateway,gateway_payment_id,created_at,registrations(first_name,last_name,registration_number),events(name),organizations(name)', { count: 'exact' });
+  let query = db.from('payments').select('id,registration_id,amount_due,currency,status,gateway_payment_id,created_at,registrations(first_name,middle_name,last_name,email,registration_number),events(name),organizations(name)', { count: 'exact' });
   if (status !== 'all') query = query.eq('status', status);
   if (search) query = UUID.test(search) ? query.or(`id.eq.${search},registration_id.eq.${search},gateway_payment_id.ilike.%${search}%`) : query.ilike('gateway_payment_id', `%${search}%`);
   if (range.from) query = query.gte('created_at', range.from);
@@ -28,6 +33,7 @@ export default async function AdminTransactionsPage({ searchParams }: { searchPa
   ]);
   const rows = listing.data ?? [];
   const total = listing.count ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const urlFor = (nextPage: number) => {
     const params = new URLSearchParams();
     if (search) params.set('q', search);
@@ -37,16 +43,11 @@ export default async function AdminTransactionsPage({ searchParams }: { searchPa
     if (nextPage > 1) params.set('page', String(nextPage));
     return `/admin/finance/transactions${params.size ? `?${params}` : ''}`;
   };
-  if (!listing.error && !range.error && total > 0 && page > Math.ceil(total / PAGE_SIZE)) redirect(urlFor(Math.ceil(total / PAGE_SIZE)));
+  if (!listing.error && !range.error && total > 0 && page > totalPages) redirect(urlFor(totalPages));
   return <AdminPage eyebrow="Finance" title="Transactions" description="" compactTop compactSections>
-    <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-2 xl:grid-cols-[minmax(160px,1fr)_minmax(240px,1.5fr)_minmax(150px,1fr)_minmax(150px,1fr)_auto] xl:items-end">
-      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment status<select name="status" defaultValue={status} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal normal-case text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"><option value="all">All statuses</option>{STATUSES.filter((value) => value !== 'all').map((value) => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
-      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Reference<span className="relative mt-1 block"><Search size={17} className="pointer-events-none absolute left-3 top-3 text-slate-400" aria-hidden="true" /><input name="q" defaultValue={search} maxLength={100} placeholder="Payment, registration, or gateway ID" className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm font-normal normal-case focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100" /></span></label>
-      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Created from<input name="from" type="date" defaultValue={from} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100" /></label>
-      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Created to<input name="to" type="date" defaultValue={to} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100" /></label>
-      <div className="flex gap-2"><button type="submit" className="rounded-lg bg-[#071b41] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#102b58] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2">Apply</button>{(search || status !== 'all' || from || to) && <Link href="/admin/finance/transactions" className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-orange-400">Clear</Link>}</div>
-    </form>
-    {range.error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{range.error}</p> : listing.error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Payment records could not be loaded. Refresh to try again.</p> : <section>{rows.length ? <DataTable headers={['Payment / registration', 'Participant', 'Event / organizer', 'Due / paid', 'Gateway', 'Status', 'Created', 'Action']}>{rows.map((row) => <tr key={row.id} className="hover:bg-slate-50"><td className="px-4 py-3"><p className="font-mono text-xs font-bold">{row.id.slice(0, 12)}…</p><p className="mt-1 text-xs text-slate-500">{row.registrations?.registration_number ?? row.registration_id.slice(0, 12)}</p></td><td className="px-4 py-3">{row.registrations ? `${row.registrations.first_name} ${row.registrations.last_name}` : 'Participant unavailable'}</td><td className="px-4 py-3"><p className="font-semibold">{row.events?.name ?? 'Event unavailable'}</p><p className="text-xs text-slate-500">{row.organizations?.name ?? 'Organizer unavailable'}</p></td><td className="whitespace-nowrap px-4 py-3 text-sm"><p><Money value={Number(row.amount_due)} currency={row.currency} /> due</p><p className="text-slate-500"><Money value={Number(row.amount_paid)} currency={row.currency} /> paid</p></td><td className="px-4 py-3 text-sm text-slate-600">{row.gateway || '—'}</td><td className="px-4 py-3"><StatusBadge value={row.status} /></td><td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{new Date(row.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}</td><td className="px-4 py-3"><Link href={`/admin/finance/transactions/${row.id}`} className="font-bold text-orange-600 hover:underline">View details →</Link></td></tr>)}</DataTable> : <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><CreditCard size={23} aria-hidden="true" /></span><p className="mt-3 font-bold text-[#071b41]">No payment records found</p><p className="mt-1 text-sm text-slate-500">{search || status !== 'all' || from || to ? 'Try adjusting the filters.' : 'Payments will appear here when checkouts begin.'}</p>{(search || status !== 'all' || from || to) && <Link href="/admin/finance/transactions" className="mt-4 inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:border-orange-400">Clear filters</Link>}</div>}</section>}
-    {!range.error && !listing.error && total > PAGE_SIZE && <nav aria-label="Payment pages" className="flex items-center justify-between text-sm"><span className="text-slate-500">Page {page} of {Math.ceil(total / PAGE_SIZE)}</span><div className="flex gap-2">{page > 1 && <Link href={urlFor(page - 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold">Previous</Link>}{page * PAGE_SIZE < total && <Link href={urlFor(page + 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold">Next</Link>}</div></nav>}
+    <TransactionFilters search={search} status={status} from={from} to={to} />
+    {range.error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{range.error}</p> : listing.error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Payment records could not be loaded. Refresh to try again.</p> : <section><DataTable headers={['#', 'Payment / registration', 'Participant', 'Event / organizer', 'Due', 'Payment', 'Created', 'Action']} footer={<AdminPagination page={page} total={total} pageSize={PAGE_SIZE} urlFor={urlFor} label="payments" ariaLabel="Payment pages" />}>
+      {rows.length ? rows.map((row, index) => <tr key={row.id} className="hover:bg-slate-50"><td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-slate-500">{(page - 1) * PAGE_SIZE + index + 1}</td><td className="w-[220px] max-w-[220px] px-4 py-3"><p className="max-w-[220px] truncate font-mono text-xs font-bold" title={row.id}>{row.id}</p><p className="mt-1 truncate text-xs text-slate-500" title={row.registrations?.registration_number ?? row.registration_id}>{row.registrations?.registration_number ?? row.registration_id}</p></td><td className="px-4 py-3">{row.registrations ? <><p className="font-semibold">{row.registrations.first_name} {row.registrations.middle_name ? `${row.registrations.middle_name} ` : ''}{row.registrations.last_name}</p><p className="mt-1 text-xs text-slate-500">{row.registrations.email}</p></> : 'Participant unavailable'}</td><td className="px-4 py-3"><p className="font-semibold" title={row.events?.name ?? 'Event unavailable'}>{shortenName(row.events?.name ?? 'Event unavailable')}</p><p className="text-xs text-slate-500" title={row.organizations?.name ?? 'Organizer unavailable'}>{shortenName(row.organizations?.name ?? 'Organizer unavailable')}</p></td><td className="whitespace-nowrap px-4 py-3 text-sm font-semibold"><Money value={Number(row.amount_due)} currency={row.currency} /></td><td className="px-4 py-3"><StatusBadge value={row.status} /></td><td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{new Date(row.created_at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}</td><td className="px-4 py-3"><Link href={`/admin/finance/transactions/${row.id}`} className="font-bold text-orange-600 hover:underline">View details →</Link></td></tr>) : <tr><td colSpan={8} className="px-4 py-10 text-center"><div className="mx-auto flex max-w-md flex-col items-center"><span className="grid h-12 w-12 place-items-center rounded-full bg-orange-50 text-orange-600"><CreditCard size={23} aria-hidden="true" /></span><p className="mt-3 font-bold text-[#071b41]">No payment records found</p><p className="mt-1 text-sm text-slate-500">{search || status !== 'all' || from || to ? 'Try adjusting the filters.' : 'Payments will appear here when checkouts begin.'}</p>{(search || status !== 'all' || from || to) && <Link href="/admin/finance/transactions" className="mt-4 inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:border-orange-400">Clear filters</Link>}</div></td></tr>}
+    </DataTable></section>}
   </AdminPage>;
 }

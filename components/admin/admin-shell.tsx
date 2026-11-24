@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
-  CalendarDays, CreditCard, FileText, LayoutDashboard, Plus,
+  CalendarDays, CreditCard, LayoutDashboard,
   LifeBuoy, Mail, Menu, Percent, RotateCcw, Scale, ScrollText, Settings,
   ShieldCheck, Users, X,
 } from 'lucide-react';
@@ -23,7 +23,6 @@ const groups = [
     { label: 'Reconciliation', href: '/admin/finance/reconciliation', icon: Scale },
   ] },
   { label: 'Platform', items: [
-    { label: 'Content Management', href: '/admin/content-management', icon: FileText },
     { label: 'Email Delivery', href: '/admin/email-delivery', icon: Mail },
     { label: 'Support / Issues', href: '/admin/support', icon: LifeBuoy },
     { label: 'Roles & Permissions', href: '/admin/roles-permissions', icon: ShieldCheck },
@@ -32,13 +31,24 @@ const groups = [
   ] },
 ] as const;
 
-export default function AdminShell({ children, email }: { children: React.ReactNode; email?: string }) {
+export default function AdminShell({ children, email, internalRoles = [] }: { children: React.ReactNode; email?: string; internalRoles?: string[] }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const initials = (email ?? 'AD').slice(0, 2).toUpperCase();
+  const hasAdminAccess = internalRoles.includes('admin') || internalRoles.includes('super_admin');
+  const visibleGroups = groups.map((group) => ({
+    ...group,
+    items: group.items.filter(({ href }) => {
+      if (hasAdminAccess) return true;
+      if (href.startsWith('/admin/finance/')) return internalRoles.includes('finance');
+      if (href === '/admin/support') return internalRoles.includes('support');
+      if (href === '/admin/audit-logs') return internalRoles.includes('finance');
+      return false;
+    }),
+  })).filter((group) => group.items.length > 0);
   const activeItem = groups.flatMap((group) => group.items.map(({ label, href }) => ({ label, href }))).find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   const isDetailPage = Boolean(activeItem && pathname !== activeItem.href);
   const detailLabel = pathname.startsWith('/admin/events/') ? 'Event review'
@@ -116,7 +126,7 @@ export default function AdminShell({ children, email }: { children: React.ReactN
           <button type="button" className="rounded p-1 text-white/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400 lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu"><X size={20} /></button>
         </div>
         <nav className="scrollbar-hidden min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 pb-6" aria-label="Platform admin navigation">
-          {groups.map((group) => (
+            {visibleGroups.map((group) => (
             <div key={group.label}>
               <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">{group.label}</p>
               <div className="space-y-1">
@@ -146,14 +156,19 @@ export default function AdminShell({ children, email }: { children: React.ReactN
           <div className="flex min-h-16 flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
             <button ref={menuButtonRef} type="button" onClick={() => setOpen(true)} className="rounded-lg border border-slate-200 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-500 lg:hidden" aria-label="Open menu" aria-expanded={open} aria-controls="admin-sidebar"><Menu size={20} /></button>
             <nav aria-label="Breadcrumb" className="min-w-0 flex-1 truncate text-sm text-slate-500">
-              <Link href="/admin/dashboard" className="hover:text-orange-600">Platform</Link><span className="mx-2">/</span>
               {isDetailPage && activeItem && <><Link href={activeItem.href} className="hover:text-orange-600">{activeItem.label}</Link><span className="mx-2">/</span></>}
               <span className="font-semibold text-slate-800">{isDetailPage ? detailLabel : activeItem?.label ?? (pathname.startsWith('/admin/payment-operations') ? 'Payment operations' : 'Dashboard')}</span>
             </nav>
             {pathname === '/admin/dashboard' && <div id="admin-dashboard-filters" className="w-full lg:ml-auto lg:w-auto" />}
             {pathname === '/admin/organizers' && <div id="admin-organizer-filters" className="w-full lg:ml-auto lg:w-auto" />}
             {pathname === '/admin/events' && <div id="admin-event-filters" className="w-full lg:ml-auto lg:w-auto" />}
-            {pathname === '/admin/content-management' && <Link href="/admin/content-management?create=1" className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#071b41] px-3 text-xs font-bold text-white hover:bg-[#102b58] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 sm:px-4 sm:text-sm"><Plus size={15} aria-hidden="true" />Create content</Link>}
+            {pathname === '/admin/finance/transactions' && <div id="admin-transaction-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/finance/refunds' && <div id="admin-refund-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/finance/platform-fees' && <div id="admin-platform-fee-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/finance/reconciliation' && <div id="admin-reconciliation-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/email-delivery' && <div id="admin-email-delivery-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/support' && <div id="admin-support-filters" className="w-full lg:ml-auto lg:w-auto" />}
+            {pathname === '/admin/audit-logs' && <div id="admin-audit-log-filters" className="w-full lg:ml-auto lg:w-auto" />}
           </div>
         </header>
         {children}

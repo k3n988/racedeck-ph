@@ -38,7 +38,7 @@ export async function PUT(request: Request, { params }: { params: { profileId: s
       return NextResponse.json({ error: 'Payment profile saving is not configured. Contact RaceDeck support.' }, { status: 503 });
     }
   }
-  const { bank_account_number: _ignored, ...fields } = parsed.data;
+  const fields = Object.fromEntries(Object.entries(parsed.data).filter(([key]) => key !== 'bank_account_number')) as Omit<typeof parsed.data, 'bank_account_number'>;
   const changes: Record<string, unknown> = { ...fields, address_line2: fields.address_line2 || null, updated_by: context.user.id };
   if (encrypted && accountNumber) {
     changes.bank_account_number_encrypted = encrypted;

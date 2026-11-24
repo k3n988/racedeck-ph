@@ -24,6 +24,30 @@ export function DataTable({ headers, children, footer }: { headers: string[]; ch
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50"><tr>{headers.map((header) => <th key={header} className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table></div>{footer && <div className="border-t border-slate-100 px-4 py-3">{footer}</div>}</div>;
 }
 
+export function AdminPagination({ page, total, pageSize, urlFor, label, ariaLabel, pageSizeControl }: { page: number; total: number; pageSize: number; urlFor: (page: number) => string; label: string; ariaLabel: string; pageSizeControl?: React.ReactNode }) {
+  const totalPages = Math.ceil(total / pageSize);
+  const pageCount = Math.max(1, totalPages);
+  const pageWindowStart = Math.max(1, Math.min(page - 2, pageCount - 4));
+  const pageNumbers = Array.from({ length: Math.min(5, pageCount) }, (_, index) => pageWindowStart + index);
+  const pageLinkClass = 'grid h-9 min-w-9 place-items-center rounded-lg border border-slate-300 bg-white px-2 font-semibold text-slate-700 hover:border-orange-400';
+  const disabledClass = 'cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-400';
+
+  return <nav aria-label={ariaLabel} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+    <div className="flex flex-wrap items-center gap-4">
+      <span className="text-slate-500">Showing {total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)} of {total.toLocaleString()} {label}</span>
+      {pageSizeControl}
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="px-2 text-slate-600">Page {page} of {pageCount}</span>
+      {page > 1 ? <Link href={urlFor(page - 1)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold">Previous</Link> : <span aria-disabled="true" className={disabledClass}>Previous</span>}
+      {pageNumbers.map((pageNumber) => pageNumber === page
+        ? <span key={pageNumber} aria-current="page" className="grid h-9 min-w-9 place-items-center rounded-lg border border-[#071b41] bg-[#071b41] px-2 font-semibold text-white">{pageNumber}</span>
+        : <Link key={pageNumber} href={urlFor(pageNumber)} className={pageLinkClass}>{pageNumber}</Link>)}
+      {page < totalPages ? <Link href={urlFor(page + 1)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold">Next</Link> : <span aria-disabled="true" className={disabledClass}>Next</span>}
+    </div>
+  </nav>;
+}
+
 export function EmptyState({ message, href, label, icon: Icon = Inbox }: { message: string; href?: string; label?: string; icon?: typeof Inbox }) {
   return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-500"><Icon size={22} aria-hidden="true" /></span><p className="mt-3 font-bold text-slate-800">{message}</p>{href && label && <Link href={href} className="mt-4 inline-flex rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white">{label}</Link>}</div>;
 }

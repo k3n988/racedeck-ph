@@ -43,6 +43,14 @@ export async function requireInternalRole(role: InternalRole) {
 
 export async function requireInternalAccess() {
   const context = await requireAuth();
+  if (!context.internalRoles.length) {
+    redirect('/login?error=forbidden');
+  }
+  return context;
+}
+
+export async function requireInternalRoleManagement() {
+  const context = await requireAuth();
   if (!context.internalRoles.some((role) => role === 'admin' || role === 'super_admin')) {
     redirect('/login?error=forbidden');
   }

@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const protectedPrefixes = ['/organizer', '/admin'];
+const protectedPrefixes = ['/organizer', '/admin', '/api/admin'];
 const authPrefixes = ['/login', '/organizer-register', '/forgot-password', '/reset-password'];
 
 export async function middleware(request: NextRequest) {
@@ -42,9 +42,46 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isProtected && !user) {
+    if (pathname === '/api/admin' || pathname.startsWith('/api/admin/')) {
+      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
+  }
+  const isAdminArea = pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/api/admin' || pathname.startsWith('/api/admin/');
+  if (isAdminArea && user) {
+    const { data: assignments, error } = await supabase
+      .from('racedeck_internal_user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('is_active', true);
+    if (error) return new NextResponse('Admin access is temporarily unavailable. Please try again shortly.', { status: 503 });
+    const roles = new Set((assignments ?? []).map((item) => item.role));
+    const isAdmin = roles.has('admin') || roles.has('super_admin');
+    const isSuperAdmin = roles.has('super_admin');
+    const isFinancePath = pathname.startsWith('/admin/finance/') || pathname === '/admin/finance'
+      || pathname.startsWith('/api/admin/refunds') || pathname.startsWith('/api/admin/payment-webhooks');
+    const isSupportPath = pathname.startsWith('/admin/support') || pathname.startsWith('/api/admin/support');
+    const isAuditPath = pathname.startsWith('/admin/audit-logs');
+    const isRolesPath = pathname.startsWith('/admin/roles-permissions') || pathname.startsWith('/api/admin/roles-permissions');
+    const allowed = isAdmin
+      || (isFinancePath && roles.has('finance'))
+      || (isSupportPath && roles.has('support'))
+      || (isAuditPath && roles.has('finance'))
+      || (isRolesPath && (roles.has('admin') || isSuperAdmin));
+    if (!allowed) {
+      const apiRequest = pathname.startsWith('/api/');
+      if (apiRequest) return NextResponse.json({ error: 'You do not have permission to use this admin feature.' }, { status: 403 });
+      const safeLanding = isAdmin
+        ? '/admin/dashboard'
+        : roles.has('finance')
+          ? '/admin/finance/transactions'
+          : roles.has('support')
+            ? '/admin/support'
+            : '/login?error=forbidden';
+      return NextResponse.redirect(new URL(safeLanding, request.url));
+    }
   }
   const isRegistrationPage = pathname === '/organizer-register';
   const isLoginPage = pathname === '/login';

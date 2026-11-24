@@ -19,7 +19,7 @@ async function ownerOrganization() {
 export async function GET() {
   const access = await ownerOrganization();
   if ('response' in access) return access.response;
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { data, error } = await admin.from('organization_integrations').select('google_analytics_id,meta_pixel_id').eq('organization_id', access.organizationId).maybeSingle();
   if (error) return NextResponse.json({ error: 'Integration settings could not be loaded' }, { status: 500 });
   return NextResponse.json({ google_analytics_id: data?.google_analytics_id ?? '', meta_pixel_id: data?.meta_pixel_id ?? '' });
@@ -30,7 +30,7 @@ export async function PUT(request: Request) {
   if ('response' in access) return access.response;
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Enter a valid Google Analytics measurement ID (G-...) or Meta Pixel ID (numbers only).' }, { status: 400 });
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const values = { organization_id: access.organizationId, google_analytics_id: parsed.data.google_analytics_id || null, meta_pixel_id: parsed.data.meta_pixel_id || null, updated_at: new Date().toISOString() };
   if (!values.google_analytics_id && !values.meta_pixel_id) {
     const { error } = await admin.from('organization_integrations').delete().eq('organization_id', access.organizationId);
